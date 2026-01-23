@@ -105,15 +105,15 @@
   <xacro:leg name="leg2" x_offset="0.090" y_offset="0" yaw="0" colour="green"/>
 
   <!-- Rear left -->
-  <xacro:leg name="leg3" x_offset="-0.06733" y_offset="0.0846" yaw="2.36" colour="blue"/>
+  <xacro:leg name="leg3" x_offset="0.06733" y_offset="-0.0846" yaw="-0.5236" colour="blue"/>
 
   <!-- Front right -->
-  <xacro:leg name="leg4" x_offset="0.06733" y_offset="-0.0846" yaw="-0.5236" colour="yellow"/>
+  <xacro:leg name="leg4" x_offset="-0.06733" y_offset="-0.0846" yaw="-2.61799" colour="yellow"/>
 
   <!-- Middle right -->
   <xacro:leg name="leg5" x_offset="-0.090" y_offset="0" yaw="-3.14159" colour="cyan"/>
 
   <!-- Rear right -->
-  <xacro:leg name="leg6" x_offset="-0.06733" y_offset="-0.0846" yaw="-2.36" colour="magenta"/>
+  <xacro:leg name="leg6" x_offset="-0.06733" y_offset="0.0846" yaw="2.61799" colour="magenta"/>
 
 </robot>
