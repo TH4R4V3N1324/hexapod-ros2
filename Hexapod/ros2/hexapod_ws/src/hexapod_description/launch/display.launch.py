@@ -7,6 +7,7 @@ import os
 def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
     xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod.urdf.xacro')
+    rviz_config_file = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
 
     robot_description = Command(['xacro ', xacro_file])
 
@@ -14,9 +15,7 @@ def generate_launch_description():
         Node(
             package='robot_state_publisher',
             executable='robot_state_publisher',
-            parameters=[{
-                'robot_description': robot_description
-            }]
+            parameters=[{'robot_description': robot_description}]
         ),
         Node(
             package='joint_state_publisher_gui',
@@ -24,6 +23,9 @@ def generate_launch_description():
         ),
         Node(
             package='rviz2',
-            executable='rviz2'
+            executable='rviz2',
+            name='rviz2',
+            output='screen',
+            arguments=['-d', rviz_config_file]
         )
     ])

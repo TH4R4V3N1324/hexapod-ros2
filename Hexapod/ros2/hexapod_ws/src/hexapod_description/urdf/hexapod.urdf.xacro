@@ -2,6 +2,12 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <!-- ================= CONSTANTS ================= -->
+  <xacro:property name="coxa_length" value="0.055"/>
+  <xacro:property name="femur_length" value="0.09"/>
+  <xacro:property name="tibia_length" value="0.15"/>
+
+  <xacro:property name="femur_radius" value="0.029"/>
+  <xacro:property name="tibia_radius" value="0.0225"/>
 
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
@@ -16,7 +22,7 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black"/>
     </visual>
@@ -28,9 +34,9 @@
   <!-- COXA -->
   <link name="${name}_coxa">
     <visual>
+      <origin xyz="${coxa_length/2} 0 0" rpy="0 0 0"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/coxa.dae"
-              scale="0.01 0.01 0.01"/>
+        <box size="${coxa_length} 0.048 0.06"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -39,10 +45,10 @@
   <!-- FEMUR -->
   <link name="${name}_femur">
     <visual>
-      <origin xyz="0.045 0 0" rpy="0 0 0"/>
+      <!-- Cylinder base aligned with joint -->
+      <origin xyz="${femur_length/2} 0 0" rpy="0 -1.5708 0"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/femur.dae"
-              scale="0.01 0.01 0.01"/>
+        <cylinder length="${femur_length}" radius="${femur_radius}"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -51,10 +57,9 @@
   <!-- TIBIA -->
   <link name="${name}_tibia">
     <visual>
-      <origin xyz="0.075175 0 0" rpy="0 0 0"/>
+      <origin xyz="${tibia_length/2} 0 0" rpy="0 -1.5708 0"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/tibia.dae"
-              scale="0.01 0.01 0.01"/>
+        <cylinder length="${tibia_length}" radius="${tibia_radius}"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -64,7 +69,7 @@
   <joint name="${name}_coxa_joint" type="revolute">
     <parent link="base_link"/>
     <child link="${name}_coxa"/>
-    <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 ${yaw}"/>
+    <origin xyz="${x_offset} ${y_offset} 0.02" rpy="0 0 ${yaw}"/>
     <axis xyz="0 0 1"/>
     <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
   </joint>
@@ -73,7 +78,7 @@
   <joint name="${name}_femur_joint" type="revolute">
     <parent link="${name}_coxa"/>
     <child link="${name}_femur"/>
-    <origin xyz="0.0505 0 0" rpy="0 0 0"/>
+    <origin xyz="${coxa_length} 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
     <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
   </joint>
@@ -82,7 +87,7 @@
   <joint name="${name}_tibia_joint" type="revolute">
     <parent link="${name}_femur"/>
     <child link="${name}_tibia"/>
-    <origin xyz="0.09 0 0" rpy="0 0 0"/>
+    <origin xyz="${femur_length} 0 0" rpy="0 1.5708 0"/> 
     <axis xyz="0 1 0"/>
     <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
   </joint>
@@ -94,7 +99,7 @@
   <xacro:leg name="leg1" x_offset="0.06733" y_offset="0.0846" yaw="0.5236" colour="red"/>
 
   <!-- Middle left -->
-  <xacro:leg name="leg2" x_offset="0.090" y_offset="0" yaw="1.57" colour="green"/>
+  <xacro:leg name="leg2" x_offset="0.090" y_offset="0" yaw="0" colour="green"/>
 
   <!-- Rear left -->
   <xacro:leg name="leg3" x_offset="-0.06733" y_offset="0.0846" yaw="2.36" colour="blue"/>
@@ -103,7 +108,7 @@
   <xacro:leg name="leg4" x_offset="0.06733" y_offset="-0.0846" yaw="-0.5236" colour="yellow"/>
 
   <!-- Middle right -->
-  <xacro:leg name="leg5" x_offset="-0.090" y_offset="0" yaw="-1.57" colour="cyan"/>
+  <xacro:leg name="leg5" x_offset="-0.090" y_offset="0" yaw="-3.14159" colour="cyan"/>
 
   <!-- Rear right -->
   <xacro:leg name="leg6" x_offset="-0.06733" y_offset="-0.0846" yaw="-2.36" colour="magenta"/>
