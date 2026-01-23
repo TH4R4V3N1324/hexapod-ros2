@@ -12,6 +12,8 @@
   <xacro:property name="femur_radius" value="0.029"/>
   <xacro:property name="tibia_radius" value="0.0225"/>
 
+  <xacro:property name="cscale" value="0.95"/>
+
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
   <material name="red"><color rgba="1 0 0 1"/></material>
@@ -29,6 +31,11 @@
       </geometry>
       <material name="black"/>
     </visual>
+    <collision>
+      <geometry>
+        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.001 0.001 0.001"/>
+      </geometry>
+    </collision>
   </link>
 
 <!-- ================= LEG LINKS ================= -->
@@ -43,6 +50,12 @@
       </geometry>
       <material name="${colour}"/>
     </visual>
+    <collision>
+      <origin xyz="${coxa_length/2} 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="${coxa_length*cscale} ${coxa_width*cscale} ${coxa_height*cscale}"/>
+      </geometry>
+    </collision>
   </link>
 
   <!-- FEMUR -->
@@ -55,6 +68,12 @@
       </geometry>
       <material name="${colour}"/>
     </visual>
+    <collision>
+      <origin xyz="${femur_length/2} 0 0" rpy="0 -1.5708 0"/>
+      <geometry>
+        <cylinder length="${femur_length*cscale}" radius="${femur_radius*cscale}"/>
+      </geometry>
+    </collision>
   </link>
 
   <!-- TIBIA -->
@@ -66,6 +85,12 @@
       </geometry>
       <material name="${colour}"/>
     </visual>
+    <collision>
+      <origin xyz="${tibia_length/2} 0 0" rpy="0 -1.5708 0"/>
+      <geometry>
+        <cylinder length="${tibia_length*cscale}" radius="${tibia_radius*cscale}"/>
+      </geometry>
+    </collision>
   </link>
 
   <!-- COXA JOINT -->
