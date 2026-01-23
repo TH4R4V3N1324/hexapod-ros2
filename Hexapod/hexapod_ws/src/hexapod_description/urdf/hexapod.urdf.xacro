@@ -1,0 +1,111 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
+
+  <!-- ================= CONSTANTS ================= -->
+
+  <!-- ================= MATERIALS ================= -->
+  <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
+  <material name="red"><color rgba="1 0 0 1"/></material>
+  <material name="green"><color rgba="0 1 0 1"/></material>
+  <material name="blue"><color rgba="0 0 1 1"/></material>
+  <material name="yellow"><color rgba="1 1 0 1"/></material>
+  <material name="cyan"><color rgba="0 1 1 1"/></material>
+  <material name="magenta"><color rgba="1 0 1 1"/></material>
+
+  <!-- ================= BASE ================= -->
+  <link name="base_link">
+    <visual>
+      <geometry>
+        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+  </link>
+
+<!-- ================= LEG LINKS ================= -->
+<xacro:macro name="leg" params="name x_offset y_offset yaw colour">
+
+  <!-- COXA -->
+  <link name="${name}_coxa">
+    <visual>
+      <geometry>
+        <mesh filename="package://hexapod_description/meshes/coxa.dae"
+              scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="${colour}"/>
+    </visual>
+  </link>
+
+  <!-- FEMUR -->
+  <link name="${name}_femur">
+    <visual>
+      <origin xyz="0.045 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://hexapod_description/meshes/femur.dae"
+              scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="${colour}"/>
+    </visual>
+  </link>
+
+  <!-- TIBIA -->
+  <link name="${name}_tibia">
+    <visual>
+      <origin xyz="0.075175 0 0" rpy="0 0 0"/>
+      <geometry>
+        <mesh filename="package://hexapod_description/meshes/tibia.dae"
+              scale="0.01 0.01 0.01"/>
+      </geometry>
+      <material name="${colour}"/>
+    </visual>
+  </link>
+
+  <!-- COXA JOINT -->
+  <joint name="${name}_coxa_joint" type="revolute">
+    <parent link="base_link"/>
+    <child link="${name}_coxa"/>
+    <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 ${yaw}"/>
+    <axis xyz="0 0 1"/>
+    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+  </joint>
+
+  <!-- FEMUR JOINT -->
+  <joint name="${name}_femur_joint" type="revolute">
+    <parent link="${name}_coxa"/>
+    <child link="${name}_femur"/>
+    <origin xyz="0.0505 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+  </joint>
+
+  <!-- TIBIA JOINT -->
+  <joint name="${name}_tibia_joint" type="revolute">
+    <parent link="${name}_femur"/>
+    <child link="${name}_tibia"/>
+    <origin xyz="0.09 0 0" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+  </joint>
+
+</xacro:macro>
+
+  <!-- ================= LEGS ================= -->
+  <!-- Front left -->
+  <xacro:leg name="leg1" x_offset="0.06733" y_offset="0.0846" yaw="0.5236" colour="red"/>
+
+  <!-- Middle left -->
+  <xacro:leg name="leg2" x_offset="0.090" y_offset="0" yaw="1.57" colour="green"/>
+
+  <!-- Rear left -->
+  <xacro:leg name="leg3" x_offset="-0.06733" y_offset="0.0846" yaw="2.36" colour="blue"/>
+
+  <!-- Front right -->
+  <xacro:leg name="leg4" x_offset="0.06733" y_offset="-0.0846" yaw="-0.5236" colour="yellow"/>
+
+  <!-- Middle right -->
+  <xacro:leg name="leg5" x_offset="-0.090" y_offset="0" yaw="-1.57" colour="cyan"/>
+
+  <!-- Rear right -->
+  <xacro:leg name="leg6" x_offset="-0.06733" y_offset="-0.0846" yaw="-2.36" colour="magenta"/>
+
+</robot>
