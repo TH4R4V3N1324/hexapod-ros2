@@ -18,8 +18,8 @@ def generate_launch_description():
             parameters=[{'robot_description': robot_description}]
         ),
         Node(
-            package='joint_state_publisher_gui',
-            executable='joint_state_publisher_gui'
+            package='hexapod_hardware_interface',
+            executable='servo_controller_fake',  # servo_controller or servo_controller_fake
         ),
         Node(
             package='rviz2',
