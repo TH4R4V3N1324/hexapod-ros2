@@ -18,5 +18,8 @@ ament_target_dependencies(sensor_manager rclcpp sensor_msgs hexapod_interfaces)
 add_executable(servo_controller src/servo_controller.cpp)
 ament_target_dependencies(servo_controller rclcpp sensor_msgs std_srvs)
 
-install(TARGETS sensor_manager servo_controller DESTINATION lib/${PROJECT_NAME}/)
+add_executable(controller_bridge src/controller_bridge.cpp)
+ament_target_dependencies(controller_bridge rclcpp hexapod_interfaces)
+
+install(TARGETS sensor_manager servo_controller controller_bridge DESTINATION lib/${PROJECT_NAME}/)
 ament_package()
