@@ -1,0 +1,5 @@
+# Request
+geometry_msgs/Point target_position
+---
+# Response
+sensor_msgs/JointState joint_angles
