@@ -80,20 +80,61 @@ This document describes the ROS2 package architecture for the Hexapod robot, des
 
 ### Messages
 
-#### ControllerInput.msg
+#### ControllerRaw.msg
 
-Raw ESP-NOW controller data relayed from ESP32. Maps directly to the embedded `ControlPacket` structure.
+Unified controller input that supports multiple input sources (ESP-NOW controller, virtual joystick, keyboard, etc.).
 
 ```
-std_msgs/Header header
-int16 joy_left_x
-int16 joy_left_y
-int16 joy_right_x
-int16 joy_right_y
-int16 height
-uint8 command
-int16[3] command_args
+# Header with timestamp
+builtin_interfaces/Time stamp
+
+# Controller axes (normalized -1.0 to 1.0)
+# Standard mapping: [left_x, left_y, right_x, right_y, ...]
+# Can be extended for additional axes (triggers, etc.)
+float32[] axes
+
+# Discrete command (see Command enum below)
+uint16 command_id
+
+# Optional parameters for commands
+# e.g., [gait_id], [leg_id, joint_id, offset], [height_mm]
+float32[] arguments
+
+# Input source identifier
+uint8 source_id
+
+# Source ID constants
+uint8 SOURCE_ESPNOW = 0      # Physical ESP-NOW controller
+uint8 SOURCE_VIRTUAL_JOY = 1 # Virtual joystick (GUI)
+uint8 SOURCE_KEYBOARD = 2    # Keyboard teleop
+uint8 SOURCE_GAMEPAD = 3     # USB/Bluetooth gamepad
+uint8 SOURCE_AUTONOMY = 4    # Autonomous navigation stack
+
+# Command ID constants (matches embedded Command enum)
+uint16 CMD_NONE = 0
+uint16 CMD_SET_GAIT = 1
+uint16 CMD_SET_MODE = 2
+uint16 CMD_SET_CONFIG = 3
+uint16 CMD_HOME_STANCE = 4
+uint16 CMD_REQUEST_CONFIG = 5
+uint16 CMD_SET_HEIGHT = 6
+uint16 CMD_EMERGENCY_STOP = 7
 ```
+
+**Axis Mapping Convention:**
+
+| Index | Axis | Range | Description |
+|-------|------|-------|-------------|
+| 0 | `left_x` | -1.0 to 1.0 | Left stick horizontal (strafe/rotate) |
+| 1 | `left_y` | -1.0 to 1.0 | Left stick vertical (forward/back) |
+| 2 | `right_x` | -1.0 to 1.0 | Right stick horizontal (rotate/strafe) |
+| 3 | `right_y` | -1.0 to 1.0 | Right stick vertical (height adjust) |
+
+**Why this design:**
+- **Normalized floats**: Consistent across all input devices (ESP-NOW sends int16 which gets normalized)
+- **Extensible axes**: Support for triggers, extra buttons as analog values
+- **Source tracking**: Know which controller sent the command for priority/conflict resolution
+- **Flexible arguments**: Commands like `CMD_SET_CONFIG` need multiple parameters
 
 #### LegContactArray.msg
 
