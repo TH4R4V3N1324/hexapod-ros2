@@ -1,4 +1,4 @@
-# ControllerRaw.msg
+# ControllerInput.msg
 # Header with timestamp
 builtin_interfaces/Time stamp
 
