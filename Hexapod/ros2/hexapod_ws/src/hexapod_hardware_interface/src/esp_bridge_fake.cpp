@@ -35,6 +35,7 @@ private:
     rclcpp::Service<SetBool>::SharedPtr emergency_stop_service;
 public:
     void handle_joint_command(const JointState::SharedPtr msg);
+    void handle_emergency_stop(const std::shared_ptr<SetBool::Request> request, std::shared_ptr<SetBool::Response> response);
 };
 
 int main(int argc, char **argv){    
@@ -48,4 +49,19 @@ int main(int argc, char **argv){
 void EspBridge::handle_joint_command(const JointState::SharedPtr msg){
     RCLCPP_INFO(this->get_logger(), "Received joint command with %zu positions", msg->position.size());
     // Process joint command as needed
+}
+
+void EspBridge::handle_emergency_stop(const std::shared_ptr<SetBool::Request> request,
+                                     std::shared_ptr<SetBool::Response> response){
+    if(request->data){
+        // Activate emergency stop
+        RCLCPP_WARN(this->get_logger(), "Emergency stop activated!");
+        response->success = true;
+        response->message = "Emergency stop activated.";
+    } else {
+        // Deactivate emergency stop
+        RCLCPP_INFO(this->get_logger(), "Emergency stop deactivated.");
+        response->success = true;
+        response->message = "Emergency stop deactivated.";
+    }
 }
