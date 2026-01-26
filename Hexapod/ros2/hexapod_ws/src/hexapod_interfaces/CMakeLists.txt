@@ -17,7 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
 #interfaces go here "msg/messageType.msg"
   "msg/LegContact.msg"
   "msg/PowerStatus.msg"
-  "msg/ControllerRaw.msg"
+  "msg/ControllerInput.msg"
   "srv/FKSolver.srv"
   "srv/IKSolver.srv"
   DEPENDENCIES std_msgs builtin_interfaces geometry_msgs sensor_msgs
