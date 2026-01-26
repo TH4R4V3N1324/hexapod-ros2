@@ -1,5 +1,6 @@
 # PowerStatus.msg
-float32 voltage       # Volts
-float32 current       # Amps
-float32 percentage    # 0-100 %
-bool charging         # true if battery is charging
+float32 voltage
+float32 current
+float32 power
+float32 battery_percent
+bool low_battery_warning
