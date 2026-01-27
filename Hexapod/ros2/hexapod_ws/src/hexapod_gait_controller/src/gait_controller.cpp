@@ -1,5 +1,6 @@
 #include "rclcpp/rclcpp.hpp"
 #include "hexapod_gait_controller/kinematic_solver.hpp"
+#include "hexapod_gait_controller/trajectory_generator.hpp"
 
 class GaitController : public rclcpp::Node { public: GaitController() : Node("gait_controller") {
     kinematic_service = std::make_unique<hexapod_gait_controller::KinematicSolverService>(this);

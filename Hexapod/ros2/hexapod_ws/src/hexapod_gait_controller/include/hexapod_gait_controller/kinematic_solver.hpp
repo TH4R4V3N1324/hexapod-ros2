@@ -6,13 +6,13 @@
 #include <hexapod_interfaces/srv/ik_solver.hpp>
 #include <hexapod_interfaces/srv/fk_solver.hpp>
 
+namespace hexapod_gait_controller {
+
 using hexapod_interfaces::srv::IKSolver;
 using hexapod_interfaces::srv::FKSolver;
 using geometry_msgs::msg::Point;
 using sensor_msgs::msg::JointState;
 using Eigen::Vector3d;
-
-namespace hexapod_gait_controller {
 
 struct JointAngles {
     double coxa;
