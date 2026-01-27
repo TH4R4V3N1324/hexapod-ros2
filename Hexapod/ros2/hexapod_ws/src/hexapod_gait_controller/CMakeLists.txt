@@ -12,14 +12,30 @@ find_package(hexapod_interfaces REQUIRED)
 
 include_directories(include)
 
-add_library(kinematic_solver_service SHARED
+add_library(kinematic_solver SHARED
     src/kinematic_solver.cpp
 )
 
-ament_target_dependencies(kinematic_solver_service
+ament_target_dependencies(kinematic_solver
   rclcpp
   hexapod_interfaces
 )
 
+add_executable(gait_controller src/gait_controller.cpp)
+target_link_libraries(gait_controller kinematic_solver)
+ament_target_dependencies(gait_controller
+  rclcpp
+  hexapod_interfaces
+)
+
+install(TARGETS
+  kinematic_solver
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
+)
+
+install(TARGETS gait_controller DESTINATION lib/${PROJECT_NAME}/)
+install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
