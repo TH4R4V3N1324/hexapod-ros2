@@ -5,7 +5,7 @@ def generate_launch_description():
     return LaunchDescription([
         Node(
             package='hexapod_hardware_interface',
-            executable='fake_esp32_bridge_node',
+            executable='esp_bridge_fake',
             name='esp32_bridge',
             output='screen',
             parameters=[{

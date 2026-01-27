@@ -38,9 +38,9 @@ ament_target_dependencies(esp_bridge_fake
 
 install(TARGETS
   hardware_handlers
-  ARCHIVE DESTINATION lib/${PROJECT_NAME}
-  LIBRARY DESTINATION lib/${PROJECT_NAME}
-  RUNTIME DESTINATION bin/${PROJECT_NAME}
+  ARCHIVE DESTINATION lib
+  LIBRARY DESTINATION lib
+  RUNTIME DESTINATION bin
 )
 
 install(TARGETS esp_bridge_fake DESTINATION lib/${PROJECT_NAME}/)
