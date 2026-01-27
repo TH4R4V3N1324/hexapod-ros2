@@ -17,14 +17,37 @@ KinematicSolverService::KinematicSolverService(rclcpp::Node* node) : node(node) 
 }
 
 void KinematicSolverService::handle_ik_request(const std::shared_ptr<IKSolver::Request> request, std::shared_ptr<IKSolver::Response> response){
-    solver.solve_ik(request->target, request->leg_index, response->joint_state);
+    Vector3d target(request->target.x, request->target.y, request->target.z);
+    JointAngles angles = solver.solve_ik(target);
+
+    response->joint_state.name = {
+        "leg" + std::to_string(request->leg_index + 1) + "_coxa_joint",
+        "leg" + std::to_string(request->leg_index + 1) + "_femur_joint",
+        "leg" + std::to_string(request->leg_index + 1) + "_tibia_joint"
+    };
+
+    response->joint_state.position = {
+        angles.coxa, 
+        angles.femur, 
+        angles.tibia
+    };
+
 }
 
 void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::Request> request, std::shared_ptr<FKSolver::Response> response){
-    solver.solve_fk(request->joint_state, response->foot_position);
+    JointAngles angles{
+        request->joint_state.position[0],
+        request->joint_state.position[1],
+        request->joint_state.position[2]
+    };
+    Vector3d position = solver.solve_fk(angles);
+
+    response->foot_position.x = position.x();
+    response->foot_position.y = position.y();
+    response->foot_position.z = position.z();
 }
 
-void KinematicSolver::solve_ik(const Point& target, int leg_index, JointState& joint_state){
+JointAngles KinematicSolver::solve_ik(const Vector3d& target){
     // geometry_msgs/Point target --> sensor_msgs/JointState joint_state
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
 
@@ -32,9 +55,9 @@ void KinematicSolver::solve_ik(const Point& target, int leg_index, JointState& j
     double a2 = femurLength;
     double a3 = tibiaLength;
 
-    double coxaAngle = atan2(target.y, target.x);
-    double r1 = std::hypot(target.x, target.y) - a1;
-    double r2 = target.z;
+    double coxaAngle = atan2(target.y(), target.x());
+    double r1 = std::hypot(target.x(), target.y()) - a1;
+    double r2 = target.z();
     double q2 = atan(r2/r1);
     double r3 = std::hypot(r1, r2);
     double q1 = acos(clamp((pow(a3,2) - pow(a2,2) - pow(r3,2)) / (-2*a2*r3)));
@@ -42,35 +65,18 @@ void KinematicSolver::solve_ik(const Point& target, int leg_index, JointState& j
     double q3 = acos(clamp((pow(r3,2) - pow(a2,2) - pow(a3,2)) / (-2*a2*a3)));
     double tibiaAngle = M_PI_2 - q3;
 
-    std::string prefix = "leg" + std::to_string(leg_index + 1);
-
-    joint_state.name = {
-        prefix + "_coxa_joint",
-        prefix + "_femur_joint",
-        prefix + "_tibia_joint"
-    };
-
-    joint_state.position = {
-        coxaAngle, 
-        femurAngle, 
-        tibiaAngle
-    };
+    return JointAngles{coxaAngle, femurAngle, tibiaAngle};
 }
 
-void KinematicSolver::solve_fk(const JointState& joint_state, Point& position){
+Vector3d KinematicSolver::solve_fk(const JointAngles& angles){
     // sensor_msgs/JointState joint_state --> geometry_msgs/Point foot_position
-    if (joint_state.position.size() < 3) {
-        // Note: Error handling should be done at service level
-        return;
-    }
-
     double a1 = coxaLength;
     double a2 = femurLength;
     double a3 = tibiaLength;
 
-    double coxaAngle  = joint_state.position[0];
-    double femurAngle = joint_state.position[1];
-    double tibiaAngle = joint_state.position[2];
+    double coxaAngle  = angles.coxa;
+    double femurAngle = angles.femur;
+    double tibiaAngle = angles.tibia;
 
     double tibiaAbsoluteAngle = femurAngle - tibiaAngle - M_PI/2.0;
 
@@ -84,9 +90,7 @@ void KinematicSolver::solve_fk(const JointState& joint_state, Point& position){
     double x = horizontalReach * cos(coxaAngle);
     double y = horizontalReach * sin(coxaAngle);
 
-    position.x = x;
-    position.y = y;
-    position.z = z;
+    return Vector3d(x, y, z);
 }
 
 }  // namespace hexapod_gait_controller

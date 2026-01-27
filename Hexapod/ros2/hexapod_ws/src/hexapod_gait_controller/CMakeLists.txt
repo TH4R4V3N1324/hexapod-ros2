@@ -9,8 +9,9 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(hexapod_interfaces REQUIRED)
+find_package(Eigen3 REQUIRED)
 
-include_directories(include)
+include_directories(include ${EIGEN3_INCLUDE_DIR})
 
 add_library(kinematic_solver SHARED
     src/kinematic_solver.cpp
@@ -19,6 +20,7 @@ add_library(kinematic_solver SHARED
 ament_target_dependencies(kinematic_solver
   rclcpp
   hexapod_interfaces
+  Eigen3
 )
 
 add_executable(gait_controller src/gait_controller.cpp)
