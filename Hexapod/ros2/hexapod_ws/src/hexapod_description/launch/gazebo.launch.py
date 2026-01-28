@@ -9,7 +9,7 @@ import os
 
 def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
-    xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod_gazebo.urdf.xacro')
+    xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod.urdf.xacro')
     
     # Process the URDF file
     robot_description = ParameterValue(Command(['xacro ', xacro_file]), value_type=str)

@@ -27,15 +27,22 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.001 0.001 0.001"/>
+        <box size="0.18 0.17 0.05"/>
+        <!--<mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>-->
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.001 0.001 0.001"/>
+        <box size="0.18 0.17 0.05"/>
+        <!--<mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>-->
       </geometry>
     </collision>
+    <inertial>
+      <mass value="1.0"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.1" ixy="0.0" ixz="0.0" iyy="0.1" iyz="0.0" izz="0.1"/>
+    </inertial>
   </link>
 
 <!-- ================= LEG LINKS ================= -->
@@ -56,6 +63,11 @@
         <box size="${coxa_length*cscale} ${coxa_width*cscale} ${coxa_height*cscale}"/>
       </geometry>
     </collision>
+    <inertial>
+      <mass value="0.1"/>
+      <origin xyz="${coxa_length/2} 0 0"/>
+      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
+    </inertial>
   </link>
 
   <!-- FEMUR -->
@@ -74,6 +86,11 @@
         <cylinder length="${femur_length*cscale}" radius="${femur_radius*cscale}"/>
       </geometry>
     </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <origin xyz="${femur_length/2} 0 0"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
   </link>
 
   <!-- TIBIA -->
@@ -91,13 +108,18 @@
         <cylinder length="${tibia_length*cscale}" radius="${tibia_radius*cscale}"/>
       </geometry>
     </collision>
+    <inertial>
+      <mass value="0.05"/>
+      <origin xyz="${tibia_length/2} 0 0"/>
+      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
+    </inertial>
   </link>
 
   <!-- COXA JOINT -->
   <joint name="${name}_coxa_joint" type="revolute">
     <parent link="base_link"/>
     <child link="${name}_coxa"/>
-    <origin xyz="${x_offset} ${y_offset} 0.02" rpy="0 0 ${yaw}"/>
+    <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 ${yaw}"/>
     <axis xyz="0 0 1"/>
     <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
   </joint>
