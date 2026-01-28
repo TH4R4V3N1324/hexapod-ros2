@@ -18,8 +18,19 @@ def generate_launch_description():
             parameters=[{'robot_description': robot_description}]
         ),
         Node(
+            package='joint_state_publisher',
+            executable='joint_state_publisher',
+            name='joint_state_publisher',
+            output='screen'
+        ),
+        Node(
             package='hexapod_hardware_interface',
-            executable='servo_controller_fake',  # servo_controller or servo_controller_fake
+            executable='esp_bridge_fake',
+            name='esp32_bridge',
+            output='screen',
+            parameters=[{
+                'publish_rate': 100.0,
+            }]
         ),
         Node(
             package='rviz2',
