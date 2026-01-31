@@ -2,8 +2,18 @@
 #include "hexapod_gait_controller/kinematic_solver.hpp"
 #include "hexapod_gait_controller/trajectory_generator.hpp"
 #include "Eigen/Dense"
+#include <cmath>
 
 using Eigen::Vector3d;
+using Eigen::AngleAxisd;
+using Eigen::Matrix3d;
+
+// Helper function to rotate a Vector3d around Z axis by degrees
+Vector3d rotateZ(const Vector3d& v, double degrees) {
+    double radians = degrees * M_PI / 180.0;
+    AngleAxisd rotation(radians, Vector3d::UnitZ());
+    return rotation * v;
+}
 
 enum Gait : uint8_t {
     GAIT_TRIPOD,
@@ -25,6 +35,16 @@ class GaitController : public rclcpp::Node { public: GaitController() : Node("ga
     RCLCPP_INFO(this->get_logger(), "GaitController node has been started.");
 }    
 private:
+    Vector3d homePos {0, 150, 0};
+    Vector3d startPos {0, 130, -static_cast<double>(currentHeight)};
+    std::map<int, Vector3d> startPosition{
+        {1, rotateZ(startPos, -15)},
+        {2, startPos},
+        {3, rotateZ(startPos, 15)},
+        {4, rotateZ(startPos, 15)},
+        {5, startPos},
+        {6, rotateZ(startPos, -15)}
+    };
     std::unique_ptr<hexapod_gait_controller::KinematicSolverService> kinematic_service;
     std::vector<std::vector<int>> getGaitConfig(Gait gait);
 
@@ -37,6 +57,9 @@ private:
     void cycleMode();
     void setMode(Mode mode);
     Mode currentMode = MODE_NORMAL;
+
+    void setHeight(double height);
+    double currentHeight = 0.0;
 };
 
 int main(int argc, char **argv){    
@@ -97,4 +120,21 @@ void GaitController::cycleMode() {
 */
 void GaitController::setMode(Mode mode) {
     currentMode = mode;
+}
+
+/*
+@brief Set the height of the hexapod and update start positions accordingly
+@param height The new height to set
+*/
+void GaitController::setHeight(double height) {
+    currentHeight = height;
+    startPos.z() = -static_cast<double>(currentHeight);
+    startPosition = {
+        {1, rotateZ(startPos, -15)},
+        {2, startPos},
+        {3, rotateZ(startPos, 15)},
+        {4, rotateZ(startPos, 15)},
+        {5, startPos},
+        {6, rotateZ(startPos, -15)}
+    };
 }
