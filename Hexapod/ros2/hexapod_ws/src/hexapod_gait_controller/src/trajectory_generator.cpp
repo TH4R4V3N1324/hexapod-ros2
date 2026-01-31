@@ -2,6 +2,15 @@
 
 namespace hexapod_gait_controller {
 
+/*
+@brief Generates a straight trajectory between start and end positions
+@param trajectory Pointer to an array to store the trajectory points
+@param outSize Reference to an integer to store the number of points generated
+@param start The starting position
+@param end The ending position
+@param resolution The number of points to generate
+@return void
+*/
 void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int resolution) {
     outSize = 0;
     if (resolution <= 0 || resolution > 10000) {
@@ -31,6 +40,17 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
     outSize = resolution + 1;
 }
 
+/*
+@brief Generates a Bezier curve trajectory between start and end positions
+@param trajectory Pointer to an array to store the trajectory points
+@param outSize Reference to an integer to store the number of points generated
+@param start The starting position
+@param end The ending position
+@param liftHeight The height to lift the trajectory
+@param resolution The number of points to generate
+@param invert Whether to invert the trajectory
+@return void
+*/
 void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution, bool invert) {
     outSize = 0;
     if (resolution <= 0 || resolution > 10000) {
@@ -73,6 +93,30 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
         trajectory[i] = point;
     }
     outSize = resolution + 1;
+}
+
+/*
+@brief Blend target positions from forward and rotation inputs
+@param currentPos The current position of the leg
+@param forwardPos The target position based on forward input
+@param rotationPos The target position based on rotation input
+@return The blended target position
+*/
+Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, const Vector3d& forwardPos, const Vector3d& rotationPos) {
+    // Compute deltas from current position
+    Vector3d forwardDelta = forwardPos - currentPos;
+    Vector3d rotationDelta = rotationPos - currentPos;
+
+    // Add the deltas
+    Vector3d blended = currentPos + forwardDelta + rotationDelta;
+
+    // Optionally, clamp the stride to a maximum distance from currentPos if needed
+    double maxStride = 100.0;
+    if ((blended - currentPos).length() > maxStride) {
+         blended = currentPos + (blended - currentPos).normalized() * maxStride;
+    }
+
+    return blended;
 }
 
 }  // namespace hexapod_gait_controller
