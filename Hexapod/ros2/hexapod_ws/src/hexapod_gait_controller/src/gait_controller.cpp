@@ -12,19 +12,31 @@ enum Gait : uint8_t {
     NUM_GAITS
 };
 
+enum Mode : uint8_t {
+    MODE_NORMAL,
+    MODE_STRAFE,
+    MODE_TILT,
+    MODE_CONFIG,
+    NUM_MODES
+};
+
 class GaitController : public rclcpp::Node { public: GaitController() : Node("gait_controller") {
     kinematic_service = std::make_unique<hexapod_gait_controller::KinematicSolverService>(this);
     RCLCPP_INFO(this->get_logger(), "GaitController node has been started.");
 }    
 private:
+    std::unique_ptr<hexapod_gait_controller::KinematicSolverService> kinematic_service;
+    std::vector<std::vector<int>> getGaitConfig(Gait gait);
+
+    void cycleGait();
+    void setGait(Gait gait);
     Gait currentGait = GAIT_TRIPOD;
     Gait pendingGait;
     bool gaitChangeRequested = false;
 
-    std::unique_ptr<hexapod_gait_controller::KinematicSolverService> kinematic_service;
-    std::vector<std::vector<int>> getGaitConfig(Gait gait);
-    void cycleGait();
-    void setGait(Gait gait);
+    void cycleMode();
+    void setMode(Mode mode);
+    Mode currentMode = MODE_NORMAL;
 };
 
 int main(int argc, char **argv){    
@@ -71,4 +83,18 @@ void GaitController::cycleGait(){
 void GaitController::setGait(Gait gait) {
     pendingGait = gait;
     gaitChangeRequested = true;
+}
+
+/*
+@brief Changes to the next mode when called
+*/
+void GaitController::cycleMode() {
+    currentMode = static_cast<Mode>((currentMode + 1) % NUM_MODES);
+}
+
+/*
+@brief Sets the current mode to the specified mode
+*/
+void GaitController::setMode(Mode mode) {
+    currentMode = mode;
 }
