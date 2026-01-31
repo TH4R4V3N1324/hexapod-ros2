@@ -136,4 +136,89 @@ void TrajectoryGenerator::EnsureGaitConfig() {
     }
 }
 
+/*
+@brief Generate swing and stance trajectories for the legs
+@param liftHeight The height to lift the legs during swing
+@param resolution The number of steps in the trajectory
+@param swingTargetFunc A function to compute the swing target position for a leg
+@param stanceTargetFunc A function to compute the stance target position for a leg
+*/
+void TrajectoryGenerator::GenerateTrajectories(
+    int liftHeight,
+    int resolution,
+    std::function<Vector3d(int, const Vector3d&)> swingTargetFunc,
+    std::function<Vector3d(int, const Vector3d&)> stanceTargetFunc,
+    std::array<Vector3d, MAX_LEGS + 1> currentPositions,
+    uint8_t currentPhase
+) {
+    // Assign legs to their respective swing and stance groups
+    auto swingGroup = gaitState.config[currentPhase];
+    std::vector<int> stanceGroup;
+    for (int idx = 0; idx < gaitState.config.size(); ++idx) {
+        if (idx == currentPhase) continue;
+        for (int legNum : gaitState.config[idx])
+            stanceGroup.push_back(legNum);
+    }
+    for (int i = 1; i <= MAX_LEGS; ++i) {
+        gaitState.swingSizes[i] = 0;
+        gaitState.stanceSizes[i] = 0;
+    }
+
+    std::map<int, Vector3d> swingTargetsBodyFrame;
+    std::map<int, Vector3d> stanceTargetsBodyFrame;
+
+    // Calculate swing and stance targets in body frame
+    for (int legNum : swingGroup) {
+        Vector3d currentPos = currentPositions[legNum];
+        Vector3d targetLegFrame = swingTargetFunc(legNum, currentPos);
+        Vector3d targetBodyFrame = converter.convertToBodyFrame(targetLegFrame, legNum);
+        swingTargetsBodyFrame[legNum] = targetBodyFrame;
+    }
+    for (int legNum : stanceGroup) {
+        Vector3d currentPos = currentPositions[legNum];
+        Vector3d targetLegFrame = stanceTargetFunc(legNum, currentPos);
+        Vector3d targetBodyFrame = converter.convertToBodyFrame(targetLegFrame, legNum);
+        stanceTargetsBodyFrame[legNum] = targetBodyFrame;
+    }
+
+    // Collision check and adjustment
+    double threshold = 50.0; // mm
+    for (int legNum : swingGroup) {
+        Vector3d swingTargetBody = swingTargetsBodyFrame[legNum];
+        for (const auto& [stanceNum, stanceTargetBody] : stanceTargetsBodyFrame) {
+            if ((swingTargetBody - stanceTargetBody).norm() < threshold) {
+                // Clamp swingTargetBody outward
+                Vector3d dir = (swingTargetBody - stanceTargetBody).normalized();
+                swingTargetBody = stanceTargetBody + dir * threshold;
+            }
+        }
+        // Convert back to leg frame
+        Vector3d targetLegFrame = converter.convertToLegFrame(swingTargetBody, legNum);
+        int size = 0;
+        GenerateBezierTrajectory(
+            gaitState.swingTrajectory[legNum].data(),
+            size,
+            currentPositions[legNum],
+            targetLegFrame,
+            liftHeight,
+            resolution
+        );
+        gaitState.swingSizes[legNum] = size;
+    }
+
+    // Stance
+    for (int legNum : stanceGroup) {
+        Vector3d targetLegFrame = converter.convertToLegFrame(stanceTargetsBodyFrame[legNum], legNum);
+        int size = 0;
+        GenerateStraightTrajectory(
+            gaitState.stanceTrajectory[legNum].data(),
+            size,
+            currentPositions[legNum],
+            targetLegFrame,
+            resolution
+        );
+        gaitState.stanceSizes[legNum] = size;
+    }
+}
+
 }  // namespace hexapod_gait_controller
