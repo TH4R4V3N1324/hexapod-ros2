@@ -112,11 +112,28 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
 
     // Optionally, clamp the stride to a maximum distance from currentPos if needed
     double maxStride = 100.0;
-    if ((blended - currentPos).length() > maxStride) {
+    if ((blended - currentPos).norm() > maxStride) {
          blended = currentPos + (blended - currentPos).normalized() * maxStride;
     }
 
     return blended;
+}
+
+/*
+@brief Calculate stride multiplier based on gait configuration
+@return The stride multiplier
+*/
+double TrajectoryGenerator::CalculateStrideMultiplier() {
+    return (gaitState.config.size() > 1) ? 1.0 / (gaitState.config.size() - 1) : 1.0;
+}
+
+/*
+@brief Ensure the gait configuration is set up correctly
+*/
+void TrajectoryGenerator::EnsureGaitConfig() {
+    if (gaitState.config.empty()) {
+        gaitState.config = GetLegConfig(GaitConfig::currentGait);
+    }
 }
 
 }  // namespace hexapod_gait_controller

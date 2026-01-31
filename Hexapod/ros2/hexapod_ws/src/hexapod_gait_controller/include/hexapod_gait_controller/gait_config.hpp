@@ -11,6 +11,9 @@ using Eigen::Matrix3d;
 
 namespace hexapod_gait_controller {
 
+static constexpr int MAX_LEGS = 6;
+static constexpr int MAX_RESOLUTION = 50 + 1; // +1 for inclusive endpoint
+
 enum Gait : uint8_t {
     GAIT_TRIPOD,
     GAIT_RIPPLE,
@@ -38,13 +41,13 @@ private:
         {5, startPos},
         {6, rotateZ(startPos, -15)}
     };
-    Gait currentGait = GAIT_TRIPOD;
     Gait pendingGait;
     bool gaitChangeRequested = false;
-    Mode currentMode = MODE_NORMAL;
-    double currentHeight = 0.0;
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
+    Gait currentGait = GAIT_TRIPOD;
+    Mode currentMode = MODE_NORMAL;
+    double currentHeight = 0.0;
     std::vector<std::vector<int>> getGaitConfig(Gait gait);
     void cycleGait();
     void setGait(Gait gait);

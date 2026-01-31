@@ -2,16 +2,31 @@
 #define HEXAPOD_GAIT_CONTROLLER__TRAJECTORY_GENERATOR_HPP
 
 #include "hexapod_gait_controller/kinematic_solver.hpp"
+#include "hexapod_gait_controller/gait_config.hpp"
 
 namespace hexapod_gait_controller {
 
 using Eigen::Vector3d;
+using hexapod_gait_controller::GaitConfig;
+
+struct GaitState {
+    std::vector<std::vector<int>> config;
+    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> swingTrajectory;  // 1-based indexing
+    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> stanceTrajectory;
+    std::array<int, MAX_LEGS + 1> swingSizes{};   // Store actual size for each leg
+    std::array<int, MAX_LEGS + 1> stanceSizes{};
+    int step = 0;
+    bool idleReturning = false;
+};
 
 class TrajectoryGenerator {
-public:
+private:
     void GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int resolution);
     void GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution, bool invert);
     Vector3d BlendTargetPosition(const Vector3d& currentPos, const Vector3d& targetPos, const Vector3d& rotationPos);
+    double CalculateStrideMultiplier();
+    GaitState gaitState;
+public:
 };
 
 }  // namespace hexapod_gait_controller
