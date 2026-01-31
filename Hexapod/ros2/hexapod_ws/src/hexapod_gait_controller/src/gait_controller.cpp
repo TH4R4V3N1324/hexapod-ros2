@@ -17,8 +17,14 @@ class GaitController : public rclcpp::Node { public: GaitController() : Node("ga
     RCLCPP_INFO(this->get_logger(), "GaitController node has been started.");
 }    
 private:
+    Gait currentGait = GAIT_TRIPOD;
+    Gait pendingGait;
+    bool gaitChangeRequested = false;
+
     std::unique_ptr<hexapod_gait_controller::KinematicSolverService> kinematic_service;
     std::vector<std::vector<int>> getGaitConfig(Gait gait);
+    void cycleGait();
+    void setGait(Gait gait);
 };
 
 int main(int argc, char **argv){    
@@ -49,4 +55,20 @@ std::vector<std::vector<int>> GaitController::getGaitConfig(Gait gait){
             return {};
             break;
     }
+}
+
+/*
+@brief Changes to the next gait when called
+*/
+void GaitController::cycleGait(){
+    pendingGait = static_cast<Gait>((currentGait + 1) % NUM_GAITS);
+    gaitChangeRequested = true;
+}
+
+/*
+@brief Sets the current gait to the specified gait
+*/
+void GaitController::setGait(Gait gait) {
+    pendingGait = gait;
+    gaitChangeRequested = true;
 }
