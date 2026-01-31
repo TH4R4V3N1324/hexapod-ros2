@@ -54,8 +54,8 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
 void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution, bool invert) {
     outSize = 0;
     if (resolution <= 0 || resolution > 10000) {
-        std::cerr << "Invalid resolution: " << resolution << std::endl;
-        std::terminate();
+        RCLCPP_ERROR(rclcpp::get_logger("TrajectoryGenerator"), "Invalid resolution: %d", resolution);
+        return;
     }
 
     Vector3d dir = end - start;
@@ -132,7 +132,7 @@ double TrajectoryGenerator::CalculateStrideMultiplier() {
 */
 void TrajectoryGenerator::EnsureGaitConfig() {
     if (gaitState.config.empty()) {
-        gaitState.config = GetLegConfig(GaitConfig::currentGait);
+        gaitState.config = gaitConfig.getGaitConfig(gaitConfig.currentGait);
     }
 }
 
@@ -171,13 +171,13 @@ void TrajectoryGenerator::GenerateTrajectories(
     for (int legNum : swingGroup) {
         Vector3d currentPos = currentPositions[legNum];
         Vector3d targetLegFrame = swingTargetFunc(legNum, currentPos);
-        Vector3d targetBodyFrame = converter.convertToBodyFrame(targetLegFrame, legNum);
+        Vector3d targetBodyFrame = converter.legToBodyFrame(targetLegFrame, legNum);
         swingTargetsBodyFrame[legNum] = targetBodyFrame;
     }
     for (int legNum : stanceGroup) {
         Vector3d currentPos = currentPositions[legNum];
         Vector3d targetLegFrame = stanceTargetFunc(legNum, currentPos);
-        Vector3d targetBodyFrame = converter.convertToBodyFrame(targetLegFrame, legNum);
+        Vector3d targetBodyFrame = converter.legToBodyFrame(targetLegFrame, legNum);
         stanceTargetsBodyFrame[legNum] = targetBodyFrame;
     }
 
@@ -193,9 +193,9 @@ void TrajectoryGenerator::GenerateTrajectories(
             }
         }
         // Convert back to leg frame
-        Vector3d targetLegFrame = converter.convertToLegFrame(swingTargetBody, legNum);
+        Vector3d targetLegFrame = converter.bodyToLegFrame(swingTargetBody, legNum);
         int size = 0;
-        GenerateBezierTrajectory(
+        GenBezierTrajectory(
             gaitState.swingTrajectory[legNum].data(),
             size,
             currentPositions[legNum],
@@ -208,9 +208,9 @@ void TrajectoryGenerator::GenerateTrajectories(
 
     // Stance
     for (int legNum : stanceGroup) {
-        Vector3d targetLegFrame = converter.convertToLegFrame(stanceTargetsBodyFrame[legNum], legNum);
+        Vector3d targetLegFrame = converter.bodyToLegFrame(stanceTargetsBodyFrame[legNum], legNum);
         int size = 0;
-        GenerateStraightTrajectory(
+        GenStraightTrajectory(
             gaitState.stanceTrajectory[legNum].data(),
             size,
             currentPositions[legNum],

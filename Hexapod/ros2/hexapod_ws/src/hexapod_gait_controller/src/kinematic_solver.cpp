@@ -1,4 +1,3 @@
-#include "rclcpp/rclcpp.hpp"
 #include "hexapod_gait_controller/kinematic_solver.hpp"
 
 using std::placeholders::_1;
