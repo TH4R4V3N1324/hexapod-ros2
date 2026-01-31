@@ -47,6 +47,12 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
     response->foot_position.z = position.z();
 }
 
+/*
+@brief Inverse kinematics, calculates the joint angles based on the desired position
+@param position The desired position in 3D space
+@param legNum The leg number (1-6)
+@return The calculated joint angles
+*/
 JointAngles KinematicSolver::solve_ik(const Vector3d& target){
     // geometry_msgs/Point target --> sensor_msgs/JointState joint_state
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
@@ -68,6 +74,12 @@ JointAngles KinematicSolver::solve_ik(const Vector3d& target){
     return JointAngles{coxaAngle, femurAngle, tibiaAngle};
 }
 
+/*
+@brief Forward kinematics, calculates the position based on the joint angles
+@param angles The joint angles
+@param legNum The leg number (1-6)
+@return The calculated position in 3D space
+*/
 Vector3d KinematicSolver::solve_fk(const JointAngles& angles){
     // sensor_msgs/JointState joint_state --> geometry_msgs/Point foot_position
     double a1 = coxaLength;
