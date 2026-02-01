@@ -221,4 +221,50 @@ void TrajectoryGenerator::GenerateTrajectories(
     }
 }
 
+/*
+@brief Calculates the direction vector based on joystick input
+@param cmdVel The joystick command velocities
+@param start The starting position
+@param legNum The leg number (1-6)
+@param invert Whether to invert the direction
+@param strideMultiplier The stride multiplier
+@param useBodyFrame Whether to use body frame coordinates
+@return The calculated direction vector
+@note The function handles mirroring for legs and can operate in both body and leg frames
+*/
+Vector3d TrajectoryGenerator::direction(const Twist& cmdVel, const Vector3d& start, int legNum, bool invert, double strideMultiplier, bool useBodyFrame) {
+    double linearX = static_cast<double>(cmdVel.linear.x);
+    double linearY = static_cast<double>(cmdVel.linear.y);
+    if (useBodyFrame) std::swap(linearX, linearY); // Swap X and Y to match the leg's coordinate system
+
+    if (invert) {
+        linearX = -linearX;
+        linearY = -linearY;
+    }
+
+    if (converter.legConfigs[legNum].mirrored) {
+        if (useBodyFrame) linearY = -linearY; else linearX = -linearX;
+    }
+
+    if (!useBodyFrame) linearX = -linearX;
+   
+    double magnitude = std::hypot(linearX, linearY) / gaitConfig.max_velocity;
+    if (magnitude > 1.0) magnitude = 1.0;
+
+    double stride = gaitConfig.max_stride_length * magnitude * strideMultiplier;
+
+    double angle = atan2(linearY, linearX);
+
+    double rotationAngle = converter.legConfigs[legNum].mounting_angle;
+    double deltaX = stride * cos(angle);
+    double deltaY = stride * sin(angle);
+
+    if (!useBodyFrame) {return {start.x() + deltaX, start.y() + deltaY, start.z()};}
+
+    double dx_rot = deltaX * cos(rotationAngle) - deltaY * sin(rotationAngle);
+    double dy_rot = deltaX * sin(rotationAngle) + deltaY * cos(rotationAngle);
+
+    return {start.x() + dx_rot, start.y() + dy_rot, start.z()};
+}
+
 }  // namespace hexapod_gait_controller

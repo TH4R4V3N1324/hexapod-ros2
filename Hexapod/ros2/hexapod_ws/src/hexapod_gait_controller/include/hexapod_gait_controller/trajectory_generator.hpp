@@ -4,11 +4,13 @@
 #include "rclcpp/rclcpp.hpp"
 #include "hexapod_gait_controller/gait_config.hpp"
 #include "hexapod_gait_controller/frame_converter.hpp"
+#include "geometry_msgs/msg/twist.hpp"
 
 namespace hexapod_gait_controller {
 
 using Eigen::Vector3d;
 using hexapod_gait_controller::GaitConfig;
+using geometry_msgs::msg::Twist;
 
 struct GaitState {
     std::vector<std::vector<int>> config;
@@ -37,6 +39,7 @@ public:
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
         uint8_t currentPhase
     );
+    Vector3d direction(const Twist& cmdVel, const Vector3d& start, int legNum, bool invert, double strideMultiplier, bool useBodyFrame);
 };
 
 }  // namespace hexapod_gait_controller

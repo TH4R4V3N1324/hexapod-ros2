@@ -21,9 +21,8 @@ struct LegConfig {
  * Uses only translation (no rotation matrices needed)
  */
 class FrameConverter {
-private:
-    std::map<int, LegConfig> legConfigs;
 public:
+    std::map<int, LegConfig> legConfigs;
     FrameConverter() {
         legConfigs[1] = {-M_PI / 4.0, false, Vector3d(67.33, 84.6, 0)};
         legConfigs[2] = {0, false, Vector3d(90, 0, 0)};

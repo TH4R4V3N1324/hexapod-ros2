@@ -10,6 +10,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(hexapod_interfaces REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(geometry_msgs REQUIRED)
 
 include_directories(include ${EIGEN3_INCLUDE_DIR})
 
@@ -28,6 +29,7 @@ target_link_libraries(gait_controller kinematic_solver)
 ament_target_dependencies(gait_controller
   rclcpp
   hexapod_interfaces
+  geometry_msgs
 )
 
 install(TARGETS
