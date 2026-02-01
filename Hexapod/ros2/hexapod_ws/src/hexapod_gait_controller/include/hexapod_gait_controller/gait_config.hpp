@@ -33,6 +33,8 @@ class GaitConfig {
 private:
     Vector3d homePos {0, 150, 0};
     Vector3d startPos {0, 130, -static_cast<double>(currentHeight)};
+    Vector3d rotateZ(const Vector3d& v, double degrees);
+public:
     std::map<int, Vector3d> startPosition{
         {1, rotateZ(startPos, -15)},
         {2, startPos},
@@ -41,12 +43,10 @@ private:
         {5, startPos},
         {6, rotateZ(startPos, -15)}
     };
-    Gait pendingGait;
-    bool gaitChangeRequested = false;
-    Vector3d rotateZ(const Vector3d& v, double degrees);
-public:
     Gait currentGait = GAIT_TRIPOD;
     Mode currentMode = MODE_NORMAL;
+    bool gaitChangeRequested = false;
+    Gait pendingGait;
     double currentHeight = 0.0;
     double max_velocity = 0.2; // m/s
     double max_stride_length = 0.06; // m

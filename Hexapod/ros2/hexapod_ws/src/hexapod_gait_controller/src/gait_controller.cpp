@@ -9,6 +9,8 @@ using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::JointState;
 using hexapod_gait_controller::MAX_LEGS;
 using hexapod_gait_controller::TrajectoryGenerator;
+using hexapod_gait_controller::GaitConfig;
+using Eigen::Vector3d;
 
 class GaitController : public rclcpp::Node { public: GaitController() : Node("gait_controller") {
     cmd_vel_sub = this->create_subscription<Twist>( "cmd_vel", 10, std::bind(&GaitController::cmdVelCallback, this, std::placeholders::_1));
@@ -20,12 +22,15 @@ private:
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     Twist last_cmd_vel;
     TrajectoryGenerator trajectoryGen;
+    GaitConfig gaitConfig;
     hexapod_gait_controller::KinematicSolver ikSolver;
     uint8_t step = 0;
     uint8_t phase = 0;
+    bool idleReturning = false;
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition);
+    void returnToStart();
 };
 
 int main(int argc, char **argv){    
@@ -100,4 +105,81 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         step = 0;
     }    
+}
+
+/*
+@brief Returns the hexapod to its start position
+*/
+void GaitController::returnToStart() {
+    static int counter = 0;
+    static bool trajectoryGenerated = false;
+    int liftHeight = 50;
+    int resolution = 50;
+
+    // Safety check: phase must be valid
+    if (phase >= trajectoryGen.gaitState.config.size()) {
+        RCLCPP_ERROR(this->get_logger(), "[returnToStart] Invalid phase: %d, config size: %zu", phase, trajectoryGen.gaitState.config.size());
+        idleReturning = false;
+        counter = 0;
+        step = 0;
+        trajectoryGenerated = false;
+        return;
+    }
+
+    if (step == 0 && !trajectoryGenerated) {
+        // Get current leg positions (estimate from previous trajectory or use defaults)
+        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
+        for (int i = 1; i <= MAX_LEGS; ++i) {
+            // Use last trajectory position if available, otherwise use home position
+            if (trajectoryGen.gaitState.swingSizes[i] > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][0];
+            } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
+            } else {
+                currentPositions[i] = Vector3d(0, 130, -50); // Default home position
+            }
+        }
+        
+        trajectoryGen.GenerateTrajectories(
+            liftHeight,
+            resolution,
+            // Swing: move to start position
+            [this](int legNum, const Vector3d& currentPos) {
+                auto it = gaitConfig.startPosition.find(legNum);
+                return (it != gaitConfig.startPosition.end()) ? it->second : currentPos;
+            },
+            // Stance: hold current position
+            [](int, const Vector3d& currentPos) {
+                return currentPos;
+            },
+            currentPositions,
+            phase
+        );
+        trajectoryGenerated = true;
+    }
+
+    // Move all legs for this step
+    PerformLegStep(false, resolution, false);
+
+    // Phase transition
+    if (step > resolution) {
+        counter++;
+        step = 0;
+        phase = (phase + 1) % trajectoryGen.gaitState.config.size();
+
+        // After all phases, finish return-to-start and handle gait change if requested
+        if (counter > trajectoryGen.gaitState.config.size()) {
+            counter = 0;
+            idleReturning = false;
+            trajectoryGenerated = false;
+
+            if (gaitConfig.gaitChangeRequested) {
+                gaitConfig.currentGait = gaitConfig.pendingGait;
+                trajectoryGen.gaitState.config = gaitConfig.getGaitConfig(gaitConfig.currentGait);
+                phase = 0;
+                step = 0;
+                gaitConfig.gaitChangeRequested = false;
+            }
+        }
+    }
 }
