@@ -111,9 +111,8 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
     Vector3d blended = currentPos + forwardDelta + rotationDelta;
 
     // Optionally, clamp the stride to a maximum distance from currentPos if needed
-    double maxStride = 100.0;
-    if ((blended - currentPos).norm() > maxStride) {
-         blended = currentPos + (blended - currentPos).normalized() * maxStride;
+    if ((blended - currentPos).norm() > gaitConfig.max_stride_length) {
+         blended = currentPos + (blended - currentPos).normalized() * gaitConfig.max_stride_length;
     }
 
     return blended;
