@@ -26,8 +26,8 @@ private:
     static constexpr double femurLength = 0.090;    // meters
     static constexpr double tibiaLength = 0.15035;  // meters
 public:
-    JointAngles solve_ik(const Vector3d& target);
-    Vector3d solve_fk(const JointAngles& angles);
+    JointAngles solveIK(const Vector3d& target);
+    Vector3d solveFK(const JointAngles& angles);
 };
 
 class KinematicSolverService {

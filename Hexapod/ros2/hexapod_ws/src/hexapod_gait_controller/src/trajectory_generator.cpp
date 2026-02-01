@@ -51,7 +51,7 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
 @param invert Whether to invert the trajectory
 @return void
 */
-void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution, bool invert) {
+void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution) {
     outSize = 0;
     if (resolution <= 0 || resolution > 10000) {
         RCLCPP_ERROR(rclcpp::get_logger("TrajectoryGenerator"), "Invalid resolution: %d", resolution);
@@ -153,7 +153,7 @@ void TrajectoryGenerator::GenerateTrajectories(
     // Assign legs to their respective swing and stance groups
     auto swingGroup = gaitState.config[currentPhase];
     std::vector<int> stanceGroup;
-    for (int idx = 0; idx < gaitState.config.size(); ++idx) {
+    for (size_t idx = 0; idx < gaitState.config.size(); ++idx) {
         if (idx == currentPhase) continue;
         for (int legNum : gaitState.config[idx])
             stanceGroup.push_back(legNum);

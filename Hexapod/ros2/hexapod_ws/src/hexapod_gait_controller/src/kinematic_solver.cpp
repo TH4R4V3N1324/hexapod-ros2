@@ -17,7 +17,7 @@ KinematicSolverService::KinematicSolverService(rclcpp::Node* node) : node(node) 
 
 void KinematicSolverService::handle_ik_request(const std::shared_ptr<IKSolver::Request> request, std::shared_ptr<IKSolver::Response> response){
     Vector3d target(request->target.x, request->target.y, request->target.z);
-    JointAngles angles = solver.solve_ik(target);
+    JointAngles angles = solver.solveIK(target);
 
     response->joint_state.name = {
         "leg" + std::to_string(request->leg_index + 1) + "_coxa_joint",
@@ -39,7 +39,7 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
         request->joint_state.position[1],
         request->joint_state.position[2]
     };
-    Vector3d position = solver.solve_fk(angles);
+    Vector3d position = solver.solveFK(angles);
 
     response->foot_position.x = position.x();
     response->foot_position.y = position.y();
@@ -52,7 +52,7 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
 @param legNum The leg number (1-6)
 @return The calculated joint angles
 */
-JointAngles KinematicSolver::solve_ik(const Vector3d& target){
+JointAngles KinematicSolver::solveIK(const Vector3d& target){
     // geometry_msgs/Point target --> sensor_msgs/JointState joint_state
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
 
@@ -79,7 +79,7 @@ JointAngles KinematicSolver::solve_ik(const Vector3d& target){
 @param legNum The leg number (1-6)
 @return The calculated position in 3D space
 */
-Vector3d KinematicSolver::solve_fk(const JointAngles& angles){
+Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     // sensor_msgs/JointState joint_state --> geometry_msgs/Point foot_position
     double a1 = coxaLength;
     double a2 = femurLength;

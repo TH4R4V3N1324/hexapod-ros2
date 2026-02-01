@@ -24,8 +24,20 @@ ament_target_dependencies(kinematic_solver
   Eigen3
 )
 
+add_library(trajectory_generator SHARED
+    src/trajectory_generator.cpp
+    src/gait_config.cpp
+)
+
+ament_target_dependencies(trajectory_generator
+  rclcpp
+  hexapod_interfaces
+  Eigen3
+  geometry_msgs
+)
+
 add_executable(gait_controller src/gait_controller.cpp)
-target_link_libraries(gait_controller kinematic_solver)
+target_link_libraries(gait_controller kinematic_solver trajectory_generator)
 ament_target_dependencies(gait_controller
   rclcpp
   hexapod_interfaces
@@ -34,6 +46,7 @@ ament_target_dependencies(gait_controller
 
 install(TARGETS
   kinematic_solver
+  trajectory_generator
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin

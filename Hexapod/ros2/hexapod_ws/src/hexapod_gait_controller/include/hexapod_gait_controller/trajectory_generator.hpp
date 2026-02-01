@@ -23,7 +23,7 @@ struct GaitState {
 class TrajectoryGenerator {
 private:
     void GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int resolution);
-    void GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution, bool invert = false);
+    void GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution);
     Vector3d BlendTargetPosition(const Vector3d& currentPos, const Vector3d& targetPos, const Vector3d& rotationPos);
     double CalculateStrideMultiplier();
     void EnsureGaitConfig();
