@@ -49,7 +49,7 @@ public:
     Mode currentMode = MODE_NORMAL;
     double currentHeight = 0.0;
     double max_velocity = 0.2; // m/s
-    double max_stride_length = 60.0; // mm
+    double max_stride_length = 0.06; // m
     std::vector<std::vector<int>> getGaitConfig(Gait gait);
     void cycleGait();
     void setGait(Gait gait);

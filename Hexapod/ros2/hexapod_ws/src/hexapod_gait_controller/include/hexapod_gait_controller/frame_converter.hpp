@@ -24,19 +24,19 @@ class FrameConverter {
 public:
     std::map<int, LegConfig> legConfigs;
     FrameConverter() {
-        legConfigs[1] = {-M_PI / 4.0, false, Vector3d(67.33, 84.6, 0)};
-        legConfigs[2] = {0, false, Vector3d(90, 0, 0)};
-        legConfigs[3] = {M_PI / 4.0, false, Vector3d(67.33, -84.6, 0)};
-        legConfigs[4] = {3.0 * M_PI / 4.0, true, Vector3d(-67.33, -84.6, 0)};
-        legConfigs[5] = {M_PI, true, Vector3d(-90, 0, 0)};
-        legConfigs[6] = {-3.0 * M_PI / 4.0, true, Vector3d(-67.33, 84.6, 0)};
+        legConfigs[1] = {-M_PI / 4.0, false, Vector3d(0.06733, 0.0846, 0)};
+        legConfigs[2] = {0, false, Vector3d(0.09, 0, 0)};
+        legConfigs[3] = {M_PI / 4.0, false, Vector3d(0.06733, -0.0846, 0)};
+        legConfigs[4] = {3.0 * M_PI / 4.0, true, Vector3d(-0.06733, -0.0846, 0)};
+        legConfigs[5] = {M_PI, true, Vector3d(-0.09, 0, 0)};
+        legConfigs[6] = {-3.0 * M_PI / 4.0, true, Vector3d(-0.06733, 0.0846, 0)};
     }
     
     /**
      * Convert position from leg frame to body frame
-     * @param position Position in leg frame (mm)
+     * @param position Position in leg frame (m)
      * @param leg_num Leg number (1-6)
-     * @return Position in body frame (mm)
+     * @return Position in body frame (m)
      */
     Vector3d legToBodyFrame(const Vector3d& position, int leg_num) {
         return position + legConfigs.at(leg_num).translation_offset;
@@ -44,9 +44,9 @@ public:
     
     /**
      * Convert position from body frame to leg frame
-     * @param position Position in body frame (mm)
+     * @param position Position in body frame (m)
      * @param leg_num Leg number (1-6)
-     * @return Position in leg frame (mm)
+     * @return Position in leg frame (m)
      */
     Vector3d bodyToLegFrame(const Vector3d& position, int leg_num) {
         return position - legConfigs.at(leg_num).translation_offset;
