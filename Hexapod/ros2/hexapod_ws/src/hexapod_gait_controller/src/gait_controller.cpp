@@ -29,9 +29,10 @@ private:
     bool idleReturning = false;
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
-    void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition);
+    void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
+    void Strafe();
 };
 
 int main(int argc, char **argv){    
@@ -169,7 +170,7 @@ void GaitController::returnToStart() {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
 
         // After all phases, finish return-to-start and handle gait change if requested
-        if (counter > trajectoryGen.gaitState.config.size()) {
+        if (counter > static_cast<int>(trajectoryGen.gaitState.config.size())) {
             counter = 0;
             idleReturning = false;
             trajectoryGenerated = false;
@@ -213,4 +214,58 @@ bool GaitController::HandleIdleReturn() {
         idleCount = 0;
     }
     return stickIdle; // Return whether stick is idle
+}
+
+/*
+@brief Handles the strafing motion of the hexapod
+@note This function assumes that the joystick inputs are mapped such that:
+      - Linear Y controls lateral movement (left/right)
+      - Linear X controls forward/backward movement
+      - Angular Z controls rotation (turning)
+*/
+void GaitController::Strafe() {
+    int liftHeight = 50;
+    int resolution = 50;
+
+    // Check if stick is idle
+    bool stickIdle = HandleIdleReturn();
+    if (idleReturning) return;
+
+    // Ensure gait config is set
+    trajectoryGen.EnsureGaitConfig();
+
+    // Calculate stride multiplier safely
+    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
+
+    // Generate trajectories at the start of each phase
+    if (step == 0) {
+        // Get current leg positions from previous trajectory or use defaults
+        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
+        for (int i = 1; i <= MAX_LEGS; ++i) {
+            if (trajectoryGen.gaitState.swingSizes[i] > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][0];
+            } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
+            } else {
+                currentPositions[i] = Vector3d(0, 130, -50); // Default home position
+            }
+        }
+
+        trajectoryGen.GenerateTrajectories(
+        liftHeight,
+        resolution,
+        // Swing target - single call handles both translation and rotation
+        [this](int legNum, const Vector3d& currentPos) {
+            return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, false, 1.0, true);
+        },
+        // Stance target - single call handles both translation and rotation
+        [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
+            return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, true, strideMultiplier, true);
+        },
+        currentPositions,
+        phase
+        );
+    }
+    // Move all legs for this step
+    PerformLegStep(stickIdle, resolution);
 }

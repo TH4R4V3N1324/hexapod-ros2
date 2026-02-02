@@ -232,36 +232,79 @@ void TrajectoryGenerator::GenerateTrajectories(
 @note The function handles mirroring for legs and can operate in both body and leg frames
 */
 Vector3d TrajectoryGenerator::direction(const Twist& cmdVel, const Vector3d& start, int legNum, bool invert, double strideMultiplier, bool useBodyFrame) {
+    // Extract linear velocity (translation) and angular velocity (rotation)
     double linearX = static_cast<double>(cmdVel.linear.x);
     double linearY = static_cast<double>(cmdVel.linear.y);
-    if (useBodyFrame) std::swap(linearX, linearY); // Swap X and Y to match the leg's coordinate system
+    double angularZ = static_cast<double>(cmdVel.angular.z);
 
+    // Check for idle (near-zero inputs) - return start position
+    double deadzone = 0.01;  // Small deadzone for floating point cmd_vel
+    bool linearIdle = std::abs(linearX) < deadzone && std::abs(linearY) < deadzone;
+    bool angularIdle = std::abs(angularZ) < deadzone;
+    if (linearIdle && angularIdle) {
+        return start;
+    }
+
+    // Handle body frame coordinate swap for translation
+    if (useBodyFrame) std::swap(linearX, linearY);
+
+    // Apply inversion if needed (for stance phase)
     if (invert) {
         linearX = -linearX;
         linearY = -linearY;
+        angularZ = -angularZ;  // Also invert rotation for stance
     }
 
+    // Apply leg mirroring
     if (converter.legConfigs[legNum].mirrored) {
         if (useBodyFrame) linearY = -linearY; else linearX = -linearX;
     }
 
     if (!useBodyFrame) linearX = -linearX;
-   
-    double magnitude = std::hypot(linearX, linearY) / gaitConfig.max_velocity;
-    if (magnitude > 1.0) magnitude = 1.0;
 
-    double stride = gaitConfig.max_stride_length * magnitude * strideMultiplier;
+    double legAngle = converter.legConfigs[legNum].mounting_angle;
+    double deltaX = 0.0;
+    double deltaY = 0.0;
 
-    double angle = atan2(linearY, linearX);
+    // Calculate translation offset
+    if (!linearIdle) {
+        double transMagnitude = std::hypot(linearX, linearY) / gaitConfig.max_velocity;
+        if (transMagnitude > 1.0) transMagnitude = 1.0;
 
-    double rotationAngle = converter.legConfigs[legNum].mounting_angle;
-    double deltaX = stride * cos(angle);
-    double deltaY = stride * sin(angle);
+        double transStride = gaitConfig.max_stride_length * transMagnitude * strideMultiplier;
+        double transAngle = atan2(linearY, linearX);
 
-    if (!useBodyFrame) {return {start.x() + deltaX, start.y() + deltaY, start.z()};}
+        deltaX = transStride * cos(transAngle);
+        deltaY = transStride * sin(transAngle);
+    }
 
-    double dx_rot = deltaX * cos(rotationAngle) - deltaY * sin(rotationAngle);
-    double dy_rot = deltaX * sin(rotationAngle) + deltaY * cos(rotationAngle);
+    // Calculate rotation offset (tangential to leg position for turning in place)
+    double rotDeltaX = 0.0;
+    double rotDeltaY = 0.0;
+    if (!angularIdle) {
+        double rotMagnitude = std::abs(angularZ) / gaitConfig.max_angular_velocity;
+        if (rotMagnitude > 1.0) rotMagnitude = 1.0;
+
+        double rotationRadius = gaitConfig.max_stride_length * strideMultiplier;
+        double rotOffset = rotationRadius * rotMagnitude * (angularZ > 0 ? 1.0 : -1.0);
+        
+        // Tangential direction: perpendicular to the radial direction from body center
+        // For a leg at angle legAngle, tangent is at legAngle + 90 degrees
+        rotDeltaX = -rotOffset * sin(legAngle);
+        rotDeltaY = rotOffset * cos(legAngle);
+    }
+
+    // Combine translation and rotation
+    double combinedDeltaX = deltaX + rotDeltaX;
+    double combinedDeltaY = deltaY + rotDeltaY;
+
+    if (!useBodyFrame) {
+        return {start.x() + combinedDeltaX, start.y() + combinedDeltaY, start.z()};
+    }
+
+    // Transform from body frame to leg frame
+    double dx_rot = combinedDeltaX * cos(legAngle) - combinedDeltaY * sin(legAngle);
+    double dy_rot = combinedDeltaX * sin(legAngle) + combinedDeltaY * cos(legAngle);
 
     return {start.x() + dx_rot, start.y() + dy_rot, start.z()};
 }
