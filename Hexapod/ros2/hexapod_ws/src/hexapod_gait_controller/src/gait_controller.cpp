@@ -32,7 +32,9 @@ public:
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
+    void ExecuteGait(const Twist& velocityCmd, int liftHeight = 50, int resolution = 50);
     void Strafe();
+    void Normal();
 };
 
 int main(int argc, char **argv){    
@@ -217,16 +219,13 @@ bool GaitController::HandleIdleReturn() {
 }
 
 /*
-@brief Handles the strafing motion of the hexapod
-@note This function assumes that the joystick inputs are mapped such that:
-      - Linear Y controls lateral movement (left/right)
-      - Linear X controls forward/backward movement
-      - Angular Z controls rotation (turning)
+@brief Common gait execution logic for leg-based locomotion
+@param velocityCmd The velocity command to execute (can be mode-adjusted)
+@param liftHeight The height to lift legs during swing phase
+@param resolution The number of steps in the trajectory
+@note This is a helper function called by specific gait modes (Strafe, Normal, etc.)
 */
-void GaitController::Strafe() {
-    int liftHeight = 50;
-    int resolution = 50;
-
+void GaitController::ExecuteGait(const Twist& velocityCmd, int liftHeight, int resolution) {
     // Check if stick is idle
     bool stickIdle = HandleIdleReturn();
     if (idleReturning) return;
@@ -255,12 +254,12 @@ void GaitController::Strafe() {
         liftHeight,
         resolution,
         // Swing target - single call handles both translation and rotation
-        [this](int legNum, const Vector3d& currentPos) {
-            return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, false, 1.0, true);
+        [this, velocityCmd](int legNum, const Vector3d& currentPos) {
+            return trajectoryGen.direction(velocityCmd, currentPos, legNum, false, 1.0, true);
         },
         // Stance target - single call handles both translation and rotation
-        [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-            return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, true, strideMultiplier, true);
+        [this, velocityCmd, strideMultiplier](int legNum, const Vector3d& currentPos) {
+            return trajectoryGen.direction(velocityCmd, currentPos, legNum, true, strideMultiplier, true);
         },
         currentPositions,
         phase
@@ -268,4 +267,30 @@ void GaitController::Strafe() {
     }
     // Move all legs for this step
     PerformLegStep(stickIdle, resolution);
+}
+
+/*
+@brief Handles the strafing motion of the hexapod
+@note This mode uses all cmd_vel components:
+      - linear.x: forward/backward
+      - linear.y: lateral (strafe left/right)
+      - angular.z: rotation (turning)
+*/
+void GaitController::Strafe() {
+    // Use cmd_vel as-is for full omnidirectional movement
+    ExecuteGait(last_cmd_vel);
+}
+
+/*
+@brief Handles the normal walking motion of the hexapod
+@note This mode uses only forward and rotation:
+      - linear.x: forward/backward
+      - angular.z: rotation (turning)
+      - linear.y: ignored (no lateral movement)
+*/
+void GaitController::Normal() {
+    // Create mode-adjusted cmd_vel: disable lateral movement
+    Twist normalVel = last_cmd_vel;
+    normalVel.linear.y = 0.0;  // No lateral strafe in normal mode
+    ExecuteGait(normalVel);
 }
