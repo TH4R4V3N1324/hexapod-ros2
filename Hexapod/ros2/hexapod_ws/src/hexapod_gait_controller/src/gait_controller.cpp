@@ -31,6 +31,7 @@ public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition);
     void returnToStart();
+    bool HandleIdleReturn();
 };
 
 int main(int argc, char **argv){    
@@ -182,4 +183,34 @@ void GaitController::returnToStart() {
             }
         }
     }
+}
+
+/*
+@brief Handle idle/return-to-start logic
+@return true if the stick is idle, false otherwise
+*/
+bool GaitController::HandleIdleReturn() {
+    static int idleCount = 0;
+    static const int idleThreshold = 100;
+
+    // Check if stick is idle
+    bool stickIdle = (last_cmd_vel.linear.x == 0.0 &&
+                      last_cmd_vel.linear.y == 0.0 &&
+                      last_cmd_vel.linear.z == 0.0 &&
+                      last_cmd_vel.angular.x == 0.0 &&
+                      last_cmd_vel.angular.y == 0.0 &&
+                      last_cmd_vel.angular.z == 0.0);
+    if (stickIdle) idleCount++;
+    else idleCount = 0;
+
+    // Handle idle/return-to-start logic
+    if (idleCount > idleThreshold || idleReturning) {
+        if (!idleReturning) {
+            idleReturning = true;
+            step = 0;
+        }
+        returnToStart();
+        idleCount = 0;
+    }
+    return stickIdle; // Return whether stick is idle
 }
