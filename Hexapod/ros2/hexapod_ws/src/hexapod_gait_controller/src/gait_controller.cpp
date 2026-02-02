@@ -282,15 +282,16 @@ void GaitController::Strafe() {
 }
 
 /*
-@brief Handles the normal walking motion of the hexapod
-@note This mode uses only forward and rotation:
-      - linear.x: forward/backward
-      - angular.z: rotation (turning)
-      - linear.y: ignored (no lateral movement)
+@brief Handles the normal walking motion of the hexapod (car-like steering)
+@note In this mode:
+      - linear.x: forward/backward (left stick Y)
+      - linear.y: remapped to angular.z for car-like steering (left stick X)
+      - angular.z: ignored (right stick not used in car mode)
 */
 void GaitController::Normal() {
-    // Create mode-adjusted cmd_vel: disable lateral movement
+    // Create mode-adjusted cmd_vel: remap lateral to steering
     Twist normalVel = last_cmd_vel;
+    normalVel.angular.z = last_cmd_vel.linear.y;  // Left stick X becomes steering
     normalVel.linear.y = 0.0;  // No lateral strafe in normal mode
     ExecuteGait(normalVel);
 }
