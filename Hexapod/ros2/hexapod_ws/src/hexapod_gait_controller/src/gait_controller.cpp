@@ -57,7 +57,6 @@ public:
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
-    void ExecuteGait(const Twist& velocityCmd, double liftHeight = 0.02, int resolution = 50);
     void Strafe();
     void Normal();
 };
@@ -175,13 +174,16 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         int stanceSize = trajectoryGen.gaitState.stanceSizes[legNum];
         
         // Get target position for this leg
+        // Each leg is assigned EITHER swing OR stance trajectory for this phase (not both)
         Eigen::Vector3d targetPos;
-        if (step < swingSize) {
+        if (swingSize > 0 && step < swingSize) {
+            // Leg is in swing group - use swing trajectory
             targetPos = trajectoryGen.gaitState.swingTrajectory[legNum][step];
-        } else if (step < stanceSize) {
+        } else if (stanceSize > 0 && step < stanceSize) {
+            // Leg is in stance group - use stance trajectory
             targetPos = trajectoryGen.gaitState.stanceTrajectory[legNum][step];
         } else {
-            continue; // Skip if no valid trajectory
+            continue; // Skip if no valid trajectory or step out of bounds
         }
         
         // Compute IK to get joint angles
@@ -235,11 +237,13 @@ void GaitController::returnToStart() {
         // Get current leg positions (estimate from previous trajectory or use defaults)
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
         for (int i = 1; i <= MAX_LEGS; ++i) {
+            int swingSize = trajectoryGen.gaitState.swingSizes[i];
+            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
             // Use last trajectory position if available, otherwise use home position
-            if (trajectoryGen.gaitState.swingSizes[i] > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][0];
-            } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
+            if (swingSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
+            } else if (stanceSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
             } else {
                 currentPositions[i] = Vector3d(0.2, 0, 0.15); // Default position (X outward, Z down)
             }
@@ -320,22 +324,16 @@ bool GaitController::HandleIdleReturn() {
 }
 
 /*
-@brief Common gait execution logic for leg-based locomotion
-@param velocityCmd The velocity command to execute (can be mode-adjusted)
-@param liftHeight The height to lift legs during swing phase
-@param resolution The number of steps in the trajectory
-@note This is a helper function called by specific gait modes (Strafe, Normal, etc.)
+@brief Handles the strafing motion of the hexapod
+@note This mode uses all cmd_vel components:
+      - linear.x: forward/backward
+      - linear.y: lateral (strafe left/right)
+      - angular.z: rotation (turning)
 */
-void GaitController::ExecuteGait(const Twist& velocityCmd, double liftHeight, int resolution) {
-    // Check if cmd_vel is effectively zero - if so, don't execute
-    bool cmd_is_zero = (std::abs(velocityCmd.linear.x) < CMD_VEL_CHANGE_THRESHOLD &&
-                        std::abs(velocityCmd.linear.y) < CMD_VEL_CHANGE_THRESHOLD &&
-                        std::abs(velocityCmd.angular.z) < CMD_VEL_CHANGE_THRESHOLD);
-    
-    if (cmd_is_zero) {
-        return;  // Skip execution when no command
-    }
-    
+void GaitController::Strafe() {
+    double liftHeight = 0.020;  // meters (20mm)
+    int resolution = 50;
+
     // Check if stick is idle
     bool stickIdle = HandleIdleReturn();
     if (idleReturning) return;
@@ -346,50 +344,39 @@ void GaitController::ExecuteGait(const Twist& velocityCmd, double liftHeight, in
     // Calculate stride multiplier safely
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
 
-    // Check for mid-trajectory regeneration (significant cmd_vel change)
-    bool regenerate = (step == 0) || shouldRegenerateTrajectory();
-
-    // Generate trajectories at the start of each phase OR if cmd_vel changed significantly
-    if (regenerate) {
-        // Store the cmd_vel we're using to generate this trajectory
-        trajectory_cmd_vel = velocityCmd;
-        
-        // Get current leg positions from joint state feedback (FK)
+    // Generate trajectories at the start of each phase
+    if (step == 0) {
+        // Get current leg positions
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
         if (has_joint_states) {
-            // Use FK-computed positions from actual servo feedback
             currentPositions = current_leg_positions;
         } else {
-            // Fallback: use trajectory or default positions
             for (int i = 1; i <= MAX_LEGS; ++i) {
-                if (trajectoryGen.gaitState.swingSizes[i] > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][0];
-                } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
+                int swingSize = trajectoryGen.gaitState.swingSizes[i];
+                int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
+                if (swingSize > 0) {
+                    currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
+                } else if (stanceSize > 0) {
+                    currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
                 } else {
-                    currentPositions[i] = Vector3d(0.2, 0, 0.15); // Default position
+                    currentPositions[i] = Vector3d(0.15, 0, 0.15);
                 }
             }
         }
 
-        // If regenerating mid-step, reset step to 0 for new trajectory
-        if (step > 0) {
-            step = 0;
-        }
-
         trajectoryGen.GenerateTrajectories(
-        liftHeight,
-        resolution,
-        // Swing target - single call handles both translation and rotation
-        [this, velocityCmd](int legNum, const Vector3d& currentPos) {
-            return trajectoryGen.direction(velocityCmd, currentPos, legNum, false, 1.0, true);
-        },
-        // Stance target - single call handles both translation and rotation
-        [this, velocityCmd, strideMultiplier](int legNum, const Vector3d& currentPos) {
-            return trajectoryGen.direction(velocityCmd, currentPos, legNum, true, strideMultiplier, true);
-        },
-        currentPositions,
-        phase
+            liftHeight,
+            resolution,
+            // Swing target - use Twist-based direction
+            [this](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, false, 1.0, true);
+            },
+            // Stance target - use Twist-based direction (inverted)
+            [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, true, strideMultiplier, true);
+            },
+            currentPositions,
+            phase
         );
     }
     // Move all legs for this step
@@ -397,28 +384,65 @@ void GaitController::ExecuteGait(const Twist& velocityCmd, double liftHeight, in
 }
 
 /*
-@brief Handles the strafing motion of the hexapod
-@note This mode uses all cmd_vel components:
-      - linear.x: forward/backward
-      - linear.y: lateral (strafe left/right)
-      - angular.z: rotation (turning)
-*/
-void GaitController::Strafe() {
-    // Use cmd_vel as-is for full omnidirectional movement
-    ExecuteGait(last_cmd_vel);
-}
-
-/*
 @brief Handles the normal walking motion of the hexapod (car-like steering)
 @note In this mode:
       - linear.x: forward/backward (left stick Y)
-      - linear.y: remapped to angular.z for car-like steering (left stick X)
-      - angular.z: ignored (right stick not used in car mode)
+      - linear.y: turning (left stick X) - remapped to rotation
 */
 void GaitController::Normal() {
-    // Create mode-adjusted cmd_vel: remap lateral to steering
-    Twist normalVel = last_cmd_vel;
-    normalVel.angular.z = last_cmd_vel.linear.y;  // Left stick X becomes steering
-    normalVel.linear.y = 0.0;  // No lateral strafe in normal mode
-    ExecuteGait(normalVel);
+    double liftHeight = 0.020;  // meters (20mm)
+    int resolution = 50;
+
+    // Check if stick is idle
+    bool stickIdle = HandleIdleReturn();
+    if (idleReturning) return;
+
+    // Ensure gait config is set
+    trajectoryGen.EnsureGaitConfig();
+
+    // Calculate stride multiplier safely
+    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
+
+    // Generate trajectories at the start of each phase
+    if (step == 0) {
+        // Get current leg positions
+        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
+        if (has_joint_states) {
+            currentPositions = current_leg_positions;
+        } else {
+            for (int i = 1; i <= MAX_LEGS; ++i) {
+                int swingSize = trajectoryGen.gaitState.swingSizes[i];
+                int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
+                if (swingSize > 0) {
+                    currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
+                } else if (stanceSize > 0) {
+                    currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
+                } else {
+                    currentPositions[i] = Vector3d(0.15, 0, 0.15);
+                }
+            }
+        }
+
+        // Create car-like steering Twist: remap lateral to angular.z
+        Twist normalVel = last_cmd_vel;
+        normalVel.angular.z = last_cmd_vel.linear.y;  // Left stick X becomes steering
+        normalVel.linear.y = 0.0;  // No lateral strafe in normal mode
+
+        trajectoryGen.GenerateTrajectories(
+            liftHeight,
+            resolution,
+            // Swing target - use Twist-based direction
+            [this, normalVel](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.direction(normalVel, currentPos, legNum, false, 1.0, true);
+            },
+            // Stance target - use Twist-based direction (inverted)
+            [this, normalVel, strideMultiplier](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.direction(normalVel, currentPos, legNum, true, strideMultiplier, true);
+            },
+            currentPositions,
+            phase
+        );
+    }
+    // Move all legs for this step
+    PerformLegStep(stickIdle, resolution);
 }
