@@ -22,7 +22,7 @@ public:
 
         double loop_rate_hz = 50.0;
         gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
-        
+
         RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz", loop_rate_hz);
     }    
 private:
@@ -38,7 +38,6 @@ private:
     uint8_t step = 0;
     uint8_t phase = 0;
     bool idleReturning = false;
-    Mode currentMode = Mode::MODE_STRAFE;
     
     // Threshold for mid-trajectory regeneration
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
@@ -74,7 +73,7 @@ void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
 */
 void GaitController::gaitTimerCallback() {
     // Execute the appropriate gait based on current mode
-    switch (currentMode) {
+    switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             Strafe();
             break;
