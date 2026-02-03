@@ -51,7 +51,7 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
 @param invert Whether to invert the trajectory
 @return void
 */
-void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int liftHeight, int resolution) {
+void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, double liftHeight, int resolution) {
     outSize = 0;
     if (resolution <= 0 || resolution > 10000) {
         RCLCPP_ERROR(rclcpp::get_logger("TrajectoryGenerator"), "Invalid resolution: %d", resolution);
@@ -143,7 +143,7 @@ void TrajectoryGenerator::EnsureGaitConfig() {
 @param stanceTargetFunc A function to compute the stance target position for a leg
 */
 void TrajectoryGenerator::GenerateTrajectories(
-    int liftHeight,
+    double liftHeight,
     int resolution,
     std::function<Vector3d(int, const Vector3d&)> swingTargetFunc,
     std::function<Vector3d(int, const Vector3d&)> stanceTargetFunc,
@@ -180,19 +180,9 @@ void TrajectoryGenerator::GenerateTrajectories(
         stanceTargetsBodyFrame[legNum] = targetBodyFrame;
     }
 
-    // Collision check and adjustment
-    double threshold = 0.05; // meters (50mm)
+    // Generate swing trajectories
     for (int legNum : swingGroup) {
-        Vector3d swingTargetBody = swingTargetsBodyFrame[legNum];
-        for (const auto& [stanceNum, stanceTargetBody] : stanceTargetsBodyFrame) {
-            if ((swingTargetBody - stanceTargetBody).norm() < threshold) {
-                // Clamp swingTargetBody outward
-                Vector3d dir = (swingTargetBody - stanceTargetBody).normalized();
-                swingTargetBody = stanceTargetBody + dir * threshold;
-            }
-        }
-        // Convert back to leg frame
-        Vector3d targetLegFrame = converter.bodyToLegFrame(swingTargetBody, legNum);
+        Vector3d targetLegFrame = converter.bodyToLegFrame(swingTargetsBodyFrame[legNum], legNum);
         int size = 0;
         GenBezierTrajectory(
             gaitState.swingTrajectory[legNum].data(),

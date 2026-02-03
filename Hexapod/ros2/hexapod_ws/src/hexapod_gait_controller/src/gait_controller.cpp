@@ -57,7 +57,7 @@ public:
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
-    void ExecuteGait(const Twist& velocityCmd, int liftHeight = 0.050, int resolution = 50);
+    void ExecuteGait(const Twist& velocityCmd, double liftHeight = 0.02, int resolution = 50);
     void Strafe();
     void Normal();
 };
@@ -218,7 +218,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
 void GaitController::returnToStart() {
     static int counter = 0;
     static bool trajectoryGenerated = false;
-    int liftHeight = 50;
+    double liftHeight = 0.020;
     int resolution = 50;
 
     // Safety check: phase must be valid
@@ -326,7 +326,7 @@ bool GaitController::HandleIdleReturn() {
 @param resolution The number of steps in the trajectory
 @note This is a helper function called by specific gait modes (Strafe, Normal, etc.)
 */
-void GaitController::ExecuteGait(const Twist& velocityCmd, int liftHeight, int resolution) {
+void GaitController::ExecuteGait(const Twist& velocityCmd, double liftHeight, int resolution) {
     // Check if cmd_vel is effectively zero - if so, don't execute
     bool cmd_is_zero = (std::abs(velocityCmd.linear.x) < CMD_VEL_CHANGE_THRESHOLD &&
                         std::abs(velocityCmd.linear.y) < CMD_VEL_CHANGE_THRESHOLD &&
