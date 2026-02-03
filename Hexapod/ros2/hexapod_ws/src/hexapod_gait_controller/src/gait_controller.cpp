@@ -418,11 +418,17 @@ void GaitController::Strafe() {
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, false, 1.0, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, last_cmd_vel.linear.y, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.angular.z, currentPos, legNum, false, 1.0);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, true, strideMultiplier, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, last_cmd_vel.linear.y, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.angular.z, currentPos, legNum, true, strideMultiplier);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                return targetPos;
             },
             current_leg_positions,
             phase
@@ -453,21 +459,22 @@ void GaitController::Normal() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        // Create car-like steering Twist: remap lateral to angular.z
-        Twist normalVel = last_cmd_vel;
-        normalVel.angular.z = last_cmd_vel.linear.y;  // Left stick X becomes steering
-        normalVel.linear.y = 0.0;  // No lateral strafe in normal mode
-
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
-            [this, normalVel](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.direction(normalVel, currentPos, legNum, false, 1.0, true);
+            [this](int legNum, const Vector3d& currentPos) {
+                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, 0.0, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.linear.y, currentPos, legNum, false, 1.0);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
-            [this, normalVel, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.direction(normalVel, currentPos, legNum, true, strideMultiplier, true);
+            [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
+                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, 0.0, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.linear.y, currentPos, legNum, true, strideMultiplier);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                return targetPos;
             },
             current_leg_positions,
             phase

@@ -49,7 +49,8 @@ public:
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
         uint8_t currentPhase
     );
-    Vector3d direction(const Twist& cmdVel, const Vector3d& start, int legNum, bool invert = false, double strideMultiplier = 1.0, bool useBodyFrame = true);
+    Vector3d linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert, double strideMultiplier = 1.0);
+    Vector3d rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert, double strideMultiplier = 1.0);
     Vector3d BlendTargetPosition(const Vector3d& currentPos, const Vector3d& translationPos, const Vector3d& rotationPos);
     void EnsureGaitConfig();
     double CalculateStrideMultiplier();

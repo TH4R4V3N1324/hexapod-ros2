@@ -211,99 +211,74 @@ void TrajectoryGenerator::GenerateTrajectories(
 }
 
 /*
-@brief Calculates the direction vector based on joystick input
-@param cmdVel The joystick command velocities
+@brief Calculate linear target position based on input velocities
+@param linearX The forward linear velocity
+@param linearY The lateral linear velocity
 @param start The starting position
-@param legNum The leg number (1-6)
-@param invert Whether to invert the direction
-@param strideMultiplier The stride multiplier
-@param useBodyFrame Whether to use body frame coordinates
-@return The calculated direction vector
-@note The function handles mirroring for legs and can operate in both body and leg frames
+@param legNum The leg number
+@param invert Whether to invert the direction (for stance phase)
+@param strideMultiplier Multiplier for stride length
+@return The calculated target position
 */
-Vector3d TrajectoryGenerator::direction(const Twist& cmdVel, const Vector3d& start, int legNum, bool invert, double strideMultiplier, bool useBodyFrame) {
-    // Extract linear velocity (translation) and angular velocity (rotation)
-    double linearX = static_cast<double>(cmdVel.linear.x);
-    double linearY = static_cast<double>(cmdVel.linear.y);
-    double angularZ = static_cast<double>(cmdVel.angular.z);
-
-    // Check for idle (near-zero inputs) - return start position
-    double deadzone = 0.01;  // Small deadzone for floating point cmd_vel
-    bool linearIdle = std::abs(linearX) < deadzone && std::abs(linearY) < deadzone;
-    bool angularIdle = std::abs(angularZ) < deadzone;
-    if (linearIdle && angularIdle) {
-        return start;
-    }
-
-    // Handle body frame coordinate swap for translation
-    if (useBodyFrame) std::swap(linearX, linearY);
+Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert, double strideMultiplier) {
+    double lx = linearX;
+    double ly = linearY;
+    std::swap(lx, ly);
 
     // Apply inversion if needed (for stance phase)
-    if (invert) {
-        linearX = -linearX;
-        linearY = -linearY;
-        angularZ = -angularZ;  // Also invert rotation for stance
-    }
+    if (invert) {ly = -ly;}
 
     // Apply leg mirroring
-    if (converter.legConfigs[legNum].mirrored) {
-        if (useBodyFrame) linearY = -linearY; else linearX = -linearX;
-    }
+    if (converter.legConfigs[legNum].mirrored) {ly = -ly;}
 
-    if (!useBodyFrame) linearX = -linearX;
+    double magnitude = std::hypot(lx, ly) / gaitConfig.max_velocity;
+    if (magnitude > 1.0) magnitude = 1.0;
 
-    double legAngle = converter.legConfigs[legNum].mounting_angle;
-    double deltaX = 0.0;
-    double deltaY = 0.0;
+    double stride = gaitConfig.max_stride_length * magnitude * strideMultiplier;
+    double angle = atan2(ly, lx);
 
-    // Calculate translation offset
-    if (!linearIdle) {
-        double transMagnitude = std::hypot(linearX, linearY) / gaitConfig.max_velocity;
-        if (transMagnitude > 1.0) transMagnitude = 1.0;
-
-        double transStride = gaitConfig.max_stride_length * transMagnitude * strideMultiplier;
-        double transAngle = atan2(linearY, linearX);
-
-        deltaX = transStride * cos(transAngle);
-        deltaY = transStride * sin(transAngle);
-    }
-
-    // Calculate rotation offset (tangential to leg position for turning in place)
-    double rotDeltaX = 0.0;
-    double rotDeltaY = 0.0;
-    if (!angularIdle) {
-        double rotMagnitude = std::abs(angularZ) / gaitConfig.max_angular_velocity;
-        if (rotMagnitude > 1.0) rotMagnitude = 1.0;
-
-        double rotationRadius = gaitConfig.max_stride_length * strideMultiplier;
-        double rotOffset = rotationRadius * rotMagnitude * (angularZ > 0 ? 1.0 : -1.0);
-        
-        // Tangential direction: perpendicular to the radial direction from body center
-        // For a leg at angle legAngle, tangent is at legAngle + 90 degrees
-        rotDeltaX = -rotOffset * sin(legAngle);
-        rotDeltaY = rotOffset * cos(legAngle);
-    }
-
-    // Combine translation and rotation
-    double combinedDeltaX = deltaX + rotDeltaX;
-    double combinedDeltaY = deltaY + rotDeltaY;
-
-    // Use fixed ground height to prevent Z drift from FK errors
+    double deltaX = stride * cos(angle);
+    double deltaY = stride * sin(angle);
     double groundZ = gaitConfig.currentHeight;
 
-    if (!useBodyFrame) {
-        return {start.x() + combinedDeltaX, start.y() + combinedDeltaY, groundZ};
-    }
+    double legAngle = converter.legConfigs[legNum].mounting_angle;
+    if (!converter.legConfigs[legNum].mirrored) {legAngle = -legAngle;}
 
-    if (!converter.legConfigs[legNum].mirrored) {
-        legAngle = -legAngle;
-    }
-
-    // Transform from body frame to leg frame
-    double dx_rot = combinedDeltaX * cos(legAngle) - combinedDeltaY * sin(legAngle);
-    double dy_rot = combinedDeltaX * sin(legAngle) + combinedDeltaY * cos(legAngle);
+    double dx_rot = deltaX * cos(legAngle) - deltaY * sin(legAngle);
+    double dy_rot = deltaX * sin(legAngle) + deltaY * cos(legAngle);
 
     return {start.x() + dx_rot, start.y() + dy_rot, groundZ};
+}
+
+/*
+@brief Calculate rotational target position based on input angular velocity
+@param angularZ The angular velocity around the Z-axis
+@param start The starting position
+@param legNum The leg number
+@param invert Whether to invert the direction (for stance phase)
+@param strideMultiplier Multiplier for stride length
+@return The calculated target position
+*/
+Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert, double strideMultiplier) {
+    double az = angularZ;
+
+    // Apply inversion if needed (for stance phase)
+    if (invert) {az = -az;}
+
+    double magnitude = std::abs(az) / gaitConfig.max_angular_velocity;
+    if (magnitude > 1.0) magnitude = 1.0;
+
+    double rotationRadius = gaitConfig.max_stride_length * strideMultiplier;
+    double offset = rotationRadius * magnitude * (az > 0 ? 1.0 : -1.0);
+    
+    double legAngle = converter.legConfigs[legNum].mounting_angle;
+
+    // Tangential direction: perpendicular to the radial direction from body center
+    double deltaX = -offset * sin(legAngle);
+    double deltaY = offset * cos(legAngle);
+    double groundZ = gaitConfig.currentHeight;
+
+    return {start.x() + deltaX, start.y() + deltaY, groundZ};
 }
 
 }  // namespace hexapod_gait_controller
