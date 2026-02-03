@@ -10,25 +10,43 @@ using sensor_msgs::msg::JointState;
 using hexapod_gait_controller::MAX_LEGS;
 using hexapod_gait_controller::TrajectoryGenerator;
 using hexapod_gait_controller::GaitConfig;
+using hexapod_gait_controller::Mode;
 using Eigen::Vector3d;
+using std::placeholders::_1;
 
-class GaitController : public rclcpp::Node { public: GaitController() : Node("gait_controller") {
-    cmd_vel_sub = this->create_subscription<Twist>( "cmd_vel", 10, std::bind(&GaitController::cmdVelCallback, this, std::placeholders::_1));
-    joint_cmd_pub = this->create_publisher<JointState>("joint_states", 10);
-    RCLCPP_INFO(this->get_logger(), "GaitController node has been started.");
-}    
+class GaitController : public rclcpp::Node { 
+public: 
+    GaitController() : Node("gait_controller") {
+        cmd_vel_sub = this->create_subscription<Twist>("cmd_vel", 10, std::bind(&GaitController::cmdVelCallback, this, _1));
+        joint_cmd_pub = this->create_publisher<JointState>("joint_states", 10);
+
+        double loop_rate_hz = 50.0;
+        gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
+        
+        RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz", loop_rate_hz);
+    }    
 private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
+    rclcpp::TimerBase::SharedPtr gait_timer;
+    
     Twist last_cmd_vel;
+    Twist trajectory_cmd_vel;  // cmd_vel used when trajectory was generated
     TrajectoryGenerator trajectoryGen;
     GaitConfig gaitConfig;
     hexapod_gait_controller::KinematicSolver ikSolver;
     uint8_t step = 0;
     uint8_t phase = 0;
     bool idleReturning = false;
+    Mode currentMode = Mode::MODE_STRAFE;
+    
+    // Threshold for mid-trajectory regeneration
+    static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
+    
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
+    void gaitTimerCallback();
+    bool shouldRegenerateTrajectory();
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
@@ -47,10 +65,47 @@ int main(int argc, char **argv){
 
 void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
     last_cmd_vel = *msg;
-    RCLCPP_INFO(this->get_logger(), "Received cmd_vel: linear(%.2f, %.2f, %.2f), angular(%.2f, %.2f, %.2f)",
-                msg->linear.x, msg->linear.y, msg->linear.z,
-                msg->angular.x, msg->angular.y, msg->angular.z);
-    // Here you would typically update the gait based on the received cmd_vel
+    // No need to call gait functions here - timer handles that
+}
+
+/*
+@brief Main gait loop - called by timer at fixed rate
+@note This replaces your embedded while(true) loop
+*/
+void GaitController::gaitTimerCallback() {
+    // Execute the appropriate gait based on current mode
+    switch (currentMode) {
+        case Mode::MODE_STRAFE:
+            Strafe();
+            break;
+        case Mode::MODE_NORMAL:
+            Normal();
+            break;
+        case Mode::MODE_CONFIG:
+            // TODO: Configuration mode handling
+            break;
+        case Mode::MODE_TILT:
+            // TODO: BodyTilt();
+            break;
+        case Mode::NUM_MODES:
+        default:
+            RCLCPP_WARN(this->get_logger(), "Invalid or unimplemented mode");
+            break;
+    }
+}
+
+/*
+@brief Check if cmd_vel has changed significantly enough to warrant mid-trajectory regeneration
+@return true if trajectory should be regenerated
+*/
+bool GaitController::shouldRegenerateTrajectory() {
+    double dx = std::abs(last_cmd_vel.linear.x - trajectory_cmd_vel.linear.x);
+    double dy = std::abs(last_cmd_vel.linear.y - trajectory_cmd_vel.linear.y);
+    double dz = std::abs(last_cmd_vel.angular.z - trajectory_cmd_vel.angular.z);
+    
+    return (dx > CMD_VEL_CHANGE_THRESHOLD || 
+            dy > CMD_VEL_CHANGE_THRESHOLD || 
+            dz > CMD_VEL_CHANGE_THRESHOLD);
 }
 
 /*
@@ -236,18 +291,36 @@ void GaitController::ExecuteGait(const Twist& velocityCmd, int liftHeight, int r
     // Calculate stride multiplier safely
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
 
-    // Generate trajectories at the start of each phase
-    if (step == 0) {
+    // Check for mid-trajectory regeneration (significant cmd_vel change)
+    bool regenerate = (step == 0) || shouldRegenerateTrajectory();
+
+    // Generate trajectories at the start of each phase OR if cmd_vel changed significantly
+    if (regenerate) {
+        // Store the cmd_vel we're using to generate this trajectory
+        trajectory_cmd_vel = velocityCmd;
+        
         // Get current leg positions from previous trajectory or use defaults
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
         for (int i = 1; i <= MAX_LEGS; ++i) {
-            if (trajectoryGen.gaitState.swingSizes[i] > 0) {
+            // If mid-step regeneration, use current trajectory position at current step
+            if (step > 0 && trajectoryGen.gaitState.swingSizes[i] > 0 && 
+                static_cast<int>(step) < trajectoryGen.gaitState.swingSizes[i]) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][step];
+            } else if (step > 0 && trajectoryGen.gaitState.stanceSizes[i] > 0 &&
+                       static_cast<int>(step) < trajectoryGen.gaitState.stanceSizes[i]) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][step];
+            } else if (trajectoryGen.gaitState.swingSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][0];
             } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
             } else {
                 currentPositions[i] = Vector3d(0, 130, -50); // Default home position
             }
+        }
+
+        // If regenerating mid-step, reset step to 0 for new trajectory
+        if (step > 0) {
+            step = 0;
         }
 
         trajectoryGen.GenerateTrajectories(
