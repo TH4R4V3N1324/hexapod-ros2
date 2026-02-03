@@ -22,13 +22,25 @@ struct GaitState {
 
 class TrajectoryGenerator {
 private:
-    void GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int resolution);
-    void GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, double liftHeight, int resolution);
-    
     GaitConfig gaitConfig;
     FrameConverter converter;
 public:
     GaitState gaitState;
+    void GenStraightTrajectory(
+        Vector3d* trajectory, 
+        int& outSize, 
+        const Vector3d& start, 
+        const Vector3d& end, 
+        int resolution
+    );
+    void GenBezierTrajectory(
+        Vector3d* trajectory, 
+        int& outSize, 
+        const Vector3d& start, 
+        const Vector3d& end,
+        double liftHeight, 
+        int resolution
+    );
     void GenerateTrajectories(
         double liftHeight,
         int resolution,

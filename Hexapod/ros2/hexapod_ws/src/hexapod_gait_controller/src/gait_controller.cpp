@@ -5,12 +5,10 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 
+using namespace hexapod_gait_controller;
+
 using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::JointState;
-using hexapod_gait_controller::MAX_LEGS;
-using hexapod_gait_controller::TrajectoryGenerator;
-using hexapod_gait_controller::GaitConfig;
-using hexapod_gait_controller::Mode;
 using Eigen::Vector3d;
 using std::placeholders::_1;
 
@@ -53,6 +51,8 @@ public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void jointStateCallback(const JointState::SharedPtr msg);
     void gaitTimerCallback();
+    void home();
+    void startup();
     bool shouldRegenerateTrajectory();
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
@@ -87,7 +87,7 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
                 msg->position[base_idx + 2]   // tibia
             };
             
-            current_leg_positions[legNum] = ikSolver.solveFK(angles);
+            //current_leg_positions[legNum] = ikSolver.solveFK(angles);
         }
         has_joint_states = true;
     }
@@ -98,17 +98,6 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
 @note This replaces your embedded while(true) loop
 */
 void GaitController::gaitTimerCallback() {
-    // Check if cmd_vel is zero - if so, don't execute gait
-    bool cmd_is_zero = (std::abs(last_cmd_vel.linear.x) < 0.01 &&
-                        std::abs(last_cmd_vel.linear.y) < 0.01 &&
-                        std::abs(last_cmd_vel.angular.z) < 0.01);
-    
-    if (cmd_is_zero) {
-        // Don't execute gait when no command is present
-        return;
-    }
-    
-    // Execute the appropriate gait based on current mode
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             Strafe();
@@ -126,6 +115,89 @@ void GaitController::gaitTimerCallback() {
         default:
             RCLCPP_WARN(this->get_logger(), "Invalid or unimplemented mode");
             break;
+    }
+}
+
+/*
+@brief Move all legs to the home position and deactivate servos
+*/
+void GaitController::home() {
+    auto joint_state_msg = JointState();
+    joint_state_msg.header.stamp = this->now();
+
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        // Compute IK to get joint angles
+        auto angles = ikSolver.solveIK(gaitConfig.homePos);
+        
+        // Add joint names and positions
+        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
+        joint_state_msg.position.push_back(angles.coxa);
+        
+        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_femur_joint");
+        joint_state_msg.position.push_back(angles.femur);
+        
+        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_tibia_joint");
+        joint_state_msg.position.push_back(angles.tibia);
+
+        current_leg_positions[legNum] = gaitConfig.homePos;
+    }
+    // Publish joint states
+    joint_cmd_pub->publish(joint_state_msg);
+}
+
+/*
+@brief Startup sequence to move legs to start position
+*/
+void GaitController::startup() {
+    auto joint_state_msg = JointState();
+    joint_state_msg.header.stamp = this->now();
+    static bool initialized = false;
+    int resolution = 50;
+
+    if(!initialized){
+        home();
+        initialized = true;
+    }
+
+    // Reset phase to 0 when starting up
+    phase = 0;
+
+    // Update start positions based on current height
+    gaitConfig.setHeight(gaitConfig.currentHeight);
+
+    // Generate trajectories for each leg to move to home position
+    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> trajectory;
+    std::array<int, MAX_LEGS + 1> sizes{};
+    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        trajectoryGen.GenStraightTrajectory(
+            trajectory[leg].data(), 
+            sizes[leg], 
+            gaitConfig.homePos, 
+            gaitConfig.startPosition.at(leg), 
+            resolution
+        );
+    }
+    for (int step = 0; step < resolution; ++step) {
+        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+            if (step < sizes[leg]) {
+                Vector3d pos = trajectory[leg][step];
+
+                // Compute IK to get joint angles
+                auto angles = ikSolver.solveIK(pos);
+                
+                // Add joint names and positions
+                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_coxa_joint");
+                joint_state_msg.position.push_back(angles.coxa);
+                
+                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_femur_joint");
+                joint_state_msg.position.push_back(angles.femur);
+                
+                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_tibia_joint");
+                joint_state_msg.position.push_back(angles.tibia);
+
+                current_leg_positions[leg] = pos;
+            }
+        }
     }
 }
 
@@ -198,6 +270,8 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         
         joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_tibia_joint");
         joint_state_msg.position.push_back(angles.tibia);
+
+        current_leg_positions[legNum] = targetPos;
     }
     
     // Publish joint states
@@ -346,21 +420,6 @@ void GaitController::Strafe() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        // Get current leg positions from trajectory endpoints only
-        // Never use FK feedback - it accumulates errors and causes forward drift
-        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
-        for (int i = 1; i <= MAX_LEGS; ++i) {
-            int swingSize = trajectoryGen.gaitState.swingSizes[i];
-            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
-            if (swingSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
-            } else if (stanceSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
-            } else {
-                currentPositions[i] = Vector3d(0.15, 0, 0.15);
-            }
-        }
-
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             resolution,
@@ -372,7 +431,7 @@ void GaitController::Strafe() {
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
                 return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, true, strideMultiplier, true);
             },
-            currentPositions,
+            current_leg_positions,
             phase
         );
     }
@@ -402,21 +461,6 @@ void GaitController::Normal() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        // Get current leg positions from trajectory endpoints only
-        // Never use FK feedback - it accumulates errors and causes forward drift
-        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
-        for (int i = 1; i <= MAX_LEGS; ++i) {
-            int swingSize = trajectoryGen.gaitState.swingSizes[i];
-            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
-            if (swingSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
-            } else if (stanceSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
-            } else {
-                currentPositions[i] = Vector3d(0.15, 0, 0.15);
-            }
-        }
-
         // Create car-like steering Twist: remap lateral to angular.z
         Twist normalVel = last_cmd_vel;
         normalVel.angular.z = last_cmd_vel.linear.y;  // Left stick X becomes steering
@@ -433,7 +477,7 @@ void GaitController::Normal() {
             [this, normalVel, strideMultiplier](int legNum, const Vector3d& currentPos) {
                 return trajectoryGen.direction(normalVel, currentPos, legNum, true, strideMultiplier, true);
             },
-            currentPositions,
+            current_leg_positions,
             phase
         );
     }

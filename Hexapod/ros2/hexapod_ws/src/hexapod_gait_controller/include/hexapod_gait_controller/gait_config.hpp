@@ -31,14 +31,16 @@ enum Mode : uint8_t {
 
 class GaitConfig {
 private:
-    Vector3d homePos {0.15, 0, 0};  // X outward, Y lateral, Z vertical (meters)
-    Vector3d startPos {0.15, 0, currentHeight};  // X outward reach (meters)
+    
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
+    double currentHeight = 0.15;  // 10cm default height
+    Vector3d homePos {0.15, 0, 0};
+    Vector3d startPos {0.15, 0, currentHeight};
     std::map<int, Vector3d> startPosition{
-        {1, rotateZ(startPos, -15)},
+        {1, rotateZ(startPos, 15)},
         {2, startPos},
-        {3, rotateZ(startPos, 15)},
+        {3, rotateZ(startPos, -15)},
         {4, rotateZ(startPos, 15)},
         {5, startPos},
         {6, rotateZ(startPos, -15)}
@@ -47,7 +49,6 @@ public:
     Mode currentMode = MODE_NORMAL;
     bool gaitChangeRequested = false;
     Gait pendingGait;
-    double currentHeight = 0.15;  // 10cm default height
     double max_velocity = 0.2; // m/s
     double max_stride_length = 0.06; // m
     double max_angular_velocity = 2.0; // rad/s

@@ -69,9 +69,9 @@ void GaitConfig::setHeight(double height) {
     currentHeight = height;
     startPos.z() = -static_cast<double>(currentHeight);
     startPosition = {
-        {1, rotateZ(startPos, -15)},
+        {1, rotateZ(startPos, 15)},
         {2, startPos},
-        {3, rotateZ(startPos, 15)},
+        {3, rotateZ(startPos, -15)},
         {4, rotateZ(startPos, 15)},
         {5, startPos},
         {6, rotateZ(startPos, -15)}
