@@ -346,21 +346,18 @@ void GaitController::Strafe() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        // Get current leg positions
+        // Get current leg positions from trajectory endpoints only
+        // Never use FK feedback - it accumulates errors and causes forward drift
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
-        if (has_joint_states) {
-            currentPositions = current_leg_positions;
-        } else {
-            for (int i = 1; i <= MAX_LEGS; ++i) {
-                int swingSize = trajectoryGen.gaitState.swingSizes[i];
-                int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
-                if (swingSize > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
-                } else if (stanceSize > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
-                } else {
-                    currentPositions[i] = Vector3d(0.15, 0, 0.15);
-                }
+        for (int i = 1; i <= MAX_LEGS; ++i) {
+            int swingSize = trajectoryGen.gaitState.swingSizes[i];
+            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
+            if (swingSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
+            } else if (stanceSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
+            } else {
+                currentPositions[i] = Vector3d(0.15, 0, 0.15);
             }
         }
 
@@ -405,21 +402,18 @@ void GaitController::Normal() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        // Get current leg positions
+        // Get current leg positions from trajectory endpoints only
+        // Never use FK feedback - it accumulates errors and causes forward drift
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
-        if (has_joint_states) {
-            currentPositions = current_leg_positions;
-        } else {
-            for (int i = 1; i <= MAX_LEGS; ++i) {
-                int swingSize = trajectoryGen.gaitState.swingSizes[i];
-                int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
-                if (swingSize > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
-                } else if (stanceSize > 0) {
-                    currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
-                } else {
-                    currentPositions[i] = Vector3d(0.15, 0, 0.15);
-                }
+        for (int i = 1; i <= MAX_LEGS; ++i) {
+            int swingSize = trajectoryGen.gaitState.swingSizes[i];
+            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
+            if (swingSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
+            } else if (stanceSize > 0) {
+                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
+            } else {
+                currentPositions[i] = Vector3d(0.15, 0, 0.15);
             }
         }
 
