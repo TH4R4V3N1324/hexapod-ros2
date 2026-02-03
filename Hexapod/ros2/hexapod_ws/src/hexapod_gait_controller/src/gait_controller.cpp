@@ -281,7 +281,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
     if (!handlePhaseTransition) return;
 
     // Phase transition
-    if (step > MAX_RESOLUTION-1) {
+    if (step > resolution) {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         step = 0;
     }    
