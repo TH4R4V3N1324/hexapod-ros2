@@ -106,7 +106,8 @@ Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     double tibiaVertical = a3 * sin(tibiaAbsoluteAngle);
     double tibiaHorizontal = a3 * cos(tibiaAbsoluteAngle);
     
-    double z = femurVertical + tibiaVertical;
+    // Negate Z to match IK convention: positive Z = downward in leg frame
+    double z = -(femurVertical + tibiaVertical);
     double horizontalReach = a1 + femurHorizontal + tibiaHorizontal;
     double x = horizontalReach * cos(coxaAngle);
     double y = horizontalReach * sin(coxaAngle);

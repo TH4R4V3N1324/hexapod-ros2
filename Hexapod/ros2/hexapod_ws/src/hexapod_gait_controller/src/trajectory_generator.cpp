@@ -288,15 +288,18 @@ Vector3d TrajectoryGenerator::direction(const Twist& cmdVel, const Vector3d& sta
     double combinedDeltaX = deltaX + rotDeltaX;
     double combinedDeltaY = deltaY + rotDeltaY;
 
+    // Use fixed ground height to prevent Z drift from FK errors
+    double groundZ = gaitConfig.currentHeight;
+
     if (!useBodyFrame) {
-        return {start.x() + combinedDeltaX, start.y() + combinedDeltaY, start.z()};
+        return {start.x() + combinedDeltaX, start.y() + combinedDeltaY, groundZ};
     }
 
     // Transform from body frame to leg frame
     double dx_rot = combinedDeltaX * cos(legAngle) - combinedDeltaY * sin(legAngle);
     double dy_rot = combinedDeltaX * sin(legAngle) + combinedDeltaY * cos(legAngle);
 
-    return {start.x() + dx_rot, start.y() + dy_rot, start.z()};
+    return {start.x() + dx_rot, start.y() + dy_rot, groundZ};
 }
 
 }  // namespace hexapod_gait_controller
