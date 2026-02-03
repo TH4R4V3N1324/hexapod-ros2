@@ -152,7 +152,6 @@ void GaitController::startup() {
     auto joint_state_msg = JointState();
     joint_state_msg.header.stamp = this->now();
     static bool initialized = false;
-    int resolution = 50;
 
     if(!initialized){
         home();
@@ -174,10 +173,10 @@ void GaitController::startup() {
             sizes[leg], 
             gaitConfig.homePos, 
             gaitConfig.startPosition.at(leg), 
-            resolution
+            MAX_RESOLUTION-1
         );
     }
-    for (int step = 0; step < resolution; ++step) {
+    for (int step = 0; step < MAX_RESOLUTION-1; ++step) {
         for (int leg = 1; leg <= MAX_LEGS; ++leg) {
             if (step < sizes[leg]) {
                 Vector3d pos = trajectory[leg][step];
@@ -282,7 +281,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
     if (!handlePhaseTransition) return;
 
     // Phase transition
-    if (step > resolution) {
+    if (step > MAX_RESOLUTION-1) {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         step = 0;
     }    
@@ -294,7 +293,6 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
 void GaitController::returnToStart() {
     static int counter = 0;
     double liftHeight = 0.020;
-    int resolution = 50;
 
     // Safety check: phase must be valid
     if (phase >= trajectoryGen.gaitState.config.size()) {
@@ -323,7 +321,7 @@ void GaitController::returnToStart() {
         
         trajectoryGen.GenerateTrajectories(
             liftHeight,
-            resolution,
+            MAX_RESOLUTION-1,
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
                 auto it = gaitConfig.startPosition.find(legNum);
@@ -339,10 +337,10 @@ void GaitController::returnToStart() {
     }
 
     // Move all legs for this step
-    PerformLegStep(false, resolution, false);
+    PerformLegStep(false, MAX_RESOLUTION-1, false);
 
     // Phase transition
-    if (step > resolution) {
+    if (step > MAX_RESOLUTION-1) {
         counter++;
         step = 0;
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
@@ -402,7 +400,6 @@ bool GaitController::HandleIdleReturn() {
 */
 void GaitController::Strafe() {
     double liftHeight = 0.020;  // meters (20mm)
-    int resolution = 50;
 
     // Check if stick is idle
     bool stickIdle = HandleIdleReturn();
@@ -418,7 +415,7 @@ void GaitController::Strafe() {
     if (step == 0) {
         trajectoryGen.GenerateTrajectories(
             liftHeight,
-            resolution,
+            MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
                 return trajectoryGen.direction(last_cmd_vel, currentPos, legNum, false, 1.0, true);
@@ -432,7 +429,7 @@ void GaitController::Strafe() {
         );
     }
     // Move all legs for this step
-    PerformLegStep(stickIdle, resolution);
+    PerformLegStep(stickIdle, MAX_RESOLUTION-1);
 }
 
 /*
@@ -443,7 +440,6 @@ void GaitController::Strafe() {
 */
 void GaitController::Normal() {
     double liftHeight = 0.020;  // meters (20mm)
-    int resolution = 50;
 
     // Check if stick is idle
     bool stickIdle = HandleIdleReturn();
@@ -464,7 +460,7 @@ void GaitController::Normal() {
 
         trajectoryGen.GenerateTrajectories(
             liftHeight,
-            resolution,
+            MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this, normalVel](int legNum, const Vector3d& currentPos) {
                 return trajectoryGen.direction(normalVel, currentPos, legNum, false, 1.0, true);
@@ -478,5 +474,5 @@ void GaitController::Normal() {
         );
     }
     // Move all legs for this step
-    PerformLegStep(stickIdle, resolution);
+    PerformLegStep(stickIdle, MAX_RESOLUTION-1);
 }
