@@ -53,12 +53,12 @@ void ServoHandler::publishJointStates(const rclcpp::Time& timestamp) {
     msg.header.stamp = timestamp;
     
     msg.name = {
-        "leg1_coxa", "leg1_femur", "leg1_tibia",
-        "leg2_coxa", "leg2_femur", "leg2_tibia",
-        "leg3_coxa", "leg3_femur", "leg3_tibia",
-        "leg4_coxa", "leg4_femur", "leg4_tibia",
-        "leg5_coxa", "leg5_femur", "leg5_tibia",
-        "leg6_coxa", "leg6_femur", "leg6_tibia"
+        "leg1_coxa_joint", "leg1_femur_joint", "leg1_tibia_joint",
+        "leg2_coxa_joint", "leg2_femur_joint", "leg2_tibia_joint",
+        "leg3_coxa_joint", "leg3_femur_joint", "leg3_tibia_joint",
+        "leg4_coxa_joint", "leg4_femur_joint", "leg4_tibia_joint",
+        "leg5_coxa_joint", "leg5_femur_joint", "leg5_tibia_joint",
+        "leg6_coxa_joint", "leg6_femur_joint", "leg6_tibia_joint"
     };
     
     msg.position.assign(current_positions.begin(), current_positions.end());

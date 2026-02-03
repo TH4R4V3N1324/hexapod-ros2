@@ -48,25 +48,35 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
 
 /*
 @brief Inverse kinematics, calculates the joint angles based on the desired position
-@param position The desired position in 3D space
-@param legNum The leg number (1-6)
+@param target The desired position in 3D space (leg frame, X outward)
+@param mirrored Whether this is a mirrored leg (legs 4, 5, 6)
 @return The calculated joint angles
 */
-JointAngles KinematicSolver::solveIK(const Vector3d& target){
-    // geometry_msgs/Point target --> sensor_msgs/JointState joint_state
+JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
 
     double a1 = coxaLength;
     double a2 = femurLength;
     double a3 = tibiaLength;
 
-    double coxaAngle = atan2(target.y(), target.x());
-    double r1 = std::hypot(target.x(), target.y()) - a1;
-    double r2 = target.z();
-    double q2 = atan(r2/r1);
+    double x = target.x();
+    double y = target.y();
+    double z = target.z();
+
+    // Compute coxa angle - atan2(y, x) for X-forward convention
+    double coxaAngle = atan2(y, x);
+    
+    // For mirrored legs, negate the coxa angle (joint rotates opposite direction)
+    if (mirrored) {
+        coxaAngle = -coxaAngle;
+    }
+    
+    double r1 = std::hypot(x, y) - a1;
+    double r2 = z;
+    double q2 = atan2(r2, r1);  // Use atan2 for robustness
     double r3 = std::hypot(r1, r2);
     double q1 = acos(clamp((pow(a3,2) - pow(a2,2) - pow(r3,2)) / (-2*a2*r3)));
-    double femurAngle = (q2+q1);
+    double femurAngle = (q2 + q1);
     double q3 = acos(clamp((pow(r3,2) - pow(a2,2) - pow(a3,2)) / (-2*a2*a3)));
     double tibiaAngle = M_PI_2 - q3;
 

@@ -18,7 +18,7 @@ class GaitController : public rclcpp::Node {
 public: 
     GaitController() : Node("gait_controller") {
         cmd_vel_sub = this->create_subscription<Twist>("cmd_vel", 10, std::bind(&GaitController::cmdVelCallback, this, _1));
-        joint_cmd_pub = this->create_publisher<JointState>("joint_states", 10);
+        joint_cmd_pub = this->create_publisher<JointState>("joint_commands", 10);
 
         double loop_rate_hz = 50.0;
         gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
@@ -194,7 +194,7 @@ void GaitController::returnToStart() {
             } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
             } else {
-                currentPositions[i] = Vector3d(0, 130, -50); // Default home position
+                currentPositions[i] = Vector3d(0.13, 0, -0.10); // Default home position (X outward, meters)
             }
         }
         
@@ -313,7 +313,7 @@ void GaitController::ExecuteGait(const Twist& velocityCmd, int liftHeight, int r
             } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
             } else {
-                currentPositions[i] = Vector3d(0, 130, -50); // Default home position
+                currentPositions[i] = Vector3d(0.13, 0, -0.10); // Default home position (X outward, meters)
             }
         }
 

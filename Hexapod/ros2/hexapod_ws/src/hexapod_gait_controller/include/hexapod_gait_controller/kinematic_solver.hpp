@@ -26,7 +26,7 @@ private:
     static constexpr double femurLength = 0.090;    // meters
     static constexpr double tibiaLength = 0.15035;  // meters
 public:
-    JointAngles solveIK(const Vector3d& target);
+    JointAngles solveIK(const Vector3d& target, bool mirrored = false);
     Vector3d solveFK(const JointAngles& angles);
 };
 

@@ -24,12 +24,13 @@ class FrameConverter {
 public:
     std::map<int, LegConfig> legConfigs;
     FrameConverter() {
-        legConfigs[1] = {-M_PI / 4.0, false, Vector3d(0.06733, 0.0846, 0)};
-        legConfigs[2] = {0, false, Vector3d(0.09, 0, 0)};
-        legConfigs[3] = {M_PI / 4.0, false, Vector3d(0.06733, -0.0846, 0)};
-        legConfigs[4] = {3.0 * M_PI / 4.0, true, Vector3d(-0.06733, -0.0846, 0)};
-        legConfigs[5] = {M_PI, true, Vector3d(-0.09, 0, 0)};
-        legConfigs[6] = {-3.0 * M_PI / 4.0, true, Vector3d(-0.06733, 0.0846, 0)};
+        // Matching embedded config: mounting_angle (rad), mirrored, offset (meters)
+        legConfigs[1] = {M_PI / 6.0, false, Vector3d(0.06733, 0.0846, 0)};    // 30°
+        legConfigs[2] = {0, false, Vector3d(0.09, 0, 0)};                      // 0°
+        legConfigs[3] = {-M_PI / 6.0, false, Vector3d(0.06733, -0.0846, 0)};  // -30°
+        legConfigs[4] = {-M_PI / 6.0, true, Vector3d(-0.06733, -0.0846, 0)};  // -30°, mirrored
+        legConfigs[5] = {0, true, Vector3d(-0.09, 0, 0)};                      // 0°, mirrored
+        legConfigs[6] = {M_PI / 6.0, true, Vector3d(-0.06733, 0.0846, 0)};    // 30°, mirrored
     }
     
     /**
