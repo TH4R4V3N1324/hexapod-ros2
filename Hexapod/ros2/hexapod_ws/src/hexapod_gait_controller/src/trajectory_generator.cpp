@@ -295,6 +295,10 @@ Vector3d TrajectoryGenerator::direction(const Twist& cmdVel, const Vector3d& sta
         return {start.x() + combinedDeltaX, start.y() + combinedDeltaY, groundZ};
     }
 
+    if (!converter.legConfigs[legNum].mirrored) {
+        legAngle = -legAngle;
+    }
+
     // Transform from body frame to leg frame
     double dx_rot = combinedDeltaX * cos(legAngle) - combinedDeltaY * sin(legAngle);
     double dy_rot = combinedDeltaX * sin(legAngle) + combinedDeltaY * cos(legAngle);
