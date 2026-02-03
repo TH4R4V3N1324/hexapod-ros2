@@ -61,7 +61,7 @@ JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
 
     double x = target.x();
     double y = target.y();
-    double z = target.z();
+    double z = -target.z();  // Negate: positive Z in input = downward, but IK expects negative for down
 
     // Compute coxa angle - atan2(y, x) for X-forward convention
     double coxaAngle = atan2(y, x);

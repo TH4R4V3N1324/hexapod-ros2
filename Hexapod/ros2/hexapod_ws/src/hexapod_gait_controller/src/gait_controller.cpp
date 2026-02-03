@@ -194,7 +194,7 @@ void GaitController::returnToStart() {
             } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
             } else {
-                currentPositions[i] = Vector3d(0.13, 0, -0.10); // Default home position (X outward, meters)
+                currentPositions[i] = Vector3d(0.2, 0, 0.15); // Default position (X outward, Z down)
             }
         }
         
@@ -313,7 +313,7 @@ void GaitController::ExecuteGait(const Twist& velocityCmd, int liftHeight, int r
             } else if (trajectoryGen.gaitState.stanceSizes[i] > 0) {
                 currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][0];
             } else {
-                currentPositions[i] = Vector3d(0.13, 0, -0.10); // Default home position (X outward, meters)
+                currentPositions[i] = Vector3d(0.2, 0, 0.15); // Default position (X outward, Z down)
             }
         }
 
