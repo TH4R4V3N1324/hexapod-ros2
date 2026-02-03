@@ -57,7 +57,7 @@ public:
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
-    void ExecuteGait(const Twist& velocityCmd, int liftHeight = 50, int resolution = 50);
+    void ExecuteGait(const Twist& velocityCmd, int liftHeight = 0.050, int resolution = 50);
     void Strafe();
     void Normal();
 };

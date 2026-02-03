@@ -181,7 +181,7 @@ void TrajectoryGenerator::GenerateTrajectories(
     }
 
     // Collision check and adjustment
-    double threshold = 50.0; // mm
+    double threshold = 0.05; // meters (50mm)
     for (int legNum : swingGroup) {
         Vector3d swingTargetBody = swingTargetsBodyFrame[legNum];
         for (const auto& [stanceNum, stanceTargetBody] : stanceTargetsBodyFrame) {

@@ -40,7 +40,15 @@ public:
      * @return Position in body frame (m)
      */
     Vector3d legToBodyFrame(const Vector3d& position, int leg_num) {
-        return position + legConfigs.at(leg_num).translation_offset;
+        const auto& config = legConfigs.at(leg_num);
+        double angle = config.mounting_angle;
+        
+        // Rotate from leg frame to body frame (positive rotation)
+        double x_body = position.x() * cos(angle) - position.y() * sin(angle);
+        double y_body = position.x() * sin(angle) + position.y() * cos(angle);
+        
+        // Then translate by the coxa offset
+        return Vector3d(x_body, y_body, position.z()) + config.translation_offset;
     }
     
     /**
@@ -50,7 +58,17 @@ public:
      * @return Position in leg frame (m)
      */
     Vector3d bodyToLegFrame(const Vector3d& position, int leg_num) {
-        return position - legConfigs.at(leg_num).translation_offset;
+        const auto& config = legConfigs.at(leg_num);
+        double angle = config.mounting_angle;
+        
+        // First translate to remove coxa offset
+        Vector3d translated = position - config.translation_offset;
+        
+        // Rotate from body frame to leg frame (negative rotation)
+        double x_leg = translated.x() * cos(-angle) - translated.y() * sin(-angle);
+        double y_leg = translated.x() * sin(-angle) + translated.y() * cos(-angle);
+        
+        return Vector3d(x_leg, y_leg, translated.z());
     }
     
     /**
