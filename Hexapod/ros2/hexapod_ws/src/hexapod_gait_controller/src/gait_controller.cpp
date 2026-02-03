@@ -293,7 +293,6 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
 */
 void GaitController::returnToStart() {
     static int counter = 0;
-    static bool trajectoryGenerated = false;
     double liftHeight = 0.020;
     int resolution = 50;
 
@@ -303,11 +302,10 @@ void GaitController::returnToStart() {
         idleReturning = false;
         counter = 0;
         step = 0;
-        trajectoryGenerated = false;
         return;
     }
 
-    if (step == 0 && !trajectoryGenerated) {
+    if (step == 0) {
         // Get current leg positions (estimate from previous trajectory or use defaults)
         std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
         for (int i = 1; i <= MAX_LEGS; ++i) {
@@ -338,7 +336,6 @@ void GaitController::returnToStart() {
             currentPositions,
             phase
         );
-        trajectoryGenerated = true;
     }
 
     // Move all legs for this step
@@ -351,10 +348,9 @@ void GaitController::returnToStart() {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
 
         // After all phases, finish return-to-start and handle gait change if requested
-        if (counter > static_cast<int>(trajectoryGen.gaitState.config.size())) {
+        if (counter >= static_cast<int>(trajectoryGen.gaitState.config.size())) {
             counter = 0;
             idleReturning = false;
-            trajectoryGenerated = false;
 
             if (gaitConfig.gaitChangeRequested) {
                 gaitConfig.currentGait = gaitConfig.pendingGait;
