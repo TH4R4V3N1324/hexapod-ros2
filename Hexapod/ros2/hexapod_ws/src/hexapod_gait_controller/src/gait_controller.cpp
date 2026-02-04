@@ -52,6 +52,11 @@ private:
     // Threshold for mid-trajectory regeneration
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
     
+    // Startup sequence state
+    uint8_t startup_step = 0;
+    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> startup_trajectory;
+    std::array<int, MAX_LEGS + 1> startup_sizes{};
+    
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void jointStateCallback(const JointState::SharedPtr msg);
@@ -115,8 +120,13 @@ void GaitController::gaitTimerCallback() {
     // Run startup sequence once on first timer callback
     if (!positions_initialized) {
         startup();
-        positions_initialized = true;
-        return;  // Let startup complete before entering gait modes
+        
+        // Check if startup is complete by checking if we've progressed through all steps
+        int max_startup_size = *std::max_element(startup_sizes.begin() + 1, startup_sizes.end());
+        if (startup_step >= max_startup_size) {
+            positions_initialized = true;
+        }
+        return;  // Continue startup in next callback
     }
 
     switch (gaitConfig.currentMode) {
@@ -164,6 +174,8 @@ void GaitController::home() {
     }
     // Publish joint states
     joint_cmd_pub->publish(joint_state_msg);
+    rclcpp::sleep_for(std::chrono::milliseconds(500));  // Wait for legs to reach home position
+    RCLCPP_INFO(this->get_logger(), "Moved to home position");
 }
 
 /*
@@ -177,6 +189,19 @@ void GaitController::startup() {
     if(!initialized){
         home();
         initialized = true;
+        
+        // Pre-generate all trajectories for the startup sequence
+        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+            trajectoryGen.GenStraightTrajectory(
+                startup_trajectory[leg].data(), 
+                startup_sizes[leg], 
+                gaitConfig.homePos, 
+                gaitConfig.startPosition.at(leg), 
+                MAX_RESOLUTION-1
+            );
+        }
+        startup_step = 0;
+        return;  // Exit first call and wait for next timer callback
     }
 
     // Reset phase to 0 when starting up
@@ -185,39 +210,34 @@ void GaitController::startup() {
     // Update start positions based on current height
     gaitConfig.setHeight(gaitConfig.currentHeight);
 
-    // Generate trajectories for each leg to move to home position
-    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> trajectory;
-    std::array<int, MAX_LEGS + 1> sizes{};
+    // Execute one step of the startup sequence per timer callback
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
-        trajectoryGen.GenStraightTrajectory(
-            trajectory[leg].data(), 
-            sizes[leg], 
-            gaitConfig.homePos, 
-            gaitConfig.startPosition.at(leg), 
-            MAX_RESOLUTION-1
-        );
-    }
-    for (int step = 0; step < MAX_RESOLUTION-1; ++step) {
-        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
-            if (step < sizes[leg]) {
-                Vector3d pos = trajectory[leg][step];
+        if (startup_step < startup_sizes[leg]) {
+            Vector3d pos = startup_trajectory[leg][startup_step];
 
-                // Compute IK to get joint angles
-                auto angles = ikSolver.solveIK(pos);
-                
-                // Add joint names and positions
-                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_coxa_joint");
-                joint_state_msg.position.push_back(angles.coxa);
-                
-                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_femur_joint");
-                joint_state_msg.position.push_back(angles.femur);
-                
-                joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_tibia_joint");
-                joint_state_msg.position.push_back(angles.tibia);
+            // Compute IK to get joint angles
+            auto angles = ikSolver.solveIK(pos);
+            
+            // Add joint names and positions
+            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_coxa_joint");
+            joint_state_msg.position.push_back(angles.coxa);
+            
+            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_femur_joint");
+            joint_state_msg.position.push_back(angles.femur);
+            
+            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_tibia_joint");
+            joint_state_msg.position.push_back(angles.tibia);
 
-                current_leg_positions[leg] = pos;
-            }
+            current_leg_positions[leg] = pos;
         }
+    }
+    joint_cmd_pub->publish(joint_state_msg);
+    startup_step++;
+    
+    // Check if startup sequence is complete
+    int max_startup_size = *std::max_element(startup_sizes.begin() + 1, startup_sizes.end());
+    if (startup_step >= max_startup_size) {
+        RCLCPP_INFO(this->get_logger(), "Startup sequence complete");
     }
 }
 
