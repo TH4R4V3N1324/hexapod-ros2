@@ -1,0 +1,6 @@
+# Request
+uint8 gait  # 0=tripod, 1=ripple, 2=wave
+---
+# Response
+bool success
+string message

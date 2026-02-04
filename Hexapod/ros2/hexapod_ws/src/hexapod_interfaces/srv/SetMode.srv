@@ -1,0 +1,6 @@
+# Request
+uint8 mode  # 0=normal, 1=strafe, 2=tilt, 3=config
+---
+# Response
+bool success
+string message

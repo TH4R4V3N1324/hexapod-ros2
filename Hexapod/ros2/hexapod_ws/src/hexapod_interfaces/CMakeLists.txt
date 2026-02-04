@@ -20,6 +20,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/ControllerInput.msg"
   "srv/FKSolver.srv"
   "srv/IKSolver.srv"
+  "srv/SetGait.srv"
+  "srv/SetMode.srv"
   DEPENDENCIES std_msgs builtin_interfaces geometry_msgs sensor_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)
