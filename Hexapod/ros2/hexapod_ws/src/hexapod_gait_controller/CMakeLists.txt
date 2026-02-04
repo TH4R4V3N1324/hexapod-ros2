@@ -44,6 +44,14 @@ ament_target_dependencies(gait_controller
   geometry_msgs
 )
 
+add_executable(leg_axis_tester src/leg_axis_test.cpp)
+target_link_libraries(leg_axis_tester kinematic_solver trajectory_generator)
+ament_target_dependencies(leg_axis_tester
+  rclcpp
+  hexapod_interfaces
+  geometry_msgs
+)
+
 install(TARGETS
   kinematic_solver
   trajectory_generator
@@ -52,7 +60,7 @@ install(TARGETS
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS gait_controller DESTINATION lib/${PROJECT_NAME}/)
+install(TARGETS gait_controller leg_axis_tester DESTINATION lib/${PROJECT_NAME}/)
 install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
