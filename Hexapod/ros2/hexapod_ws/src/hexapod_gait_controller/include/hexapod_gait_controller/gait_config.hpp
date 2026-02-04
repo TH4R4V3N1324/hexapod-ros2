@@ -34,7 +34,7 @@ private:
     
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
-    double currentHeight = 0.15;  // 10cm default height
+    double currentHeight = -0.15;  // 10cm default height
     Vector3d homePos {0.15, 0, 0};
     Vector3d startPos {0.15, 0, currentHeight};
     std::map<int, Vector3d> startPosition{
