@@ -4,6 +4,7 @@
 #include "hexapod_gait_controller/gait_config.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
+#include <cmath>
 
 using namespace hexapod_gait_controller;
 
@@ -22,6 +23,8 @@ public:
         double loop_rate_hz = 50.0;
         gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
 
+        filtered_cmd_vel = Twist();
+
         RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz", loop_rate_hz);
     }    
 private:
@@ -31,6 +34,7 @@ private:
     rclcpp::TimerBase::SharedPtr gait_timer;
     
     Twist last_cmd_vel;
+    Twist filtered_cmd_vel;
     Twist trajectory_cmd_vel;  // cmd_vel used when trajectory was generated
     TrajectoryGenerator trajectoryGen;
     GaitConfig gaitConfig;
@@ -43,6 +47,7 @@ private:
     JointState latest_joint_states;
     std::array<Vector3d, MAX_LEGS + 1> current_leg_positions;  // Computed from FK
     bool has_joint_states = false;
+    bool positions_initialized = false;
     
     // Threshold for mid-trajectory regeneration
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
@@ -54,6 +59,7 @@ public:
     void home();
     void startup();
     bool shouldRegenerateTrajectory();
+    void retargetSwingSplines();
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
@@ -71,6 +77,14 @@ int main(int argc, char **argv){
 
 void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
     last_cmd_vel = *msg;
+
+    // Smoothing factor - higher = faster response (0.5 = ~2 cycles to reach target)
+    constexpr double alpha = 0.5;
+
+    // Apply exponential smoothing for smooth velocity transitions
+    filtered_cmd_vel.linear.x = (1.0 - alpha) * filtered_cmd_vel.linear.x + alpha * msg->linear.x;
+    filtered_cmd_vel.linear.y = (1.0 - alpha) * filtered_cmd_vel.linear.y + alpha * msg->linear.y;
+    filtered_cmd_vel.angular.z = (1.0 - alpha) * filtered_cmd_vel.angular.z + alpha * msg->angular.z;
 }
 
 void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
@@ -98,6 +112,13 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
 @note This replaces your embedded while(true) loop
 */
 void GaitController::gaitTimerCallback() {
+    // Run startup sequence once on first timer callback
+    if (!positions_initialized) {
+        startup();
+        positions_initialized = true;
+        return;  // Let startup complete before entering gait modes
+    }
+
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             Strafe();
@@ -205,23 +226,70 @@ void GaitController::startup() {
 @return true if trajectory should be regenerated
 */
 bool GaitController::shouldRegenerateTrajectory() {
-    // Check if current cmd_vel is zero (idle)
-    bool current_is_zero = (std::abs(last_cmd_vel.linear.x) < CMD_VEL_CHANGE_THRESHOLD &&
-                            std::abs(last_cmd_vel.linear.y) < CMD_VEL_CHANGE_THRESHOLD &&
-                            std::abs(last_cmd_vel.angular.z) < CMD_VEL_CHANGE_THRESHOLD);
-    
-    // If cmd_vel is zero, don't regenerate (stop executing)
-    if (current_is_zero) {
-        return false;
-    }
-    
-    double dx = std::abs(last_cmd_vel.linear.x - trajectory_cmd_vel.linear.x);
-    double dy = std::abs(last_cmd_vel.linear.y - trajectory_cmd_vel.linear.y);
-    double dz = std::abs(last_cmd_vel.angular.z - trajectory_cmd_vel.angular.z);
-    
-    return (dx > CMD_VEL_CHANGE_THRESHOLD || 
-            dy > CMD_VEL_CHANGE_THRESHOLD || 
+    double dx = std::abs(filtered_cmd_vel.linear.x - trajectory_cmd_vel.linear.x);
+    double dy = std::abs(filtered_cmd_vel.linear.y - trajectory_cmd_vel.linear.y);
+    double dz = std::abs(filtered_cmd_vel.angular.z - trajectory_cmd_vel.angular.z);
+
+    return (dx > CMD_VEL_CHANGE_THRESHOLD ||
+            dy > CMD_VEL_CHANGE_THRESHOLD ||
             dz > CMD_VEL_CHANGE_THRESHOLD);
+}
+
+void GaitController::retargetSwingSplines() {
+    double liftHeight = 0.020;
+    bool anySwingActive = false;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if (trajectoryGen.gaitState.swingSplines[legNum].active) {
+            anySwingActive = true;
+            break;
+        }
+    }
+    if (!anySwingActive) return;
+
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        auto& spline = trajectoryGen.gaitState.swingSplines[legNum];
+        if (!spline.active) continue;
+
+        // Only retarget mid-swing (expanded window for smoother transitions)
+        if (spline.s < 0.15 || spline.s > 0.85) continue;
+
+        Vector3d currentPos = current_leg_positions[legNum];
+
+        // Compute new target using current cmd_vel
+        Vector3d forwardPos = trajectoryGen.linearTarget(
+            filtered_cmd_vel.linear.x,
+            filtered_cmd_vel.linear.y,
+            currentPos,
+            legNum,
+            false
+        );
+
+        Vector3d rotationPos = trajectoryGen.rotationalTarget(
+            filtered_cmd_vel.angular.z,
+            currentPos,
+            legNum,
+            false,
+            1.0
+        );
+
+        Vector3d idealTarget = trajectoryGen.BlendTargetPosition(
+            currentPos,
+            forwardPos,
+            rotationPos
+        );
+
+        // Update spline endpoint
+        spline.P3 = idealTarget;
+
+        Vector3d dir = spline.P3 - currentPos;
+        if (dir.norm() < 1e-6) continue;
+
+        Vector3d dirNorm = dir.normalized();
+        double offsetScale = dir.norm() * 0.25;
+
+        spline.P2 = spline.P3 + dirNorm * offsetScale;
+        spline.P2.z() = spline.P3.z() + liftHeight;
+    }
 }
 
 /*
@@ -247,16 +315,41 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         // Get target position for this leg
         // Each leg is assigned EITHER swing OR stance trajectory for this phase (not both)
         Eigen::Vector3d targetPos;
-        if (swingSize > 0 && step < swingSize) {
-            // Leg is in swing group - use swing trajectory
-            targetPos = trajectoryGen.gaitState.swingTrajectory[legNum][step];
-        } else if (stanceSize > 0 && step < stanceSize) {
-            // Leg is in stance group - use stance trajectory
+        SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
+
+        if (spline.active) {
+            targetPos = trajectoryGen.evalBezier(
+                spline.P0,
+                spline.P1,
+                spline.P2,
+                spline.P3,
+                spline.s
+            );
+
+            // Advance spline progress
+            double ds = idle ? 0.0 : (1.0 / MAX_RESOLUTION);
+            spline.s += ds;
+            if (spline.s >= 1.0) {
+                spline.s = 1.0;
+                // Snap to exact endpoint and deactivate to prevent drift
+                targetPos = spline.P3;
+                spline.active = false;
+            }
+        }
+        else if (stanceSize > 0 && step < stanceSize) {
             targetPos = trajectoryGen.gaitState.stanceTrajectory[legNum][step];
-        } else {
-            continue; // Skip if no valid trajectory or step out of bounds
+        }
+        else {
+            continue;
         }
         
+        Eigen::Vector3d delta = targetPos - current_leg_positions[legNum];
+        double maxStep = 0.03; // 3 cm per control cycle
+
+        if (delta.norm() > maxStep) {
+            targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
+        }
+
         // Compute IK to get joint angles
         auto angles = ikSolver.solveIK(targetPos);
         
@@ -296,42 +389,50 @@ void GaitController::returnToStart() {
 
     // Safety check: phase must be valid
     if (phase >= trajectoryGen.gaitState.config.size()) {
-        RCLCPP_ERROR(this->get_logger(), "[returnToStart] Invalid phase: %d, config size: %zu", phase, trajectoryGen.gaitState.config.size());
         idleReturning = false;
         counter = 0;
         step = 0;
         return;
     }
 
-    if (step == 0) {
-        // Get current leg positions (estimate from previous trajectory or use defaults)
-        std::array<Vector3d, MAX_LEGS + 1> currentPositions{};
-        for (int i = 1; i <= MAX_LEGS; ++i) {
-            int swingSize = trajectoryGen.gaitState.swingSizes[i];
-            int stanceSize = trajectoryGen.gaitState.stanceSizes[i];
-            // Use last trajectory position if available, otherwise use home position
-            if (swingSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.swingTrajectory[i][swingSize - 1];
-            } else if (stanceSize > 0) {
-                currentPositions[i] = trajectoryGen.gaitState.stanceTrajectory[i][stanceSize - 1];
-            } else {
-                currentPositions[i] = Vector3d(0.2, 0, 0.15); // Default position (X outward, Z down)
+    // Check if all legs are already at start position (within tolerance)
+    constexpr double POSITION_TOLERANCE = 0.005;  // 5mm tolerance
+    bool allAtStart = true;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        auto it = gaitConfig.startPosition.find(legNum);
+        if (it != gaitConfig.startPosition.end()) {
+            Vector3d delta = current_leg_positions[legNum] - it->second;
+            if (delta.norm() > POSITION_TOLERANCE) {
+                allAtStart = false;
+                break;
             }
         }
-        
+    }
+
+    if (allAtStart) {
+        // Already at start, finish immediately
+        idleReturning = false;
+        counter = 0;
+        step = 0;
+        phase = 0;
+        return;
+    }
+
+    if (step == 0) {
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
+                (void)currentPos;  // Use actual current position from current_leg_positions
                 auto it = gaitConfig.startPosition.find(legNum);
-                return (it != gaitConfig.startPosition.end()) ? it->second : currentPos;
+                return (it != gaitConfig.startPosition.end()) ? it->second : current_leg_positions[legNum];
             },
             // Stance: hold current position
             [](int, const Vector3d& currentPos) {
                 return currentPos;
             },
-            currentPositions,
+            current_leg_positions,  // Use tracked current positions
             phase
         );
     }
@@ -368,23 +469,45 @@ void GaitController::returnToStart() {
 bool GaitController::HandleIdleReturn() {
     static int idleCount = 0;
     static const int idleThreshold = 100;
+    static bool hasMovedFromStart = false;
+    static bool returnCompleted = false;  // Track if we just finished returning
 
-    // Check if stick is idle
-    bool stickIdle = (last_cmd_vel.linear.x == 0.0 &&
-                      last_cmd_vel.linear.y == 0.0 &&
-                      last_cmd_vel.linear.z == 0.0 &&
-                      last_cmd_vel.angular.x == 0.0 &&
-                      last_cmd_vel.angular.y == 0.0 &&
-                      last_cmd_vel.angular.z == 0.0);
-    if (stickIdle) idleCount++;
-    else idleCount = 0;
+    // Use a small deadzone to avoid floating point comparison issues
+    constexpr double DEADZONE = 0.01;
+
+    // Check if stick is idle (within deadzone)
+    bool stickIdle = (std::abs(last_cmd_vel.linear.x) < DEADZONE &&
+                      std::abs(last_cmd_vel.linear.y) < DEADZONE &&
+                      std::abs(last_cmd_vel.linear.z) < DEADZONE &&
+                      std::abs(last_cmd_vel.angular.x) < DEADZONE &&
+                      std::abs(last_cmd_vel.angular.y) < DEADZONE &&
+                      std::abs(last_cmd_vel.angular.z) < DEADZONE);
+
+    // Track if we've ever moved (received non-zero command and started stepping)
+    if (!stickIdle && step > 0) {
+        hasMovedFromStart = true;
+        returnCompleted = false;  // Reset since we're moving again
+    }
+
+    if (stickIdle) {
+        idleCount++;
+    } else {
+        idleCount = 0;
+    }
 
     // Handle idle/return-to-start logic
-    if (idleCount > idleThreshold || idleReturning) {
+    // Only trigger if: we've moved, been idle long enough, haven't just completed return, OR already returning
+    if (idleReturning) {
+        returnToStart();
+        // Check if returnToStart finished (it sets idleReturning = false when done)
         if (!idleReturning) {
-            idleReturning = true;
-            step = 0;
+            returnCompleted = true;
+            hasMovedFromStart = false;  // Reset so we don't re-trigger until user moves again
         }
+        idleCount = 0;
+    } else if (hasMovedFromStart && !returnCompleted && idleCount > idleThreshold) {
+        idleReturning = true;
+        step = 0;
         returnToStart();
         idleCount = 0;
     }
@@ -408,25 +531,31 @@ void GaitController::Strafe() {
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
 
+    if (shouldRegenerateTrajectory()) {
+        retargetSwingSplines();
+        trajectory_cmd_vel = filtered_cmd_vel;
+    }
+
     // Calculate stride multiplier safely
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
+        trajectory_cmd_vel = filtered_cmd_vel;
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, last_cmd_vel.linear.y, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.angular.z, currentPos, legNum, false, 1.0);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, false, 1.0);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, last_cmd_vel.linear.y, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.angular.z, currentPos, legNum, true, strideMultiplier);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, true, strideMultiplier);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
                 return targetPos;
             },
@@ -454,25 +583,31 @@ void GaitController::Normal() {
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
 
+    if (shouldRegenerateTrajectory()) {
+        retargetSwingSplines();
+        trajectory_cmd_vel = filtered_cmd_vel;
+    }
+
     // Calculate stride multiplier safely
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
+        trajectory_cmd_vel = filtered_cmd_vel;
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, 0.0, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.linear.y, currentPos, legNum, false, 1.0);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, false, 1.0);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(last_cmd_vel.linear.x, 0.0, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(last_cmd_vel.linear.y, currentPos, legNum, true, strideMultiplier);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, true, strideMultiplier);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
                 return targetPos;
             },

@@ -67,7 +67,7 @@ void GaitConfig::setMode(Mode mode) {
 */
 void GaitConfig::setHeight(double height) {
     currentHeight = height;
-    startPos.z() = -static_cast<double>(currentHeight);
+    startPos.z() = currentHeight;
     startPosition = {
         {1, rotateZ(startPos, 15)},
         {2, startPos},
