@@ -51,6 +51,7 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
 @param target The desired position in 3D space (leg frame, X outward)
 @param mirrored Whether this is a mirrored leg (legs 4, 5, 6)
 @return The calculated joint angles
+@note If the target is outside the workspace, angles are clamped to the nearest valid solution
 */
 JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
@@ -75,6 +76,25 @@ JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     double r2 = z;
     double q2 = atan2(r2, r1);  // Use atan2 for robustness
     double r3 = std::hypot(r1, r2);
+    
+    // Check if position is within workspace - r3 should be between |a2-a3| and a2+a3
+    double min_reach = std::abs(a2 - a3);
+    double max_reach = a2 + a3;
+    
+    if (r3 < min_reach) {
+        // Position is too close - constrain to minimum reach
+        double scale = min_reach / r3;
+        r1 *= scale;
+        r2 *= scale;
+        r3 = min_reach;
+    } else if (r3 > max_reach) {
+        // Position is too far - constrain to maximum reach
+        double scale = max_reach / r3;
+        r1 *= scale;
+        r2 *= scale;
+        r3 = max_reach;
+    }
+    
     double q1 = acos(clamp((pow(a3,2) - pow(a2,2) - pow(r3,2)) / (-2*a2*r3)));
     double femurAngle = (q2 + q1);
     double q3 = acos(clamp((pow(r3,2) - pow(a2,2) - pow(a3,2)) / (-2*a2*a3)));
