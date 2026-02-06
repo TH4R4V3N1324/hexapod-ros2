@@ -56,12 +56,34 @@ public:
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
         uint8_t currentPhase
     );
-    Vector3d linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert, double strideMultiplier = 1.0);
-    Vector3d rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert, double strideMultiplier = 1.0);
-    Vector3d BlendTargetPosition(const Vector3d& currentPos, const Vector3d& translationPos, const Vector3d& rotationPos);
+    Vector3d linearTarget(
+        const double& linearX, 
+        const double& linearY, 
+        const Vector3d& start, 
+        int legNum, bool invert, 
+        double strideMultiplier = 1.0
+    );
+    Vector3d rotationalTarget(
+        const double& angularZ, 
+        const Vector3d& start, 
+        int legNum, 
+        bool invert, 
+        double strideMultiplier = 1.0
+    );
+    Vector3d BlendTargetPosition(
+        const Vector3d& currentPos, 
+        const Vector3d& translationPos, 
+        const Vector3d& rotationPos
+    );
     void EnsureGaitConfig();
     double CalculateStrideMultiplier();
-    Vector3d evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, double s);
+    Vector3d evalBezier(
+        const Vector3d& P0, 
+        const Vector3d& P1, 
+        const Vector3d& P2, 
+        const Vector3d& P3, 
+        double s
+    );
 };
 
 }  // namespace hexapod_gait_controller
