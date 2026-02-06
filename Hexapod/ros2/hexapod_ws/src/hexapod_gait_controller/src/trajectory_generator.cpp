@@ -108,9 +108,12 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
     auto it = gaitConfig.startPosition.find(legNum);
     Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : currentPos;
 
+    const bool incremental = strideMultiplier < 1.0;
+    const Vector3d anchorPos = incremental ? currentPos : neutralPos;
+
     // Convert absolute targets → deltas from neutral
-    Vector3d forwardDelta  = forwardPos  - neutralPos;
-    Vector3d rotationDelta = rotationPos - neutralPos;
+    Vector3d forwardDelta  = forwardPos  - anchorPos;
+    Vector3d rotationDelta = rotationPos - anchorPos;
 
     // Blend deltas
     Vector3d blendedDelta = forwardDelta + rotationDelta;
@@ -124,8 +127,8 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
     }
 
     return {
-        neutralPos.x() + blendedDelta.x(),
-        neutralPos.y() + blendedDelta.y(),
+        anchorPos.x() + blendedDelta.x(),
+        anchorPos.y() + blendedDelta.y(),
         gaitConfig.currentHeight
     };
 }
@@ -250,7 +253,7 @@ void TrajectoryGenerator::GenerateTrajectories(
 @return The calculated target position
 @note Linear offset is computed relative to the leg's neutral position to prevent drift.
 */
-Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert, double strideMultiplier) {
+Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert) {
     double lx = linearX;
     double ly = linearY;
     std::swap(lx, ly);
@@ -264,7 +267,7 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     double magnitude = std::hypot(lx, ly) / gaitConfig.max_velocity;
     if (magnitude > 1.0) magnitude = 1.0;
 
-    double stride = gaitConfig.max_stride_length * magnitude * strideMultiplier;
+    double stride = gaitConfig.max_stride_length * magnitude;
     double angle = atan2(ly, lx);
 
     double deltaX = stride * cos(angle);
@@ -295,7 +298,7 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
 @note Rotation is computed relative to the leg's neutral position, not current position.
       This prevents legs from drifting outside their workspace during sustained rotation.
 */
-Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert, double strideMultiplier) {
+Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert) {
     double az = angularZ;
 
     // Apply inversion if needed (for stance phase)
@@ -312,7 +315,7 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
     // For small angles, arc length ≈ radius * angle
     // We use the neutral leg reach as the radius
     double neutralReach = std::hypot(neutralPos.x(), neutralPos.y());
-    double maxArcLength = gaitConfig.max_stride_length * strideMultiplier;
+    double maxArcLength = gaitConfig.max_stride_length;
     double arcOffset = maxArcLength * magnitude * (az > 0 ? 1.0 : -1.0);
     
     // Convert arc offset to angular displacement (radians)

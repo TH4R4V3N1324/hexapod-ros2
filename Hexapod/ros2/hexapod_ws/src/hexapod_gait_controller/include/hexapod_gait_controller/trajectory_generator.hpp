@@ -60,15 +60,14 @@ public:
         const double& linearX, 
         const double& linearY, 
         const Vector3d& start, 
-        int legNum, bool invert, 
-        double strideMultiplier = 1.0
+        int legNum, 
+        bool invert
     );
     Vector3d rotationalTarget(
         const double& angularZ, 
         const Vector3d& start, 
         int legNum, 
-        bool invert, 
-        double strideMultiplier = 1.0
+        bool invert
     );
     Vector3d BlendTargetPosition(
         const Vector3d& currentPos, 
