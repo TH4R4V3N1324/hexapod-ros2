@@ -1,3 +1,6 @@
+#ifndef HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP
+#define HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP
+
 #include "rclcpp/rclcpp.hpp"
 #include "hexapod_gait_controller/trajectory_generator.hpp"
 #include "hexapod_gait_controller/kinematic_solver.hpp"
@@ -85,3 +88,5 @@ public:
     void Strafe();
     void Normal();
 };
+
+#endif // HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP

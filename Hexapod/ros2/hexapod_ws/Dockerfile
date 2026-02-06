@@ -17,7 +17,7 @@ RUN rosdep update
 WORKDIR /hexapod_ws
 COPY src ./src
 
-RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install"
+RUN /bin/bash -c "source /opt/ros/humble/setup.bash && colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON"
 RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "source /hexapod_ws/install/setup.bash" >> /root/.bashrc
 
