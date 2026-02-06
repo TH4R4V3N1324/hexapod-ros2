@@ -73,7 +73,9 @@ public:
     Vector3d BlendTargetPosition(
         const Vector3d& currentPos, 
         const Vector3d& translationPos, 
-        const Vector3d& rotationPos
+        const Vector3d& rotationPos,
+        int legNum,
+        double strideMultiplier = 1.0
     );
     void EnsureGaitConfig();
     double CalculateStrideMultiplier();

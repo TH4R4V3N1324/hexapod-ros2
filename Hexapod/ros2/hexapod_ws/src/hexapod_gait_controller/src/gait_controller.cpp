@@ -330,7 +330,8 @@ void GaitController::retargetSwingSplines() {
         Vector3d idealTarget = trajectoryGen.BlendTargetPosition(
             currentPos,
             forwardPos,
-            rotationPos
+            rotationPos,
+            legNum
         );
 
         // Update spline endpoint
@@ -604,14 +605,14 @@ void GaitController::Strafe() {
             [this](int legNum, const Vector3d& currentPos) {
                 Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, false);
                 Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, false, 1.0);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, true, strideMultiplier);
                 Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, true, strideMultiplier);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
                 return targetPos;
             },
             current_leg_positions,
@@ -655,15 +656,15 @@ void GaitController::Normal() {
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
                 Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, false, 1.0);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, false);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, true, strideMultiplier);
                 Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, true, strideMultiplier);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos);
+                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
                 return targetPos;
             },
             current_leg_positions,

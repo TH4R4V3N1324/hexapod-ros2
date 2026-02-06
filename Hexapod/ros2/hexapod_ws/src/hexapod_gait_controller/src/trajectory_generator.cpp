@@ -104,55 +104,30 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
 @note Both forwardPos and rotationPos are computed relative to the leg's neutral position.
       We blend them by averaging their displacements from neutral.
 */
-Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, const Vector3d& forwardPos, const Vector3d& rotationPos) {
-    // Get neutral position (approximate - use average of the two neutral-based positions)
-    // Since both targets are offset from neutral by their respective stride amounts,
-    // we need to combine them properly
-    
-    // The neutral reach is startPos.x() (typically 0.15m)
-    double neutralReach = gaitConfig.startPos.x();
-    Vector3d neutralApprox = {neutralReach, 0.0, gaitConfig.currentHeight};
-    
-    // Compute displacements from an approximate neutral
-    // forwardPos = neutral + forwardDelta
-    // rotationPos = rotated neutral position
-    
-    // For blending: average the two target positions
-    // This works because both are already bounded by max_stride_length from neutral
-    Vector3d blended = (forwardPos + rotationPos) * 0.5;
-    
-    // Add back half the neutral reach that we lost by averaging
-    // Actually, better approach: compute deltas from neutral and sum them
-    Vector3d forwardDelta = forwardPos - neutralApprox;
-    Vector3d rotationDelta = rotationPos - neutralApprox;
-    
-    // Sum the deltas and add to neutral
-    blended = neutralApprox + forwardDelta + rotationDelta;
+Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, const Vector3d& forwardPos, const Vector3d& rotationPos, int legNum, double strideMultiplier) {
+    auto it = gaitConfig.startPosition.find(legNum);
+    Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : currentPos;
 
-    // Clamp the absolute reach from the leg origin
-    double minReach = neutralReach - gaitConfig.max_stride_length;  // 0.09m
-    double maxReach = neutralReach + gaitConfig.max_stride_length;  // 0.21m
-    
-    // Calculate horizontal distance from leg origin (in XY plane of leg frame)
-    double currentReachXY = std::hypot(blended.x(), blended.y());
-    
-    if (currentReachXY > maxReach) {
-        double scale = maxReach / currentReachXY;
-        blended.x() *= scale;
-        blended.y() *= scale;
-    } else if (currentReachXY < minReach && currentReachXY > 1e-6) {
-        double scale = minReach / currentReachXY;
-        blended.x() *= scale;
-        blended.y() *= scale;
-    }
-    
-    // Also limit the lateral (Y) displacement to prevent extreme angles
-    double maxLateral = gaitConfig.max_stride_length;
-    if (std::abs(blended.y()) > maxLateral) {
-        blended.y() = (blended.y() > 0 ? 1 : -1) * maxLateral;
+    // Convert absolute targets → deltas from neutral
+    Vector3d forwardDelta  = forwardPos  - neutralPos;
+    Vector3d rotationDelta = rotationPos - neutralPos;
+
+    // Blend deltas
+    Vector3d blendedDelta = forwardDelta + rotationDelta;
+
+    // Clamp blended delta using stride multiplier
+    double maxStride = gaitConfig.max_stride_length * strideMultiplier;
+    double deltaMag = std::hypot(blendedDelta.x(), blendedDelta.y());
+
+    if (deltaMag > maxStride && deltaMag > 1e-6) {
+        blendedDelta *= (maxStride / deltaMag);
     }
 
-    return blended;
+    return {
+        neutralPos.x() + blendedDelta.x(),
+        neutralPos.y() + blendedDelta.y(),
+        gaitConfig.currentHeight
+    };
 }
 
 /*
@@ -305,7 +280,7 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     // Get the neutral/start position for this leg and offset from there
     auto it = gaitConfig.startPosition.find(legNum);
     Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : start;
-
+    
     return {neutralPos.x() + dx_rot, neutralPos.y() + dy_rot, groundZ};
 }
 
