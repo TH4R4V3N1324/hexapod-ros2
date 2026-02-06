@@ -6,6 +6,7 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
+#include "hexapod_interfaces/srv/set_height.hpp"
 
 using namespace hexapod_gait_controller;
 
@@ -13,6 +14,7 @@ using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::JointState;
 using hexapod_interfaces::srv::SetGait;
 using hexapod_interfaces::srv::SetMode;
+using hexapod_interfaces::srv::SetHeight;
 using Eigen::Vector3d;
 using std::placeholders::_1;
 using std::placeholders::_2;
@@ -25,7 +27,8 @@ public:
         joint_state_sub = this->create_subscription<JointState>("joint_states", 10, std::bind(&GaitController::jointStateCallback, this, _1));
         set_gait_service = this->create_service<SetGait>("set_gait", std::bind(&GaitController::setGaitCallback, this, _1, _2));
         set_mode_service = this->create_service<SetMode>("set_mode", std::bind(&GaitController::setModeCallback, this, _1, _2));
-
+        set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
+        
         double loop_rate_hz = 50.0;
         gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
 
@@ -40,6 +43,7 @@ private:
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
     rclcpp::Service<SetMode>::SharedPtr set_mode_service;
+    rclcpp::Service<SetHeight>::SharedPtr set_height_service;
     Twist last_cmd_vel;
     Twist filtered_cmd_vel;
     Twist trajectory_cmd_vel;  // cmd_vel used when trajectory was generated
@@ -69,6 +73,7 @@ public:
     void jointStateCallback(const JointState::SharedPtr msg);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
+    void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
     void gaitTimerCallback();
     void home();
     void startup();
@@ -125,8 +130,8 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
 @brief Service callback to change gait
 */
 void GaitController::setGaitCallback(
-    const std::shared_ptr<hexapod_interfaces::srv::SetGait::Request> request,
-    std::shared_ptr<hexapod_interfaces::srv::SetGait::Response> response
+    const std::shared_ptr<SetGait::Request> request,
+    std::shared_ptr<SetGait::Response> response
 ) {
     gaitConfig.setGait(static_cast<Gait>(request->gait));
     response->success = true;
@@ -138,13 +143,26 @@ void GaitController::setGaitCallback(
 @brief Service callback to change mode
 */
 void GaitController::setModeCallback(
-    const std::shared_ptr<hexapod_interfaces::srv::SetMode::Request> request,
-    std::shared_ptr<hexapod_interfaces::srv::SetMode::Response> response
+    const std::shared_ptr<SetMode::Request> request,
+    std::shared_ptr<SetMode::Response> response
 ) {
     gaitConfig.setMode(static_cast<Mode>(request->mode));
     response->success = true;
     response->message = "Mode changed to " + std::to_string(request->mode);
     RCLCPP_INFO(this->get_logger(), "Mode changed to %d", request->mode);
+}
+
+/*
+@brief Service callback to change height
+*/
+void GaitController::setHeightCallback(
+    const std::shared_ptr<SetHeight::Request> request,
+    std::shared_ptr<SetHeight::Response> response
+) {
+    double height = static_cast<double>(request->height);
+    gaitConfig.setHeight(height);
+    response->success = true;
+    RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
 }
 
 /*
