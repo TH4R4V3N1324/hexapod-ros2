@@ -38,7 +38,7 @@ int main(int argc, char * argv[]) {
 
 void KeyboardTeleop::userInputLoop() {
   enableRawMode();
-  RCLCPP_INFO(this->get_logger(), "Controls: w/s/a/d for linear, e/q for angular, x to stop, c to exit");
+  RCLCPP_INFO(this->get_logger(), "\nControls:\n w/s/a/d for linear\n e/q for angular\n x to stop\n c to exit\n");
   while (rclcpp::ok()) {
     int key = readKeyWithTimeout(50);
     if (key < 0) {
