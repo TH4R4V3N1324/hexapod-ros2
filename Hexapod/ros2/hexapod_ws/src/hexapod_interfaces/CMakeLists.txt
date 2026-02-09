@@ -18,11 +18,13 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/LegContact.msg"
   "msg/PowerStatus.msg"
   "msg/ControllerInput.msg"
+  "msg/LocomotionOption.msg"
   "srv/FKSolver.srv"
   "srv/IKSolver.srv"
   "srv/SetGait.srv"
   "srv/SetMode.srv"
   "srv/SetHeight.srv"
+  "srv/GetCapabilities.srv"
   DEPENDENCIES std_msgs builtin_interfaces geometry_msgs sensor_msgs
 )
 ament_export_dependencies(rosidl_default_runtime)

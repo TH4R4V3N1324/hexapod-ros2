@@ -87,6 +87,27 @@ void GaitController::setHeightCallback(
     RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
 }
 
+void GaitController::getCapabilitiesCallback(
+    const std::shared_ptr<GetCapabilities::Request> request,
+    std::shared_ptr<GetCapabilities::Response> response
+) {
+    auto toMsg = [this](const hexapod_gait_controller::LocomotionOption& option) {
+        hexapod_interfaces::msg::LocomotionOption msg;
+        msg.name = option.name;
+        msg.id = option.id;
+        return msg;
+    };
+
+    // Populate gaits
+    for (const auto& gait : gaitConfig.getGaits()) {
+        response->gaits.push_back(toMsg(gait));
+    }
+    // Populate modes
+    for (const auto& mode : gaitConfig.getModes()) {
+        response->modes.push_back(toMsg(mode));
+    }
+}
+
 /*
 @brief Main gait loop - called by timer at fixed rate
 @note This replaces your embedded while(true) loop

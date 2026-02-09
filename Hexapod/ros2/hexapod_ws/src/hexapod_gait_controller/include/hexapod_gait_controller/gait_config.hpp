@@ -14,6 +14,11 @@ namespace hexapod_gait_controller {
 static constexpr int MAX_LEGS = 6;
 static constexpr int MAX_RESOLUTION = 50 + 1; // +1 for inclusive endpoint
 
+struct LocomotionOption {
+    std::string name;
+    uint8_t id;
+};
+
 enum Gait : uint8_t {
     GAIT_TRIPOD,
     GAIT_RIPPLE,
@@ -31,9 +36,21 @@ enum Mode : uint8_t {
 
 class GaitConfig {
 private:
-    
+    const std::vector<LocomotionOption> gaits = {
+        {"tripod", GAIT_TRIPOD},
+        {"ripple", GAIT_RIPPLE},
+        {"wave", GAIT_WAVE}
+    };
+    const std::vector<LocomotionOption> modes = {
+        {"normal", MODE_NORMAL},
+        {"strafe", MODE_STRAFE},
+        {"tilt", MODE_TILT},
+        {"config", MODE_CONFIG}
+    };
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
+    const std::vector<LocomotionOption>& getGaits() const { return gaits; }
+    const std::vector<LocomotionOption>& getModes() const { return modes; }
     double currentHeight = -0.12;
     Vector3d homePos {0.15, 0, 0};
     Vector3d startPos {0.15, 0, currentHeight};

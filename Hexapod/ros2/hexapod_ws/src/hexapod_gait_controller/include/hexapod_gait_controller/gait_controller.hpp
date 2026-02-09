@@ -10,6 +10,8 @@
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
+#include "hexapod_interfaces/srv/get_capabilities.hpp"
+#include "hexapod_interfaces/msg/locomotion_option.hpp"
 
 using namespace hexapod_gait_controller;
 
@@ -18,6 +20,7 @@ using sensor_msgs::msg::JointState;
 using hexapod_interfaces::srv::SetGait;
 using hexapod_interfaces::srv::SetMode;
 using hexapod_interfaces::srv::SetHeight;
+using hexapod_interfaces::srv::GetCapabilities;
 using Eigen::Vector3d;
 using std::placeholders::_1;
 using std::placeholders::_2;
@@ -39,6 +42,7 @@ public:
         set_gait_service = this->create_service<SetGait>("set_gait", std::bind(&GaitController::setGaitCallback, this, _1, _2));
         set_mode_service = this->create_service<SetMode>("set_mode", std::bind(&GaitController::setModeCallback, this, _1, _2));
         set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
+        get_capabilities_service = this->create_service<GetCapabilities>("get_capabilities", std::bind(&GaitController::getCapabilitiesCallback, this, _1, _2));
         
         double loop_rate_hz = 50.0;
         gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
@@ -53,7 +57,7 @@ private:
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
     rclcpp::Service<SetMode>::SharedPtr set_mode_service;
     rclcpp::Service<SetHeight>::SharedPtr set_height_service;
-
+    rclcpp::Service<GetCapabilities>::SharedPtr get_capabilities_service;
     TrajectoryGenerator trajectoryGen;
     GaitConfig gaitConfig;
     KinematicSolver ikSolver;
@@ -85,6 +89,7 @@ public:
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
+    void getCapabilitiesCallback(const std::shared_ptr<GetCapabilities::Request> request, std::shared_ptr<GetCapabilities::Response> response);
     void gaitTimerCallback();
     void home();
     void startup();
