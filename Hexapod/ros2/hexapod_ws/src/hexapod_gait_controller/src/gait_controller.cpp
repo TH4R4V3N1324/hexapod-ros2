@@ -109,13 +109,11 @@ void GaitController::gaitTimerCallback() {
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
             current_motion_intent.lateral = filtered_cmd_vel.linear.y;
             current_motion_intent.yaw = filtered_cmd_vel.angular.z;
-            Strafe();
             break;
         case Mode::MODE_NORMAL:
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
             current_motion_intent.lateral = 0.0;
             current_motion_intent.yaw = filtered_cmd_vel.linear.y;
-            Normal();
             break;
         case Mode::MODE_CONFIG:
             // TODO: Configuration mode handling
@@ -128,6 +126,7 @@ void GaitController::gaitTimerCallback() {
             RCLCPP_WARN(this->get_logger(), "Invalid or unimplemented mode");
             break;
     }
+    walk();
 }
 
 /*
@@ -310,7 +309,6 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
     joint_state_msg.position.reserve(18);
     
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        int swingSize = trajectoryGen.gaitState.swingSizes[legNum];
         int stanceSize = trajectoryGen.gaitState.stanceSizes[legNum];
         
         // Get target position for this leg
@@ -477,17 +475,17 @@ bool GaitController::HandleIdleReturn() {
     constexpr double DEADZONE = 0.01;
 
     // Check if motion intent is idle (mode-aware)
-    bool stickIdle = (std::abs(current_motion_intent.forward) < DEADZONE &&
+    bool idle = (std::abs(current_motion_intent.forward) < DEADZONE &&
                       std::abs(current_motion_intent.lateral) < DEADZONE &&
                       std::abs(current_motion_intent.yaw) < DEADZONE);
 
     // Track if we've ever moved (received non-zero command and started stepping)
-    if (!stickIdle && step > 0) {
+    if (!idle && step > 0) {
         hasMovedFromStart = true;
         returnCompleted = false;  // Reset since we're moving again
     }
 
-    if (stickIdle) {
+    if (idle) {
         idleCount++;
     } else {
         idleCount = 0;
@@ -509,21 +507,20 @@ bool GaitController::HandleIdleReturn() {
         returnToStart();
         idleCount = 0;
     }
-    return stickIdle; // Return whether stick is idle
+    return idle; // Return whether stick is idle
 }
 
 /*
-@brief Handles the strafing motion of the hexapod
-@note This mode uses all cmd_vel components:
-      - linear.x: forward/backward
-      - linear.y: lateral (strafe left/right)
-      - angular.z: rotation (turning)
+@brief Handles walking motion of the hexapod
+@note The direction of movement is determined by the current_motion_intent, 
+@note which is updated from cmd_vel in the timer callback based on the current mode. 
+@note This allows for dynamic switching between different control schemes (e.g. strafing vs normal) while maintaining a consistent gait generation logic.
 */
-void GaitController::Strafe() {
+void GaitController::walk() {
     double liftHeight = 0.020;  // meters (20mm)
 
-    // Check if stick is idle
-    bool stickIdle = HandleIdleReturn();
+    // Check if velocity is idle
+    bool velocityIdle = HandleIdleReturn();
     if (idleReturning) return;
 
     // Ensure gait config is set
@@ -562,57 +559,5 @@ void GaitController::Strafe() {
         );
     }
     // Move all legs for this step
-    PerformLegStep(stickIdle, MAX_RESOLUTION-1);
-}
-
-/*
-@brief Handles the normal walking motion of the hexapod (car-like steering)
-@note In this mode:
-      - linear.x: forward/backward (left stick Y)
-      - linear.y: turning (left stick X) - remapped to rotation
-*/
-void GaitController::Normal() {
-    double liftHeight = 0.020;  // meters (20mm)
-
-    // Check if stick is idle
-    bool stickIdle = HandleIdleReturn();
-    if (idleReturning) return;
-
-    // Ensure gait config is set
-    trajectoryGen.EnsureGaitConfig();
-
-    if (shouldRegenerateTrajectory()) {
-        retargetSwingSplines();
-        trajectory_motion_intent = current_motion_intent;
-    }
-
-    // Calculate stride multiplier safely
-    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
-
-    // Generate trajectories at the start of each phase
-    if (step == 0) {
-        trajectory_motion_intent = current_motion_intent;
-        trajectoryGen.GenerateTrajectories(
-            liftHeight,
-            MAX_RESOLUTION-1,
-            // Swing target - use Twist-based direction
-            [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, false);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
-                return targetPos;
-            },
-            // Stance target - use Twist-based direction (inverted)
-            [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, true);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
-                return targetPos;
-            },
-            current_leg_positions,
-            phase
-        );
-    }
-    // Move all legs for this step
-    PerformLegStep(stickIdle, MAX_RESOLUTION-1);
+    PerformLegStep(velocityIdle, MAX_RESOLUTION-1);
 }

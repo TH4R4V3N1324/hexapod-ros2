@@ -93,8 +93,7 @@ public:
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
-    void Strafe();
-    void Normal();
+    void walk();
 };
 
 #endif // HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP
