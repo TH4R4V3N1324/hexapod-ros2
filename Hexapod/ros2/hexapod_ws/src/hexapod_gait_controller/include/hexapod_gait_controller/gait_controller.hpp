@@ -22,6 +22,12 @@ using Eigen::Vector3d;
 using std::placeholders::_1;
 using std::placeholders::_2;
 
+struct MotionIntent {
+    double forward;
+    double lateral;
+    double yaw;
+};
+
 class GaitController : public rclcpp::Node { 
 public: 
     GaitController() : Node("gait_controller") {
@@ -60,6 +66,8 @@ private:
     Twist filtered_cmd_vel;
     Twist trajectory_cmd_vel;
     JointState latest_joint_states;
+    MotionIntent current_motion_intent;
+    MotionIntent trajectory_motion_intent;
     
     bool has_joint_states = false;
     bool positions_initialized = false;

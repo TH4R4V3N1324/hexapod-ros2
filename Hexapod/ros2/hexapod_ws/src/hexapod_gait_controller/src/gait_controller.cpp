@@ -11,6 +11,14 @@ int main(int argc, char **argv){
 void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
     last_cmd_vel = *msg;
 
+    const bool stop_command =
+        msg->linear.x == 0.0 && msg->linear.y == 0.0 && msg->linear.z == 0.0 &&
+        msg->angular.x == 0.0 && msg->angular.y == 0.0 && msg->angular.z == 0.0;
+    if (stop_command) {
+        filtered_cmd_vel = *msg;
+        return;
+    }
+
     // Smoothing factor - higher = faster response (0.5 = ~2 cycles to reach target)
     constexpr double alpha = 0.5;
 
@@ -98,9 +106,15 @@ void GaitController::gaitTimerCallback() {
 
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
+            current_motion_intent.forward = filtered_cmd_vel.linear.x;
+            current_motion_intent.lateral = filtered_cmd_vel.linear.y;
+            current_motion_intent.yaw = filtered_cmd_vel.angular.z;
             Strafe();
             break;
         case Mode::MODE_NORMAL:
+            current_motion_intent.forward = filtered_cmd_vel.linear.x;
+            current_motion_intent.lateral = 0.0;
+            current_motion_intent.yaw = filtered_cmd_vel.linear.y;
             Normal();
             break;
         case Mode::MODE_CONFIG:
@@ -213,13 +227,13 @@ void GaitController::startup() {
 @return true if trajectory should be regenerated
 */
 bool GaitController::shouldRegenerateTrajectory() {
-    double dx = std::abs(filtered_cmd_vel.linear.x - trajectory_cmd_vel.linear.x);
-    double dy = std::abs(filtered_cmd_vel.linear.y - trajectory_cmd_vel.linear.y);
-    double dz = std::abs(filtered_cmd_vel.angular.z - trajectory_cmd_vel.angular.z);
+    double df = std::abs(current_motion_intent.forward - trajectory_motion_intent.forward);
+    double dl = std::abs(current_motion_intent.lateral - trajectory_motion_intent.lateral);
+    double dy = std::abs(current_motion_intent.yaw - trajectory_motion_intent.yaw);
 
-    return (dx > CMD_VEL_CHANGE_THRESHOLD ||
-            dy > CMD_VEL_CHANGE_THRESHOLD ||
-            dz > CMD_VEL_CHANGE_THRESHOLD);
+    return (df > CMD_VEL_CHANGE_THRESHOLD ||
+            dl > CMD_VEL_CHANGE_THRESHOLD ||
+            dy > CMD_VEL_CHANGE_THRESHOLD);
 }
 
 void GaitController::retargetSwingSplines() {
@@ -244,15 +258,15 @@ void GaitController::retargetSwingSplines() {
 
         // Compute new target using current cmd_vel
         Vector3d forwardPos = trajectoryGen.linearTarget(
-            filtered_cmd_vel.linear.x,
-            filtered_cmd_vel.linear.y,
+            current_motion_intent.forward,
+            current_motion_intent.lateral,
             currentPos,
             legNum,
             false
         );
 
         Vector3d rotationPos = trajectoryGen.rotationalTarget(
-            filtered_cmd_vel.angular.z,
+            current_motion_intent.yaw,
             currentPos,
             legNum,
             false
@@ -462,13 +476,10 @@ bool GaitController::HandleIdleReturn() {
     // Use a small deadzone to avoid floating point comparison issues
     constexpr double DEADZONE = 0.01;
 
-    // Check if stick is idle (within deadzone)
-    bool stickIdle = (std::abs(last_cmd_vel.linear.x) < DEADZONE &&
-                      std::abs(last_cmd_vel.linear.y) < DEADZONE &&
-                      std::abs(last_cmd_vel.linear.z) < DEADZONE &&
-                      std::abs(last_cmd_vel.angular.x) < DEADZONE &&
-                      std::abs(last_cmd_vel.angular.y) < DEADZONE &&
-                      std::abs(last_cmd_vel.angular.z) < DEADZONE);
+    // Check if motion intent is idle (mode-aware)
+    bool stickIdle = (std::abs(current_motion_intent.forward) < DEADZONE &&
+                      std::abs(current_motion_intent.lateral) < DEADZONE &&
+                      std::abs(current_motion_intent.yaw) < DEADZONE);
 
     // Track if we've ever moved (received non-zero command and started stepping)
     if (!stickIdle && step > 0) {
@@ -520,7 +531,7 @@ void GaitController::Strafe() {
 
     if (shouldRegenerateTrajectory()) {
         retargetSwingSplines();
-        trajectory_cmd_vel = filtered_cmd_vel;
+        trajectory_motion_intent = current_motion_intent;
     }
 
     // Calculate stride multiplier safely
@@ -528,21 +539,21 @@ void GaitController::Strafe() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        trajectory_cmd_vel = filtered_cmd_vel;
+        trajectory_motion_intent = current_motion_intent;
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, false);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, false);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.angular.z, currentPos, legNum, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, true);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
                 return targetPos;
             },
@@ -572,7 +583,7 @@ void GaitController::Normal() {
 
     if (shouldRegenerateTrajectory()) {
         retargetSwingSplines();
-        trajectory_cmd_vel = filtered_cmd_vel;
+        trajectory_motion_intent = current_motion_intent;
     }
 
     // Calculate stride multiplier safely
@@ -580,21 +591,21 @@ void GaitController::Normal() {
 
     // Generate trajectories at the start of each phase
     if (step == 0) {
-        trajectory_cmd_vel = filtered_cmd_vel;
+        trajectory_motion_intent = current_motion_intent;
         trajectoryGen.GenerateTrajectories(
             liftHeight,
             MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, false);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, false);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(filtered_cmd_vel.linear.x, 0.0, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(filtered_cmd_vel.linear.y, currentPos, legNum, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, true);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
                 return targetPos;
             },
