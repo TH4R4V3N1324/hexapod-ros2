@@ -2,6 +2,8 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
 #include "hexapod_interfaces/msg/locomotion_option.hpp"
+#include "hexapod_interfaces/srv/set_mode.hpp"
+#include "hexapod_interfaces/srv/set_gait.hpp"
 
 #include <iostream>
 #include <sys/select.h>
@@ -9,17 +11,24 @@
 #include <unistd.h>
 
 using geometry_msgs::msg::Twist;
+using hexapod_interfaces::srv::GetCapabilities;
+using hexapod_interfaces::srv::SetMode;
+using hexapod_interfaces::srv::SetGait;
 
 class KeyboardTeleop : public rclcpp::Node {public: KeyboardTeleop() : Node("keyboard_teleop") {
   	RCLCPP_INFO(this->get_logger(), "Keyboard Teleop Node has been started.");
   	cmd_vel_pub = this->create_publisher<Twist>("cmd_vel", 10);
-  	get_capabilities_client = this->create_client<hexapod_interfaces::srv::GetCapabilities>("get_capabilities");
+  	get_capabilities_client = this->create_client<GetCapabilities>("get_capabilities");
+	set_mode_client = this->create_client<SetMode>("set_mode");
+	set_gait_client = this->create_client<SetGait>("set_gait");
 
 	fetchCapabilities();
 }
 private:
   	rclcpp::Publisher<Twist>::SharedPtr cmd_vel_pub;
-  	rclcpp::Client<hexapod_interfaces::srv::GetCapabilities>::SharedPtr get_capabilities_client;
+  	rclcpp::Client<GetCapabilities>::SharedPtr get_capabilities_client;
+	rclcpp::Client<SetMode>::SharedPtr set_mode_client;
+	rclcpp::Client<SetGait>::SharedPtr set_gait_client;
 	std::vector<hexapod_interfaces::msg::LocomotionOption> available_gaits;
 	std::vector<hexapod_interfaces::msg::LocomotionOption> available_modes;
 	size_t current_gait_index = 0;
@@ -108,13 +117,41 @@ void KeyboardTeleop::userInputLoop() {
 		if (!available_gaits.empty()) {
 			current_gait_index = (current_gait_index + 1) % available_gaits.size();
 			const auto& gait = available_gaits[current_gait_index];
-			RCLCPP_INFO(this->get_logger(), "Selected gait: [%d] %s", gait.id, gait.name.c_str());
+			auto request = std::make_shared<SetGait::Request>();
+			request->gait = gait.id;
+			auto result_future = set_gait_client->async_send_request(request);
+			if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) ==
+				rclcpp::FutureReturnCode::SUCCESS)
+			{
+				auto response = result_future.get();
+				if (response->success) {
+					RCLCPP_INFO(this->get_logger(), "Selected gait: [%d] %s", gait.id, gait.name.c_str());
+				} else {
+					RCLCPP_WARN(this->get_logger(), "Failed to set gait");
+				}
+			} else {
+				RCLCPP_ERROR(this->get_logger(), "Failed to call SetGait service");
+			}
 		}
 	} else if (key == 'm') {
 		if (!available_modes.empty()) {
 			current_mode_index = (current_mode_index + 1) % available_modes.size();
 			const auto& mode = available_modes[current_mode_index];
-			RCLCPP_INFO(this->get_logger(), "Selected mode: [%d] %s", mode.id, mode.name.c_str());
+			auto request = std::make_shared<SetMode::Request>();
+			request->mode = mode.id;
+			auto result_future = set_mode_client->async_send_request(request);
+			if (rclcpp::spin_until_future_complete(this->get_node_base_interface(), result_future) ==
+				rclcpp::FutureReturnCode::SUCCESS)
+			{
+				auto response = result_future.get();
+				if (response->success) {
+					RCLCPP_INFO(this->get_logger(), "Selected mode: [%d] %s", mode.id, mode.name.c_str());
+				} else {
+					RCLCPP_WARN(this->get_logger(), "Failed to set mode");
+				}
+			} else {
+				RCLCPP_ERROR(this->get_logger(), "Failed to call SetMode service");
+			}
 		}
     } else if (key == 'c') {
         RCLCPP_INFO(this->get_logger(), "Exiting...");
