@@ -9,11 +9,13 @@ endif()
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(hexapod_interfaces REQUIRED)
 
 add_executable(keyboard_teleop src/keyboard_teleop.cpp)
 ament_target_dependencies(keyboard_teleop
   rclcpp
   geometry_msgs
+  hexapod_interfaces
 )
 
 install(TARGETS
