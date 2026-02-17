@@ -167,7 +167,7 @@
   </transmission>
 
   <!-- TIBIA TRANSMISSION -->
-  <transmission name="${name}_tibia _trans">
+  <transmission name="${name}_tibia_trans">
     <type>transmission_interface/SimpleTransmission</type>
     <joint name="${name}_tibia_joint">
       <hardwareInterface>PositionJointInterface</hardwareInterface>
