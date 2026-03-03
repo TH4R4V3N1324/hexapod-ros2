@@ -1,0 +1,4 @@
+# GetCapabilities.srv
+---
+LocomotionOption[] modes
+LocomotionOption[] gaits

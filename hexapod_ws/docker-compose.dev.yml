@@ -1,0 +1,18 @@
+services:
+  hexapod:
+    build: 
+      context: .
+      args:
+        ROS_IMAGE: osrf/ros:humble-desktop-full
+        INSTALL_DEV_TOOLS: "true"
+    container_name: hexapod_ros2_dev
+    network_mode: host
+    stdin_open: true
+    tty: true
+    volumes:
+      - .:/hexapod_ws
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=${DISPLAY}
+      - QT_X11_NO_MITSHM=1
+    command: bash

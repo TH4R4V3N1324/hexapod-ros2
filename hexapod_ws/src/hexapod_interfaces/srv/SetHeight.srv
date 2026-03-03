@@ -1,0 +1,6 @@
+# Request
+float64 height  # Desired height in meters, e.g., 0.1 for 10 cm, -0.1 for 10 cm lower
+---
+# Response
+bool success
+string message

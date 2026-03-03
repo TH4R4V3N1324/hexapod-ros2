@@ -1,0 +1,7 @@
+services:
+  hexapod:
+    build: .
+    container_name: hexapod_ros2
+    restart: unless-stopped
+    network_mode: host
+    privileged: true
