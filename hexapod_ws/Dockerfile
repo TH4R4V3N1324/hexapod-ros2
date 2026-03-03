@@ -3,6 +3,9 @@ ARG INSTALL_DEV_TOOLS=false
 
 FROM ${ROS_IMAGE}
 
+ARG INSTALL_DEV_TOOLS
+ENV INSTALL_DEV_TOOLS=${INSTALL_DEV_TOOLS}
+
 SHELL ["/bin/bash", "-c"]
 
 # Install runtime dependencies
