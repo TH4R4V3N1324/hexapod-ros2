@@ -4,7 +4,7 @@ services:
       context: .
       args:
         ROS_IMAGE: osrf/ros:humble-desktop-full
-        INSTALL_DEV_TOOLS: "true"
+        INSTALL_DEV_TOOLS: true
     container_name: hexapod_ros2_dev
     network_mode: host
     stdin_open: true
