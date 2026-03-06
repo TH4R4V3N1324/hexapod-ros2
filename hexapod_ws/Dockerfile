@@ -19,6 +19,7 @@ RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     apt-get update && apt-get install -y \
     ros-humble-gazebo-ros-pkgs \
     ros-humble-joint-state-publisher-gui \
+    ros-humble-joy \
     terminator \
     && rm -rf /var/lib/apt/lists/*; \
 fi

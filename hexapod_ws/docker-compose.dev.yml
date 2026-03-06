@@ -7,11 +7,16 @@ services:
         INSTALL_DEV_TOOLS: true
     container_name: hexapod_ros2_dev
     network_mode: host
+    ipc: host
+    privileged: true
     stdin_open: true
     tty: true
+    devices:
+      - /dev/input:/dev/input
     volumes:
       - .:/hexapod_ws
       - /tmp/.X11-unix:/tmp/.X11-unix
+      - ${XAUTHORITY:-~/.Xauthority}:/root/.Xauthority:ro
     environment:
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
