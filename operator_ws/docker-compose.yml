@@ -4,6 +4,6 @@ services:
     privileged: true
     network_mode: host
     environment:
-      - ROS_DOMAIN_ID=42
+      - ROS_DOMAIN_ID=0
     volumes:
       - /dev/input:/dev/input
