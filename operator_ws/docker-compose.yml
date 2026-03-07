@@ -1,9 +1,9 @@
 services:
   operator:
+    container_name: hexapod_operator
     build: .
     privileged: true
     network_mode: host
-    environment:
-      - ROS_DOMAIN_ID=0
-    volumes:
+    ipc: host
+    devices:
       - /dev/input:/dev/input
