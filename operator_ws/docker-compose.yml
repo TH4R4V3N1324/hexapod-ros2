@@ -1,0 +1,9 @@
+services:
+  operator:
+    build: .
+    privileged: true
+    network_mode: host
+    environment:
+      - ROS_DOMAIN_ID=42
+    volumes:
+      - /dev/input:/dev/input

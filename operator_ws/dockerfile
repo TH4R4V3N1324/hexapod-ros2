@@ -1,0 +1,14 @@
+FROM ros:humble-ros-base
+
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && apt-get install -y \
+    ros-humble-joy \
+    ros-humble-foxglove-bridge \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY . /operator_ws
+WORKDIR /operator_ws
+RUN . /opt/ros/humble/setup.sh && colcon build
+
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /operator_ws/install/setup.bash && ros2 launch operator_bringup foxglove.launch.py"]
