@@ -21,10 +21,10 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description}]
     )
 
-    esp_bridge_fake_node = Node(
+    hardware_interface_fake_node = Node(
         package='hexapod_hardware_interface',
-        executable='esp_bridge_fake',
-        name='esp32_bridge',
+        executable='hardware_interface_fake',
+        name='hardware_interface_fake',
         output='screen',
         parameters=[{
             'publish_rate': 100.0,
@@ -48,7 +48,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         robot_state_publisher_node,
-        esp_bridge_fake_node,
+        hardware_interface_fake_node,
         rviz2_node,
         hexapod_gait_controller
     ])

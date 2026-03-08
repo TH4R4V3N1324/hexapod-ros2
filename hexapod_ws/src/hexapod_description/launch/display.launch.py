@@ -19,8 +19,8 @@ def generate_launch_description():
         ),
         Node(
             package='hexapod_hardware_interface',
-            executable='esp_bridge_fake',
-            name='esp32_bridge',
+            executable='hardware_interface_fake',
+            name='hardware_interface_fake',
             output='screen',
             parameters=[{
                 'publish_rate': 100.0,

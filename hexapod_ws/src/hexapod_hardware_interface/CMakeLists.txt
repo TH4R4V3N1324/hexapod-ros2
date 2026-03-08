@@ -27,9 +27,9 @@ ament_target_dependencies(hardware_handlers
     hexapod_interfaces
 )
 
-add_executable(esp_bridge_fake src/esp_bridge_fake.cpp)
-target_link_libraries(esp_bridge_fake hardware_handlers)
-ament_target_dependencies(esp_bridge_fake
+add_executable(hardware_interface_fake src/hardware_interface_fake.cpp)
+target_link_libraries(hardware_interface_fake hardware_handlers)
+ament_target_dependencies(hardware_interface_fake
     rclcpp
     sensor_msgs
     geometry_msgs
@@ -43,7 +43,7 @@ install(TARGETS
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS esp_bridge_fake DESTINATION lib/${PROJECT_NAME}/)
+install(TARGETS hardware_interface_fake DESTINATION lib/${PROJECT_NAME}/)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 

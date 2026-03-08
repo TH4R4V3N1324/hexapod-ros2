@@ -5,9 +5,9 @@
 
 using namespace hexapod_hardware_interface;
 
-class EspBridgeFake : public rclcpp::Node {
+class HardwareInterfaceFake : public rclcpp::Node {
 public:
-    EspBridgeFake() : Node("esp_bridge_fake") {
+    HardwareInterfaceFake() : Node("hardware_interface_fake") {
         // Declare parameters
         declare_parameter("publish_rate", 100.0);
         double rate = get_parameter("publish_rate").as_double();
@@ -19,9 +19,9 @@ public:
         
         // Timer for main loop
         auto period = std::chrono::duration<double>(1.0 / rate);
-        timer = create_wall_timer(std::chrono::duration_cast<std::chrono::milliseconds>(period), std::bind(&EspBridgeFake::mainLoop, this));
+        timer = create_wall_timer(std::chrono::duration_cast<std::chrono::milliseconds>(period), std::bind(&HardwareInterfaceFake::mainLoop, this));
         
-        RCLCPP_INFO(get_logger(), "Fake ESP32 Bridge started (%.1f Hz)", rate);
+        RCLCPP_INFO(get_logger(), "Fake hardware interface started (%.1f Hz)", rate);
     }
 
 private:
@@ -50,7 +50,7 @@ private:
 
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<EspBridgeFake>());
+    rclcpp::spin(std::make_shared<HardwareInterfaceFake>());
     rclcpp::shutdown();
     return 0;
 }
