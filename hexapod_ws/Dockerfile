@@ -48,4 +48,4 @@ RUN echo "source /opt/ros/humble/setup.bash" >> /root/.bashrc
 RUN echo "source /hexapod_ws/install/setup.bash" >> /root/.bashrc
 
 # Auto start
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /hexapod_ws/install/setup.bash && ros2 launch hexapod_bringup hexapod_simulation.launch.py"]
+CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /hexapod_ws/install/setup.bash && ros2 launch hexapod_bringup hexapod_fake.launch.py"]
