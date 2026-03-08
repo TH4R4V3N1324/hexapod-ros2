@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Start ROS2 nodes
-docker compose up --build
+docker compose up --build -d
 
 # Wait for foxglove_bridge websocket port to come up.
 for i in {1..30}; do
