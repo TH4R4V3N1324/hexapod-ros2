@@ -1,7 +1,6 @@
 #include <rclcpp/rclcpp.hpp>
 #include "hexapod_hardware_interface/sensor_handler.hpp"
 #include "hexapod_hardware_interface/servo_handler.hpp"
-#include "hexapod_hardware_interface/controller_handler.hpp"
 
 using namespace hexapod_hardware_interface;
 
@@ -15,7 +14,6 @@ public:
         // Create handlers
         sensor_handler = std::make_unique<SensorHandler>(this);
         servo_handler = std::make_unique<ServoHandler>(this);
-        controller_handler = std::make_unique<ControllerHandler>(this);
         
         // Timer for main loop
         auto period = std::chrono::duration<double>(1.0 / rate);
@@ -35,16 +33,10 @@ private:
         servo_handler->publishJointStates(timestamp);
         sensor_handler->publishFakeData(timestamp);
         
-        // Publish controller input occasionally (to avoid spam)
-        static int counter = 0;
-        if (++counter % 50 == 0) {  // 2Hz
-            controller_handler->publishFakeData(timestamp);
-        }
     }
     
     std::unique_ptr<SensorHandler> sensor_handler;
     std::unique_ptr<ServoHandler> servo_handler;
-    std::unique_ptr<ControllerHandler> controller_handler;
     rclcpp::TimerBase::SharedPtr timer;
 };
 
