@@ -35,6 +35,15 @@ ament_target_dependencies(hardware_interface_fake
     hexapod_interfaces
 )
 
+add_executable(hardware_interface src/hardware_interface.cpp)
+target_link_libraries(hardware_interface hardware_handlers)
+ament_target_dependencies(hardware_interface
+    rclcpp
+    sensor_msgs
+    geometry_msgs
+    hexapod_interfaces
+)
+
 install(TARGETS
   hardware_handlers
   ARCHIVE DESTINATION lib
@@ -42,7 +51,7 @@ install(TARGETS
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS hardware_interface_fake DESTINATION lib/${PROJECT_NAME}/)
+install(TARGETS hardware_interface_fake hardware_interface DESTINATION lib/${PROJECT_NAME}/)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
 
