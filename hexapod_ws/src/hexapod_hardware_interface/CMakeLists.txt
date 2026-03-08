@@ -17,7 +17,6 @@ include_directories(include)
 add_library(hardware_handlers SHARED
     src/sensor_handler.cpp
     src/servo_handler.cpp
-    src/controller_handler.cpp
 )
 
 ament_target_dependencies(hardware_handlers
