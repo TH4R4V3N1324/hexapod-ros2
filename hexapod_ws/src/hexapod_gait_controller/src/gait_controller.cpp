@@ -87,6 +87,10 @@ void GaitController::setHeightCallback(
     RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
 }
 
+
+/*
+@brief Service callback to report supported gaits and modes
+*/
 void GaitController::getCapabilitiesCallback(
     const std::shared_ptr<GetCapabilities::Request> request,
     std::shared_ptr<GetCapabilities::Response> response
@@ -106,6 +110,9 @@ void GaitController::getCapabilitiesCallback(
     for (const auto& mode : gaitConfig.getModes()) {
         response->modes.push_back(toMsg(mode));
     }
+
+    response->max_linear_vel = gaitConfig.max_velocity;
+    response->max_angular_vel = gaitConfig.max_angular_velocity;
 }
 
 /*
