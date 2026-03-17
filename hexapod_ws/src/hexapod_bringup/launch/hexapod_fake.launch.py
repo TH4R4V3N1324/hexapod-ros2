@@ -44,9 +44,17 @@ def generate_launch_description():
         output='screen',
     )
 
+    controller_teleop_node = Node(
+        package='hexapod_teleop',
+        executable='controller_teleop',
+        name='controller_teleop',
+        output='screen',
+    )
+
     return LaunchDescription([
         robot_state_publisher_node,
         hardware_interface_fake_node,
         hexapod_gait_controller,
-        foxglove_bridge_node
+        foxglove_bridge_node,
+        controller_teleop_node,
     ])
