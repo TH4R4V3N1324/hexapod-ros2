@@ -5,8 +5,6 @@
   <xacro:property name="femur_length" value="0.1"/>
   <xacro:property name="tibia_length" value="0.15"/>
   <xacro:property name="femur_z_offset" value="0.0106"/>
-  <xacro:property name="mesh_up_correction_rpy" value="-1.5708 0 0"/>
-  <xacro:property name="mesh_up_correction_with_yaw_rpy" value="-1.5708 0 1.5708"/>
 
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
@@ -20,14 +18,12 @@
   <!-- ================= BASE ================= -->
   <link name="base_link">
     <visual>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_rpy}"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_rpy}"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
       </geometry>
@@ -45,14 +41,14 @@
   <!-- COXA -->
   <link name="${name}_coxa">
     <visual>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/coxa.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/coxa.dae" scale="0.01 0.01 0.01"/>
       </geometry>
@@ -67,14 +63,14 @@
   <!-- FEMUR -->
   <link name="${name}_femur">
     <visual>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/femur.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/femur.dae" scale="0.01 0.01 0.01"/>
       </geometry>
@@ -89,14 +85,14 @@
   <!-- TIBIA -->
   <link name="${name}_tibia">
     <visual>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/tibia.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
-      <origin xyz="0 0 0" rpy="${mesh_up_correction_with_yaw_rpy}"/>
+      <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
         <mesh filename="package://hexapod_description/meshes/tibia.dae" scale="0.01 0.01 0.01"/>
       </geometry>
