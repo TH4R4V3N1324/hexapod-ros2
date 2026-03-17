@@ -24,11 +24,6 @@ RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     && rm -rf /var/lib/apt/lists/*; \
 fi
 
-# Setup ROS 2 sources and keys
-RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
-RUN sh -c 'echo "deb http://packages.ros.org/ros2/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/ros2-latest.list'
-RUN apt-get update
-
 # Initialize rosdep and update
 RUN rosdep init || true
 RUN rosdep update
@@ -37,8 +32,13 @@ RUN rosdep update
 WORKDIR /hexapod_ws
 COPY src ./src
 
-# Install dependencies 
-RUN source /opt/ros/humble/setup.bash && rosdep install --from-paths src --ignore-src -r -y
+# Install dependencies.
+# Refresh apt metadata immediately before rosdep to avoid stale package URLs (404s).
+RUN source /opt/ros/humble/setup.bash && \
+    apt-get update && \
+    rosdep update && \
+    rosdep install --from-paths src --ignore-src -r -y --rosdistro humble && \
+    rm -rf /var/lib/apt/lists/*
 
 # Build the workspace
 RUN source /opt/ros/humble/setup.bash && colcon build --symlink-install --cmake-args -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
