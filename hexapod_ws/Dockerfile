@@ -13,6 +13,7 @@ RUN apt-get update && apt-get install -y \
     ros-humble-robot-state-publisher \
     python3-colcon-common-extensions \
     python3-rosdep \
+    ros-humble-foxglove-bridge \
     && rm -rf /var/lib/apt/lists/*
 
 RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
@@ -20,6 +21,7 @@ RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     ros-humble-gazebo-ros-pkgs \
     ros-humble-joint-state-publisher-gui \
     ros-humble-joy \
+    ros-humble-foxglove-bridge \
     terminator \
     && rm -rf /var/lib/apt/lists/*; \
 fi

@@ -37,8 +37,16 @@ def generate_launch_description():
         output='screen',
     )
 
+    foxglove_bridge_node = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen',
+    )
+
     return LaunchDescription([
         robot_state_publisher_node,
         hardware_interface_fake_node,
-        hexapod_gait_controller
+        hexapod_gait_controller,
+        foxglove_bridge_node
     ])

@@ -19,13 +19,13 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/body.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/body.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/body.dae" scale="0.01 0.01 0.01"/>
       </geometry>
     </collision>
     <inertial>
@@ -43,14 +43,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/coxa.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/coxa.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/coxa.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/coxa.dae" scale="0.01 0.01 0.01"/>
       </geometry>
     </collision>
     <inertial>
@@ -65,14 +65,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/femur.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/femur.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/femur.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/femur.dae" scale="0.01 0.01 0.01"/>
       </geometry>
     </collision>
     <inertial>
@@ -87,14 +87,14 @@
     <visual>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/tibia.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/tibia.dae" scale="0.01 0.01 0.01"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 1.5708"/>
       <geometry>
-        <mesh filename="package://hexapod_description/meshes/tibia.fbx" scale="0.01 0.01 0.01"/>
+        <mesh filename="package://hexapod_description/meshes/tibia.dae" scale="0.01 0.01 0.01"/>
       </geometry>
     </collision>
     <inertial>
