@@ -1,5 +1,7 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
+  <xacro:arg name="controllers_file" default=""/>
+
   <!-- ================= CONSTANTS ================= -->
   <xacro:property name="coxa_length" value="0.0375"/>
   <xacro:property name="femur_length" value="0.1"/>
@@ -222,7 +224,9 @@
   </ros2_control>
 
   <gazebo>
-    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so"/>
+    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+      <parameters>$(arg controllers_file)</parameters>
+    </plugin>
   </gazebo>
 
 </robot>

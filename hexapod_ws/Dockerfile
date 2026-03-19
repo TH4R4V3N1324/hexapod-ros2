@@ -19,7 +19,12 @@ RUN apt-get update && apt-get install -y \
 RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     apt-get update && apt-get install -y \
     ros-humble-gazebo-ros-pkgs \
+    ros-humble-gazebo-ros2-control \
+    ros-humble-ros2-control \
+    ros-humble-ros2-controllers \
+    ros-humble-joint-state-broadcaster \   
     ros-humble-joint-state-publisher-gui \
+    ros-humble-position-controllers \
     ros-humble-joy \
     ros-humble-foxglove-bridge \
     terminator \
