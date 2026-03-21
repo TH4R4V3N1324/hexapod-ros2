@@ -7,12 +7,24 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+
+add_executable(joint_state_relay src/joint_state_relay.cpp)
+ament_target_dependencies(joint_state_relay
+	rclcpp 
+	sensor_msgs 
+	std_msgs
+)
+
+install (TARGETS joint_state_relay
+	DESTINATION lib/${PROJECT_NAME}
+)
 
 install(
   DIRECTORY 
+	config
   urdf 
   launch
   meshes 
