@@ -13,7 +13,6 @@ RUN apt-get update && apt-get install -y \
     ros-humble-robot-state-publisher \
     python3-colcon-common-extensions \
     python3-rosdep \
-    ros-humble-foxglove-bridge \
     && rm -rf /var/lib/apt/lists/*
 
 RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
@@ -26,7 +25,6 @@ RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     ros-humble-joint-state-publisher-gui \
     ros-humble-position-controllers \
     ros-humble-joy \
-    ros-humble-foxglove-bridge \
     terminator \
     && rm -rf /var/lib/apt/lists/*; \
 fi
@@ -38,6 +36,9 @@ RUN rosdep update
 # Create workspace and copy source code
 WORKDIR /hexapod_ws
 COPY src ./src
+RUN git clone https://github.com/foxglove/foxglove-sdk.git /tmp/foxglove-sdk --depth 1 && \
+    cp -r /tmp/foxglove-sdk/ros/src/foxglove_bridge src/foxglove_bridge && \
+    rm -rf /tmp/foxglove-sdk
 
 # Install dependencies.
 # Refresh apt metadata immediately before rosdep to avoid stale package URLs (404s).
