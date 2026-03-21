@@ -14,7 +14,7 @@ services:
     devices:
       - /dev/input:/dev/input
     volumes:
-      - .:/hexapod_ws
+      - ./src:/hexapod_ws/src
       - /tmp/.X11-unix:/tmp/.X11-unix
       - ${XAUTHORITY:-~/.Xauthority}:/root/.Xauthority:ro
     environment:
