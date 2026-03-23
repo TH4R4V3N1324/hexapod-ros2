@@ -2,7 +2,7 @@
 PORT=8765
 
 # Scan for bridge
-SUBNET=$(ip route | awk '/proto kernel/ {print $1}' | head -1)
+SUBNET=$(ip route | awk '/proto kernel/ && /192\.168/ {print $1}' | head -1)
 BASE=$(echo $SUBNET | cut -d'.' -f1-3)
 
 echo "Scanning $BASE.0/24 for port $PORT..."
