@@ -56,6 +56,14 @@ def generate_launch_description():
         }]
     )
 
+    joint_state_relay = Node(
+        package="hexapod_description",
+        executable="joint_state_relay",
+        parameters=[{
+            'use_sim_time': True
+        }]
+    )
+
     # Replaces gazebo_ros spawn_entity.py
     spawn_entity = Node(
         package='ros_gz_sim',
@@ -101,6 +109,7 @@ def generate_launch_description():
         gz_resource_path,
         gazebo,
         robot_state_publisher,
+        joint_state_relay,
         gz_bridge,
         spawn_entity,
 
