@@ -1,7 +1,10 @@
 from launch import LaunchDescription
+from launch.actions import IncludeLaunchDescription
 from launch_ros.actions import Node
 from launch.substitutions import Command
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from ament_index_python.packages import get_package_share_directory
+from pathlib import Path
 import os
 
 def generate_launch_description():
@@ -21,6 +24,7 @@ def generate_launch_description():
         parameters=[{'robot_description': robot_description}]
     )
 
+    # Create a node to simulate the hardware interface
     hardware_interface_fake_node = Node(
         package='hexapod_hardware_interface',
         executable='hardware_interface_fake',
@@ -31,14 +35,13 @@ def generate_launch_description():
         }]
     )
 
-    rviz2_node = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        output='screen',
-        arguments=['-d', rviz_config_file]
+    # Include the Gazebo simulation launch file
+    gazebo_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([str(Path(pkg_path) / "launch" / "gazebo.launch.py")]),
+        launch_arguments={"use_sim_time": "true"}.items()
     )
 
+    # Create a node for the hexapod gait controller
     hexapod_gait_controller = Node(
         package='hexapod_gait_controller',
         executable='gait_controller',
@@ -49,6 +52,6 @@ def generate_launch_description():
     return LaunchDescription([
         robot_state_publisher_node,
         hardware_interface_fake_node,
-        rviz2_node,
+        gazebo_launch,
         hexapod_gait_controller
     ])
