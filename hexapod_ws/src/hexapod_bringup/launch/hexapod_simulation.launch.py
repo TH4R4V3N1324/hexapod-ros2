@@ -49,6 +49,13 @@ def generate_launch_description():
         output='screen',
     )
 
+    controller_teleop_node = Node(
+        package='hexapod_teleop',
+        executable='controller_teleop',
+        name='controller_teleop',
+        output='screen',
+    )
+
     foxglove_bridge_node = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -61,5 +68,6 @@ def generate_launch_description():
         hardware_interface_fake_node,
         gazebo_launch,
         hexapod_gait_controller,
+        controller_teleop_node,
         foxglove_bridge_node,
     ])
