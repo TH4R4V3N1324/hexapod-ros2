@@ -1,6 +1,9 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <xacro:arg name="controllers_file" default=""/>
+  <xacro:arg name="front_depth_width" default="256"/>
+  <xacro:arg name="front_depth_height" default="144"/>
+  <xacro:arg name="front_depth_rate" default="8"/>
 
   <!-- ================= CONSTANTS ================= -->
   <xacro:property name="coxa_length" value="0.055"/>
@@ -263,12 +266,12 @@
 <gazebo reference="front_depth_camera_link">
   <sensor name="front_depth_camera" type="depth_camera">
     <always_on>true</always_on>
-    <update_rate>30</update_rate>
+    <update_rate>$(arg front_depth_rate)</update_rate>
     <camera>
       <horizontal_fov>1.2043</horizontal_fov>
       <image>
-        <width>640</width>
-        <height>480</height>
+        <width>$(arg front_depth_width)</width>
+        <height>$(arg front_depth_height)</height>
         <format>R8G8B8</format>
       </image>
       <clip>
@@ -354,7 +357,7 @@
 <gazebo reference="lidar_link">
   <sensor name="lidar" type="gpu_lidar">
     <always_on>true</always_on>
-    <update_rate>10</update_rate>
+    <update_rate>20</update_rate>
     <lidar>
       <scan>
         <horizontal>

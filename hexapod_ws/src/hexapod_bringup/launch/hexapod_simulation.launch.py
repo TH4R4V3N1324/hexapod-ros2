@@ -1,44 +1,28 @@
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch_ros.actions import Node
-from launch.substitutions import Command
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 from pathlib import Path
-import os
 
 def generate_launch_description():
-    # Get the path to the URDF file
     pkg_path = get_package_share_directory('hexapod_description')
-    xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod.urdf.xacro')
-    rviz_config_file = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
-
-    robot_description = Command(['xacro ', xacro_file])
-
-    # Create a node to publish the robot state
-    robot_state_publisher_node = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        name='robot_state_publisher',
-        output='screen',
-        parameters=[{'robot_description': robot_description}]
-    )
-
-    # Create a node to simulate the hardware interface
-    hardware_interface_fake_node = Node(
-        package='hexapod_hardware_interface',
-        executable='hardware_interface_fake',
-        name='hardware_interface_fake',
-        output='screen',
-        parameters=[{
-            'publish_rate': 100.0,
-        }]
-    )
+    bridge_vision = LaunchConfiguration('bridge_vision')
+    front_depth_width = LaunchConfiguration('front_depth_width')
+    front_depth_height = LaunchConfiguration('front_depth_height')
+    front_depth_rate = LaunchConfiguration('front_depth_rate')
 
     # Include the Gazebo simulation launch file
     gazebo_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([str(Path(pkg_path) / "launch" / "gazebo.launch.py")]),
-        launch_arguments={"use_sim_time": "true"}.items()
+        launch_arguments={
+            "use_sim_time": "true",
+            "bridge_vision": bridge_vision,
+            "front_depth_width": front_depth_width,
+            "front_depth_height": front_depth_height,
+            "front_depth_rate": front_depth_rate,
+        }.items()
     )
 
     # Create a node for the hexapod gait controller
@@ -64,8 +48,26 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        robot_state_publisher_node,
-        hardware_interface_fake_node,
+        DeclareLaunchArgument(
+            'bridge_vision',
+            default_value='false',
+            description='Bridge camera/depth topics from Gazebo (high bandwidth).'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_width',
+            default_value='256',
+            description='Front depth camera width in pixels.'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_height',
+            default_value='144',
+            description='Front depth camera height in pixels.'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_rate',
+            default_value='8',
+            description='Front depth camera update rate in Hz.'
+        ),
         gazebo_launch,
         hexapod_gait_controller,
         controller_teleop_node,
