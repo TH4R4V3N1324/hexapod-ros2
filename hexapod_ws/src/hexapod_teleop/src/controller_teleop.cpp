@@ -68,11 +68,11 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     cmd_vel_msg.linear.y = raw_linear_y * max_linear_vel;
     cmd_vel_msg.angular.z = raw_angular_z * max_angular_vel;
 
-    RCLCPP_INFO(this->get_logger(), "Received joystick input: axes[0]=%.2f, axes[1]=%.2f, axes[3]=%.2f",
+    /* RCLCPP_INFO(this->get_logger(), "Received joystick input: axes[0]=%.2f, axes[1]=%.2f, axes[3]=%.2f",
                 raw_linear_y, raw_linear_x, raw_angular_z);
 
     RCLCPP_INFO(this->get_logger(), "Publishing cmd_vel: linear.x=%.2f, linear.y=%.2f, angular.z=%.2f",
-                cmd_vel_msg.linear.x, cmd_vel_msg.linear.y, cmd_vel_msg.angular.z);
+                cmd_vel_msg.linear.x, cmd_vel_msg.linear.y, cmd_vel_msg.angular.z); */
 
     cmd_vel_pub->publish(cmd_vel_msg);
 }
