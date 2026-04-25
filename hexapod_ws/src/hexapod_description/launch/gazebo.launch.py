@@ -10,6 +10,7 @@ import os
 
 def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
+    pkg_share_parent = os.path.dirname(pkg_path)
     xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod_primitives.urdf.xacro')
     controllers_file = os.path.join(pkg_path, 'config', 'controllers.yaml')
     world_file = os.path.join(pkg_path, 'worlds', 'hexapod_world.sdf')
@@ -28,6 +29,16 @@ def generate_launch_description():
     gz_plugin_path = SetEnvironmentVariable(
         name='GZ_SIM_SYSTEM_PLUGIN_PATH',
         value='/opt/ros/jazzy/lib'
+    )
+
+    # Ensure Gazebo can resolve model://hexapod_description/... mesh URIs.
+    existing_resource_path = os.environ.get('GZ_SIM_RESOURCE_PATH', '')
+    resource_paths = [pkg_share_parent]
+    if existing_resource_path:
+        resource_paths.append(existing_resource_path)
+    gz_resource_path = SetEnvironmentVariable(
+        name='GZ_SIM_RESOURCE_PATH',
+        value=os.pathsep.join(resource_paths)
     )
 
     # Gazebo Harmonic — replaces gazebo_ros gazebo.launch.py
@@ -87,6 +98,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         gz_plugin_path,
+        gz_resource_path,
         gazebo,
         robot_state_publisher,
         gz_bridge,
