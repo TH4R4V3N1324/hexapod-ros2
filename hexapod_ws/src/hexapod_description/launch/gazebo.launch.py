@@ -1,14 +1,20 @@
 from launch import LaunchDescription
-from launch.actions import SetEnvironmentVariable
+from launch.actions import SetEnvironmentVariable, DeclareLaunchArgument
 from launch.actions import ExecuteProcess, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
+from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch.substitutions import Command
+from launch.substitutions import Command, LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
+    bridge_vision = LaunchConfiguration('bridge_vision')
+    front_depth_width = LaunchConfiguration('front_depth_width')
+    front_depth_height = LaunchConfiguration('front_depth_height')
+    front_depth_rate = LaunchConfiguration('front_depth_rate')
+
     pkg_path = get_package_share_directory('hexapod_description')
     pkg_share_parent = os.path.dirname(pkg_path)
     xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod_primitives.urdf.xacro')
@@ -22,6 +28,15 @@ def generate_launch_description():
             ' ',
             'controllers_file:=',
             controllers_file,
+            ' ',
+            'front_depth_width:=',
+            front_depth_width,
+            ' ',
+            'front_depth_height:=',
+            front_depth_height,
+            ' ',
+            'front_depth_rate:=',
+            front_depth_rate,
         ]),
         value_type=str
     )
@@ -93,18 +108,14 @@ def generate_launch_description():
         output='screen'
     )
 
-    # ros_gz_bridge — replaces your joint_state_relay node
-    # Bridges Gazebo clock to ROS so use_sim_time works
-    gz_bridge = Node(
+    # Bridge core sim topics needed for control and lightweight visualization.
+    gz_bridge_core = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
             '/imu/mag@sensor_msgs/msg/MagneticField[gz.msgs.Magnetometer',
-            '/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
-            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
-            '/front_depth/image@sensor_msgs/msg/Image[gz.msgs.Image',
             '/front_depth/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
             '/front_depth/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             '/front_depth/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
@@ -113,13 +124,47 @@ def generate_launch_description():
         output='screen'
     )
 
+    # High-bandwidth camera/depth bridges are optional to avoid Foxglove/RViz lag.
+    gz_bridge_vision = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        condition=IfCondition(bridge_vision),
+        arguments=[
+            '/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            '/front_depth/image@sensor_msgs/msg/Image[gz.msgs.Image',
+        ],
+        output='screen'
+    )
+
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'bridge_vision',
+            default_value='false',
+            description='Bridge camera/depth topics from Gazebo (high bandwidth).'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_width',
+            default_value='256',
+            description='Front depth camera width in pixels.'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_height',
+            default_value='144',
+            description='Front depth camera height in pixels.'
+        ),
+        DeclareLaunchArgument(
+            'front_depth_rate',
+            default_value='8',
+            description='Front depth camera update rate in Hz.'
+        ),
         gz_plugin_path,
         gz_resource_path,
         gazebo,
         robot_state_publisher,
         joint_state_relay,
-        gz_bridge,
+        gz_bridge_core,
+        gz_bridge_vision,
         spawn_entity,
 
         RegisterEventHandler(

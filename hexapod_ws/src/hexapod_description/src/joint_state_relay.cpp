@@ -17,10 +17,13 @@ class JointStateRelay : public rclcpp::Node
 public:
     JointStateRelay() : Node("joint_state_relay")
     {
+        // Keep only newest command to avoid backlog-induced lag under load.
+        auto qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable();
+
         pub_ = create_publisher<std_msgs::msg::Float64MultiArray>(
-            "/hexapod_joint_controller/commands", 10);
+            "/hexapod_joint_controller/commands", qos);
         sub_ = create_subscription<sensor_msgs::msg::JointState>(
-            "joint_commands", 10,
+            "joint_commands", qos,
             std::bind(&JointStateRelay::cb, this, std::placeholders::_1));
     }
 
