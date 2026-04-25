@@ -99,7 +99,16 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock'
+            '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
+            '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
+            '/imu/mag@sensor_msgs/msg/MagneticField[gz.msgs.Magnetometer',
+            '/camera/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            '/front_depth/image@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/front_depth/depth_image@sensor_msgs/msg/Image[gz.msgs.Image',
+            '/front_depth/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            '/front_depth/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
+            '/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
         ],
         output='screen'
     )
