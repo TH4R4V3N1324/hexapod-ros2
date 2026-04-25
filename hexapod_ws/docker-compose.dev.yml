@@ -3,7 +3,7 @@ services:
     build: 
       context: .
       args:
-        ROS_IMAGE: osrf/ros:humble-desktop-full
+        ROS_IMAGE: osrf/ros:jazzy-desktop-full
         INSTALL_DEV_TOOLS: true
     container_name: hexapod_ros2_dev
     network_mode: host

@@ -201,7 +201,7 @@
 
   <ros2_control name="HexapodHardware" type="system">
     <hardware>
-      <plugin>gazebo_ros2_control/GazeboSystem</plugin>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
     </hardware>
     <xacro:ros2_control_joint joint_name="leg1_coxa_joint"/>
     <xacro:ros2_control_joint joint_name="leg1_femur_joint"/>
@@ -224,7 +224,7 @@
   </ros2_control>
 
   <gazebo>
-    <plugin name="gazebo_ros2_control" filename="libgazebo_ros2_control.so">
+    <plugin name="gz_ros2_control::GazeboSimROS2ControlPlugin" filename="libgz_ros2_control-system.so">
       <parameters>$(arg controllers_file)</parameters>
     </plugin>
   </gazebo>
