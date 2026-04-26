@@ -55,12 +55,12 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'front_depth_width',
-            default_value='256',
+            default_value='640',
             description='Front depth camera width in pixels.'
         ),
         DeclareLaunchArgument(
             'front_depth_height',
-            default_value='144',
+            default_value='480',
             description='Front depth camera height in pixels.'
         ),
         DeclareLaunchArgument(

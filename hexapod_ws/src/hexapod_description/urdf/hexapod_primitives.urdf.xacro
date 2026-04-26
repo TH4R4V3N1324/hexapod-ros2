@@ -1,8 +1,8 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <xacro:arg name="controllers_file" default=""/>
-  <xacro:arg name="front_depth_width" default="256"/>
-  <xacro:arg name="front_depth_height" default="144"/>
+  <xacro:arg name="front_depth_width" default="640"/>
+  <xacro:arg name="front_depth_height" default="480"/>
   <xacro:arg name="front_depth_rate" default="8"/>
 
   <!-- ================= CONSTANTS ================= -->
