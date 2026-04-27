@@ -18,8 +18,6 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-foxglove-bridge \
     ros-jazzy-foxglove-msgs \
     ros-jazzy-xacro \
-    ros-jazzy-pcl-ros \
-    ros-jazzy-topic-tools \
     python3-colcon-common-extensions \
     python3-rosdep \
     && rm -rf /var/lib/apt/lists/*

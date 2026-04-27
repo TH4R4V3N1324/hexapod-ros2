@@ -55,17 +55,17 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'front_depth_width',
-            default_value='640',
+            default_value='320',
             description='Front depth camera width in pixels.'
         ),
         DeclareLaunchArgument(
             'front_depth_height',
-            default_value='480',
+            default_value='240',
             description='Front depth camera height in pixels.'
         ),
         DeclareLaunchArgument(
             'front_depth_rate',
-            default_value='8',
+            default_value='6',
             description='Front depth camera update rate in Hz.'
         ),
         gazebo_launch,
