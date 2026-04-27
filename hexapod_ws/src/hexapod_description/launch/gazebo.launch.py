@@ -108,26 +108,6 @@ def generate_launch_description():
         output='screen'
     )
 
-    pcl_voxel_filter = Node(
-        package='pcl_ros',
-        executable='filter_voxel_grid_node',
-        name='depth_voxel_filter',
-        remappings=[
-            ('input', '/front_depth/points'),
-            ('output', '/front_depth/points_filtered')
-        ],
-        parameters=[{
-            'leaf_size': 0.05,
-        }]
-    )
-
-    depth_throttle = Node(
-        package='topic_tools',
-        executable='throttle',
-        name='depth_throttle',
-        arguments=['messages', '/front_depth/points_filtered', '5', '/front_depth/points_viz'],
-    )
-
     # Bridge core sim topics needed for control and lightweight visualization.
     gz_bridge_core = Node(
         package='ros_gz_bridge',
@@ -185,8 +165,6 @@ def generate_launch_description():
         joint_state_relay,
         gz_bridge_core,
         gz_bridge_vision,
-        pcl_voxel_filter,
-        depth_throttle,
         spawn_entity,
 
         RegisterEventHandler(
