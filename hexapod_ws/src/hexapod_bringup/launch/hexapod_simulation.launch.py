@@ -1,3 +1,4 @@
+import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch_ros.actions import Node
@@ -8,6 +9,7 @@ from pathlib import Path
 
 def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
+    rviz_config = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
     bridge_vision = LaunchConfiguration('bridge_vision')
     front_depth_width = LaunchConfiguration('front_depth_width')
     front_depth_height = LaunchConfiguration('front_depth_height')
@@ -47,6 +49,15 @@ def generate_launch_description():
         output='screen',
     )
 
+    rviz2_node = Node(
+        package='rviz2',
+        executable='rviz2',
+        name='rviz2',
+        output='screen',
+        arguments=['-d', rviz_config],
+        parameters=[{'use_sim_time': True}]
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument(
             'bridge_vision',
@@ -72,4 +83,5 @@ def generate_launch_description():
         hexapod_gait_controller,
         controller_teleop_node,
         foxglove_bridge_node,
+        rviz2_node,
     ])
