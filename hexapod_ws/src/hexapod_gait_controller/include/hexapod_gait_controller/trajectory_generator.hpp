@@ -20,10 +20,8 @@ struct SwingSpline {
 
 struct GaitState {
     std::vector<std::vector<int>> config;
-    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> swingTrajectory;  // 1-based indexing
     std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> stanceTrajectory;
     std::array<SwingSpline, MAX_LEGS + 1> swingSplines;
-    std::array<int, MAX_LEGS + 1> swingSizes{};   // Store actual size for each leg
     std::array<int, MAX_LEGS + 1> stanceSizes{};
 };
 

@@ -177,7 +177,6 @@ void TrajectoryGenerator::GenerateTrajectories(
             stanceGroup.push_back(legNum);
     }
     for (int i = 1; i <= MAX_LEGS; ++i) {
-        gaitState.swingSizes[i] = 0;
         gaitState.stanceSizes[i] = 0;
     }
 
