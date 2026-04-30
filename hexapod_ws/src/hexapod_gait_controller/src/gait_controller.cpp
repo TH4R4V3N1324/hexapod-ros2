@@ -264,7 +264,6 @@ bool GaitController::shouldRegenerateTrajectory() {
 }
 
 void GaitController::retargetSwingSplines() {
-    double liftHeight = 0.020;
     bool anySwingActive = false;
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         if (trajectoryGen.gaitState.swingSplines[legNum].active) {
@@ -412,7 +411,6 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
 */
 void GaitController::returnToStart() {
     static int counter = 0;
-    double liftHeight = 0.020;
 
     // Safety check: phase must be valid
     if (phase >= trajectoryGen.gaitState.config.size()) {
@@ -545,8 +543,6 @@ bool GaitController::HandleIdleReturn() {
 @note This allows for dynamic switching between different control schemes (e.g. strafing vs normal) while maintaining a consistent gait generation logic.
 */
 void GaitController::walk() {
-    double liftHeight = 0.020;  // meters (20mm)
-
     // Check if velocity is idle
     bool velocityIdle = HandleIdleReturn();
     if (idleReturning) return;
