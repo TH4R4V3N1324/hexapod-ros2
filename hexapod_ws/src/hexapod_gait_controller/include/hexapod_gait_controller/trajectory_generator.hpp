@@ -18,11 +18,16 @@ struct SwingSpline {
     bool active = false;
 };
 
+struct LineSpline {
+    Eigen::Vector3d P0, P1;
+    double s = 0.0;        // normalized progress [0,1]
+    bool active = false;
+};
+
 struct GaitState {
     std::vector<std::vector<int>> config;
-    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> stanceTrajectory;
     std::array<SwingSpline, MAX_LEGS + 1> swingSplines;
-    std::array<int, MAX_LEGS + 1> stanceSizes{};
+    std::array<LineSpline, MAX_LEGS + 1> stanceSplines;
 };
 
 class TrajectoryGenerator {
