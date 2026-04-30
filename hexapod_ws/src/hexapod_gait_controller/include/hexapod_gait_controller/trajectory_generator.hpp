@@ -13,7 +13,7 @@ using hexapod_gait_controller::GaitConfig;
 using geometry_msgs::msg::Twist;
 
 struct SwingSpline {
-    Eigen::Vector3d P0, P1, P2, P3;
+    Eigen::Vector3d P0, P1, P2, P3, P4;
     double s = 0.0;        // normalized progress [0,1]
     bool active = false;
 };
@@ -82,7 +82,8 @@ public:
         const Vector3d& P0, 
         const Vector3d& P1, 
         const Vector3d& P2, 
-        const Vector3d& P3, 
+        const Vector3d& P3,
+        const Vector3d& P4, 
         double s
     );
 };
