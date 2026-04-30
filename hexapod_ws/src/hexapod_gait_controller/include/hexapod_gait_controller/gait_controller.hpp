@@ -97,6 +97,7 @@ public:
     void startup();
     bool shouldRegenerateTrajectory();
     void retargetSwingSplines();
+    void retargetStanceTrajectories();
     void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();

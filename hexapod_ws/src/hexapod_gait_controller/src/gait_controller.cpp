@@ -319,6 +319,53 @@ void GaitController::retargetSwingSplines() {
     }
 }
 
+void GaitController::retargetStanceTrajectories() {
+    bool anyStanceActive = false;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if (trajectoryGen.gaitState.stanceSplines[legNum].active) {
+            anyStanceActive = true;
+            break;
+        }
+    }
+    if (!anyStanceActive) return;
+
+    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
+
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        auto& spline = trajectoryGen.gaitState.stanceSplines[legNum];
+        if (!spline.active) continue;
+
+        Vector3d currentPos = current_leg_positions[legNum];
+
+        Vector3d forwardPos = trajectoryGen.linearTarget(
+            current_motion_intent.forward,
+            current_motion_intent.lateral,
+            currentPos,
+            legNum,
+            true
+        );
+
+        Vector3d rotationPos = trajectoryGen.rotationalTarget(
+            current_motion_intent.yaw,
+            currentPos,
+            legNum,
+            true
+        );
+
+        Vector3d idealTarget = trajectoryGen.BlendTargetPosition(
+            currentPos,
+            forwardPos,
+            rotationPos,
+            legNum,
+            strideMultiplier
+        );
+
+        spline.P0 = currentPos;
+        spline.P1 = idealTarget;
+        spline.s = 0.0;
+    }
+}
+
 /*
 @brief Perform a leg step based on the current trajectories
 @param idle Whether the joystick is idle
@@ -336,12 +383,11 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
     joint_state_msg.position.reserve(18);
     
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        int stanceSize = trajectoryGen.gaitState.stanceSizes[legNum];
-        
         // Get target position for this leg
         // Each leg is assigned EITHER swing OR stance trajectory for this phase (not both)
-        Eigen::Vector3d targetPos;
+        Eigen::Vector3d targetPos = current_leg_positions[legNum];
         SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
+        LineSpline& stanceSpline = trajectoryGen.gaitState.stanceSplines[legNum];
 
         if (spline.active) {
             targetPos = trajectoryGen.evalBezier(
@@ -363,11 +409,16 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
                 spline.active = false;
             }
         }
-        else if (stanceSize > 0 && step < stanceSize) {
-            targetPos = trajectoryGen.gaitState.stanceTrajectory[legNum][step];
-        }
-        else {
-            continue;
+        else if (stanceSpline.active) {
+            targetPos = stanceSpline.P0 + (stanceSpline.P1 - stanceSpline.P0) * stanceSpline.s;
+
+            double ds = idle ? 0.0 : (1.0 / resolution);
+            stanceSpline.s += ds;
+            if (stanceSpline.s >= 1.0) {
+                stanceSpline.s = 1.0;
+                targetPos = stanceSpline.P1;
+                stanceSpline.active = false;
+            }
         }
         
         Eigen::Vector3d delta = targetPos - current_leg_positions[legNum];
@@ -553,6 +604,7 @@ void GaitController::walk() {
 
     if (shouldRegenerateTrajectory()) {
         retargetSwingSplines();
+        retargetStanceTrajectories();
         trajectory_motion_intent = current_motion_intent;
     }
 

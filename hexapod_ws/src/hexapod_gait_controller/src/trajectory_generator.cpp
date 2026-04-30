@@ -177,7 +177,7 @@ void TrajectoryGenerator::GenerateTrajectories(
             stanceGroup.push_back(legNum);
     }
     for (int i = 1; i <= MAX_LEGS; ++i) {
-        gaitState.stanceSizes[i] = 0;
+        gaitState.stanceSplines[i].active = false;
     }
 
     std::map<int, Vector3d> swingTargetsBodyFrame;
@@ -233,16 +233,12 @@ void TrajectoryGenerator::GenerateTrajectories(
 
     // Stance
     for (int legNum : stanceGroup) {
+        LineSpline& spline = gaitState.stanceSplines[legNum];
         Vector3d targetLegFrame = converter.bodyToLegFrame(stanceTargetsBodyFrame[legNum], legNum);
-        int size = 0;
-        GenStraightTrajectory(
-            gaitState.stanceTrajectory[legNum].data(),
-            size,
-            currentPositions[legNum],
-            targetLegFrame,
-            resolution
-        );
-        gaitState.stanceSizes[legNum] = size;
+        spline.P0 = currentPositions[legNum];
+        spline.P1 = targetLegFrame;
+        spline.s = 0.0;
+        spline.active = true;
     }
 }
 
