@@ -68,27 +68,30 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
         return;
     }
 
-    Vector3d dirNorm = dir.normalized();
-    double offsetScale = dir.norm() * 0.25; // tweak as needed
-
     // Place control points before start and after end along the movement direction
     Vector3d P0 = start;
-    Vector3d P3 = end;
-    Vector3d P1 = start - dirNorm * offsetScale;
-    Vector3d P2 = end + dirNorm * offsetScale;
+    Vector3d P4 = end;
 
-    P1.z() = start.z() + liftHeight;
-    P2.z() = end.z() + liftHeight;
+    Vector3d P1 = start;
+    P1.z() += liftHeight;
+
+    Vector3d P2 = start + dir * 0.60;
+    P2.z() += liftHeight * 0.5;
+
+    Vector3d P3 = end;
+    P3.z() += liftHeight * 1.5;
 
     for (int i = 0; i <= resolution; ++i) {
         double t = static_cast<double>(i) / resolution;
-        double u = 1.0 - t;
+        double st = t * t * t * (t * (6.0 *  t - 15.0) + 10.0);
+        double u = 1.0 - st;
 
         Vector3d point =
-            P0 * (u * u * u) +
-            P1 * (3 * u * u * t) +
-            P2 * (3 * u * t * t) +
-            P3 * (t * t * t);
+            P0 * (u * u * u * u) +
+            P1 * (4.0 * u * u * u * st) +
+            P2 * (6.0 * u * u * st * st) +
+            P3 * (4.0 * u * st * st * st) +
+            P4 * (st * st * st * st);
 
         trajectory[i] = point;
     }
@@ -205,23 +208,25 @@ void TrajectoryGenerator::GenerateTrajectories(
         SwingSpline& spline = gaitState.swingSplines[legNum];
 
         spline.P0 = currentPositions[legNum];
-        spline.P3 = converter.bodyToLegFrame(
+        spline.P4 = converter.bodyToLegFrame(
             swingTargetsBodyFrame[legNum], legNum
         );
 
         Eigen::Vector3d dir = spline.P3 - spline.P0;
         if (dir.norm() < 1e-6) {
-            dir = Eigen::Vector3d(1, 0, 0);
+            spline.s = 0.0;
+            spline.active = true;
+            continue;
         }
 
-        Eigen::Vector3d dirNorm = dir.normalized();
-        double offsetScale = dir.norm() * 0.25;
+        spline.P1 = spline.P0;
+        spline.P1.z() += liftHeight;
 
-        spline.P1 = spline.P0 - dirNorm * offsetScale;
-        spline.P2 = spline.P3 + dirNorm * offsetScale;
+        spline.P2 = spline.P0 + dir * 0.60;
+        spline.P2.z() += liftHeight * 0.5;
 
-        spline.P1.z() = spline.P0.z() + liftHeight;
-        spline.P2.z() = spline.P3.z() + liftHeight;
+        spline.P3 = spline.P4;
+        spline.P3.z() += liftHeight * 1.5;
 
         spline.s = 0.0;
         spline.active = true;
@@ -332,12 +337,18 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
     return {newX, newY, groundZ};
 }
 
-Vector3d TrajectoryGenerator::evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, double s) {
-    double u = 1.0 - s;
-    return u*u*u*P0
-         + 3*u*u*s*P1
-         + 3*u*s*s*P2
-         + s*s*s*P3;
+Vector3d TrajectoryGenerator::evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, const Vector3d& P4, const double s) {
+    double st = s * s * s * (s * (6.0 * s - 15.0) + 10.0);
+    double u = 1.0 - st;
+
+    Eigen::Vector3d point =
+        P0 * (u * u * u * u) +
+        P1 * (4.0 * u * u * u * st) +
+        P2 * (6.0 * u * u * st * st) +
+        P3 * (4.0 * u * st * st * st) +
+        P4 * (st * st * st * st);
+    
+    return point;
 }
 
 }  // namespace hexapod_gait_controller

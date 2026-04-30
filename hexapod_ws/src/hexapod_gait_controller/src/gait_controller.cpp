@@ -349,6 +349,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
                 spline.P1,
                 spline.P2,
                 spline.P3,
+                spline.P4,
                 spline.s
             );
 
@@ -358,7 +359,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
             if (spline.s >= 1.0) {
                 spline.s = 1.0;
                 // Snap to exact endpoint and deactivate to prevent drift
-                targetPos = spline.P3;
+                targetPos = spline.P4;
                 spline.active = false;
             }
         }
@@ -372,8 +373,8 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         Eigen::Vector3d delta = targetPos - current_leg_positions[legNum];
         double maxStep = 0.03; // 3 cm per control cycle
 
-        if (delta.norm() > maxStep) {
-            targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
+            if (delta.norm() > maxStep) {
+                targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
         }
 
         // Compute IK to get joint angles
