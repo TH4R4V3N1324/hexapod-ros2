@@ -63,7 +63,7 @@ private:
 
             currentTrajectory.resize(resolution + 1);
             int size = 0;
-            trajGen.GenStraightTrajectory(currentTrajectory.data(), size, start, end, resolution);
+            trajGen.GenStraightTrajectory(currentTrajectory.data(), size, start, end);
             if (size > 0) {
                 currentTrajectory.resize(static_cast<std::size_t>(size));
             }

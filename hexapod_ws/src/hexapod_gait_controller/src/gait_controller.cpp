@@ -111,8 +111,8 @@ void GaitController::getCapabilitiesCallback(
         response->modes.push_back(toMsg(mode));
     }
 
-    response->max_linear_vel = gaitConfig.max_velocity;
-    response->max_angular_vel = gaitConfig.max_angular_velocity;
+    response->max_linear_vel = MAX_LINEAR_VELOCITY;
+    response->max_angular_vel = MAX_ANGULAR_VELOCITY;
 }
 
 /*
@@ -204,8 +204,7 @@ void GaitController::startup() {
                 startup_trajectory[leg].data(), 
                 startup_sizes[leg], 
                 gaitConfig.homePos, 
-                gaitConfig.startPosition.at(leg), 
-                MAX_RESOLUTION-1
+                gaitConfig.startPosition.at(leg)
             );
         }
         startup_step = 0;
@@ -315,7 +314,7 @@ void GaitController::retargetSwingSplines() {
         double offsetScale = dir.norm() * 0.25;
 
         spline.P2 = spline.P3 + dirNorm * offsetScale;
-        spline.P2.z() = spline.P3.z() + liftHeight;
+        spline.P2.z() = spline.P3.z() + LIFT_HEIGHT;
     }
 }
 
@@ -369,12 +368,11 @@ void GaitController::retargetStanceTrajectories() {
 /*
 @brief Perform a leg step based on the current trajectories
 @param idle Whether the joystick is idle
-@param resolution The resolution of the trajectories
 @param handlePhaseTransition Whether to handle phase transitions
 @note If idle is true, the step will not advance
 @note If handlePhaseTransition is false, phase transitions will be skipped and must be handled externally
 */
-void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseTransition) {
+void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
     auto joint_state_msg = JointState();
     joint_state_msg.header.stamp = this->now();
     
@@ -412,7 +410,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
         else if (stanceSpline.active) {
             targetPos = stanceSpline.P0 + (stanceSpline.P1 - stanceSpline.P0) * stanceSpline.s;
 
-            double ds = idle ? 0.0 : (1.0 / resolution);
+            double ds = idle ? 0.0 : (1.0 / MAX_RESOLUTION);
             stanceSpline.s += ds;
             if (stanceSpline.s >= 1.0) {
                 stanceSpline.s = 1.0;
@@ -452,7 +450,7 @@ void GaitController::PerformLegStep(bool idle, int resolution, bool handlePhaseT
     if (!handlePhaseTransition) return;
 
     // Phase transition
-    if (step > resolution) {
+    if (step > MAX_RESOLUTION) {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         step = 0;
     }    
@@ -497,8 +495,6 @@ void GaitController::returnToStart() {
 
     if (step == 0) {
         trajectoryGen.GenerateTrajectories(
-            liftHeight,
-            MAX_RESOLUTION-1,
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
                 (void)currentPos;  // Use actual current position from current_leg_positions
@@ -515,7 +511,7 @@ void GaitController::returnToStart() {
     }
 
     // Move all legs for this step
-    PerformLegStep(false, MAX_RESOLUTION-1, false);
+    PerformLegStep(false, false);
 
     // Phase transition
     if (step > MAX_RESOLUTION-1) {
@@ -615,8 +611,6 @@ void GaitController::walk() {
     if (step == 0) {
         trajectory_motion_intent = current_motion_intent;
         trajectoryGen.GenerateTrajectories(
-            liftHeight,
-            MAX_RESOLUTION-1,
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
                 Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, false);
@@ -636,5 +630,5 @@ void GaitController::walk() {
         );
     }
     // Move all legs for this step
-    PerformLegStep(velocityIdle, MAX_RESOLUTION-1);
+    PerformLegStep(velocityIdle);
 }

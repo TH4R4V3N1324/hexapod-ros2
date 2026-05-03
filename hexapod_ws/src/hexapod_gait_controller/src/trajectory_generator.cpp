@@ -8,36 +8,31 @@ namespace hexapod_gait_controller {
 @param outSize Reference to an integer to store the number of points generated
 @param start The starting position
 @param end The ending position
-@param resolution The number of points to generate
 @return void
 */
-void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, int resolution) {
+void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end) {
     outSize = 0;
-    if (resolution <= 0 || resolution > 10000) {
-        RCLCPP_ERROR(rclcpp::get_logger("TrajectoryGenerator"), "Invalid resolution: %d", resolution);
-        return;
-    }
 
     // If start and end are (almost) the same, return a flat trajectory
     if (std::abs(start.x() - end.x()) < 1e-6 &&
         std::abs(start.y() - end.y()) < 1e-6 &&
         std::abs(start.z() - end.z()) < 1e-6) {
-        for (int i = 0; i <= resolution; ++i) {
+        for (int i = 0; i <= MAX_RESOLUTION; ++i) {
             trajectory[i] = start;
         }
-        outSize = resolution + 1;
+        outSize = MAX_RESOLUTION + 1;
         return;
     }
 
-    for (int i = 0; i <= resolution; i++) {
-        double t = static_cast<double>(i) / resolution;
+    for (int i = 0; i <= MAX_RESOLUTION; i++) {
+        double t = static_cast<double>(i) / MAX_RESOLUTION;
         trajectory[i] = {
             start.x() + (end.x() - start.x()) * t,
             start.y() + (end.y() - start.y()) * t,
             start.z() + (end.z() - start.z()) * t
         };
     }
-    outSize = resolution + 1;
+    outSize = MAX_RESOLUTION + 1;
 }
 
 /*
@@ -46,25 +41,19 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
 @param outSize Reference to an integer to store the number of points generated
 @param start The starting position
 @param end The ending position
-@param liftHeight The height to lift the trajectory
-@param resolution The number of points to generate
 @param invert Whether to invert the trajectory
 @return void
 */
-void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end, double liftHeight, int resolution) {
+void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end) {
     outSize = 0;
-    if (resolution <= 0 || resolution > 10000) {
-        RCLCPP_ERROR(rclcpp::get_logger("TrajectoryGenerator"), "Invalid resolution: %d", resolution);
-        return;
-    }
 
     Vector3d dir = end - start;
     if (dir.norm() == 0.0) {
         // Stationary case: generate flat path
-        for (int i = 0; i <= resolution; ++i) {
+        for (int i = 0; i <= MAX_RESOLUTION; ++i) {
             trajectory[i] = start;
         }
-        outSize = resolution + 1;
+        outSize = MAX_RESOLUTION + 1;
         return;
     }
 
@@ -73,16 +62,16 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
     Vector3d P4 = end;
 
     Vector3d P1 = start;
-    P1.z() += liftHeight;
+    P1.z() += LIFT_HEIGHT;
 
     Vector3d P2 = start + dir * 0.60;
-    P2.z() += liftHeight * 0.5;
+    P2.z() += LIFT_HEIGHT * 0.5;
 
     Vector3d P3 = end;
-    P3.z() += liftHeight * 1.5;
+    P3.z() += LIFT_HEIGHT * 1.5;
 
-    for (int i = 0; i <= resolution; ++i) {
-        double t = static_cast<double>(i) / resolution;
+    for (int i = 0; i <= MAX_RESOLUTION; ++i) {
+        double t = static_cast<double>(i) / MAX_RESOLUTION;
         double st = t * t * t * (t * (6.0 *  t - 15.0) + 10.0);
         double u = 1.0 - st;
 
@@ -95,7 +84,7 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
 
         trajectory[i] = point;
     }
-    outSize = resolution + 1;
+    outSize = MAX_RESOLUTION + 1;
 }
 
 /*
@@ -122,7 +111,7 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
     Vector3d blendedDelta = forwardDelta + rotationDelta;
 
     // Clamp blended delta using stride multiplier
-    double maxStride = gaitConfig.max_stride_length * strideMultiplier;
+    double maxStride = MAX_STRIDE_LENGTH* strideMultiplier;
     double deltaMag = std::hypot(blendedDelta.x(), blendedDelta.y());
 
     if (deltaMag > maxStride && deltaMag > 1e-6) {
@@ -155,14 +144,10 @@ void TrajectoryGenerator::EnsureGaitConfig() {
 
 /*
 @brief Generate swing and stance trajectories for the legs
-@param liftHeight The height to lift the legs during swing
-@param resolution The number of steps in the trajectory
 @param swingTargetFunc A function to compute the swing target position for a leg
 @param stanceTargetFunc A function to compute the stance target position for a leg
 */
 void TrajectoryGenerator::GenerateTrajectories(
-    double liftHeight,
-    int resolution,
     std::function<Vector3d(int, const Vector3d&)> swingTargetFunc,
     std::function<Vector3d(int, const Vector3d&)> stanceTargetFunc,
     std::array<Vector3d, MAX_LEGS + 1> currentPositions,
@@ -219,13 +204,13 @@ void TrajectoryGenerator::GenerateTrajectories(
         }
 
         spline.P1 = spline.P0;
-        spline.P1.z() += liftHeight;
+        spline.P1.z() += LIFT_HEIGHT;
 
         spline.P2 = spline.P0 + dir * 0.60;
-        spline.P2.z() += liftHeight * 0.5;
+        spline.P2.z() += LIFT_HEIGHT * 0.5;
 
         spline.P3 = spline.P4;
-        spline.P3.z() += liftHeight * 1.5;
+        spline.P3.z() += LIFT_HEIGHT * 1.5;
 
         spline.s = 0.0;
         spline.active = true;
@@ -264,10 +249,10 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     // Apply leg mirroring
     if (converter.legConfigs[legNum].mirrored) {ly = -ly;}
 
-    double magnitude = std::hypot(lx, ly) / gaitConfig.max_velocity;
+    double magnitude = std::hypot(lx, ly) / MAX_LINEAR_VELOCITY;
     if (magnitude > 1.0) magnitude = 1.0;
 
-    double stride = gaitConfig.max_stride_length * magnitude;
+    double stride = MAX_STRIDE_LENGTH * magnitude;
     double angle = atan2(ly, lx);
 
     double deltaX = stride * cos(angle);
@@ -304,7 +289,7 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
     // Apply inversion if needed (for stance phase)
     if (invert) {az = -az;}
 
-    double magnitude = std::abs(az) / gaitConfig.max_angular_velocity;
+    double magnitude = std::abs(az) / MAX_ANGULAR_VELOCITY;
     if (magnitude > 1.0) magnitude = 1.0;
 
     // Get the neutral/start position for this leg
@@ -315,7 +300,7 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
     // For small angles, arc length ≈ radius * angle
     // We use the neutral leg reach as the radius
     double neutralReach = std::hypot(neutralPos.x(), neutralPos.y());
-    double maxArcLength = gaitConfig.max_stride_length;
+    double maxArcLength = MAX_STRIDE_LENGTH;
     double arcOffset = maxArcLength * magnitude * (az > 0 ? 1.0 : -1.0);
     
     // Convert arc offset to angular displacement (radians)

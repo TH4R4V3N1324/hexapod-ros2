@@ -12,7 +12,11 @@ using Eigen::Matrix3d;
 namespace hexapod_gait_controller {
 
 static constexpr int MAX_LEGS = 6;
-static constexpr int MAX_RESOLUTION = 50 + 1; // +1 for inclusive endpoint
+static constexpr int MAX_RESOLUTION = 50;
+static const double MAX_LINEAR_VELOCITY = 0.2; // m/s
+static const double MAX_STRIDE_LENGTH = 0.06; // m
+static const double MAX_ANGULAR_VELOCITY = 2.0; // rad/s
+static const double LIFT_HEIGHT = 0.05;
 
 struct LocomotionOption {
     std::string name;
@@ -66,9 +70,6 @@ public:
     Mode currentMode = MODE_NORMAL;
     bool gaitChangeRequested = false;
     Gait pendingGait;
-    double max_velocity = 0.2; // m/s
-    double max_stride_length = 0.06; // m
-    double max_angular_velocity = 2.0; // rad/s
     std::vector<std::vector<int>> getGaitConfig(Gait gait);
     void cycleGait();
     void setGait(Gait gait);

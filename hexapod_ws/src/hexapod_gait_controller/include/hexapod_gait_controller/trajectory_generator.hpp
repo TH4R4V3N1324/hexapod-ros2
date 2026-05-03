@@ -40,20 +40,15 @@ public:
         Vector3d* trajectory, 
         int& outSize, 
         const Vector3d& start, 
-        const Vector3d& end, 
-        int resolution
+        const Vector3d& end
     );
     void GenBezierTrajectory(
         Vector3d* trajectory, 
         int& outSize, 
         const Vector3d& start, 
-        const Vector3d& end,
-        double liftHeight, 
-        int resolution
+        const Vector3d& end
     );
     void GenerateTrajectories(
-        double liftHeight,
-        int resolution,
         std::function<Vector3d(int, const Vector3d&)> swingTargetFunc,
         std::function<Vector3d(int, const Vector3d&)> stanceTargetFunc,
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
