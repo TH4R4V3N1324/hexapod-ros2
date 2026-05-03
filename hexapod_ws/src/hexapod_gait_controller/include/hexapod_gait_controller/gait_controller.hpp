@@ -79,11 +79,9 @@ private:
     
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
 
-    std::array<std::array<Vector3d, MAX_RESOLUTION>, MAX_LEGS + 1> startup_trajectory;
+    std::array<std::array<Vector3d, MAX_RESOLUTION + 1>, MAX_LEGS + 1> startup_trajectory;
     std::array<Vector3d, MAX_LEGS + 1> current_leg_positions;
     std::array<int, MAX_LEGS + 1> startup_sizes{};
-
-    double liftHeight = 0.05;
     
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
@@ -98,7 +96,7 @@ public:
     bool shouldRegenerateTrajectory();
     void retargetSwingSplines();
     void retargetStanceTrajectories();
-    void PerformLegStep(bool idle, int resolution, bool handlePhaseTransition = true);
+    void PerformLegStep(bool idle, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
     void walk();
