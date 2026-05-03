@@ -70,8 +70,8 @@ private:
     Twist filtered_cmd_vel;
     Twist trajectory_cmd_vel;
     JointState latest_joint_states;
-    MotionIntent current_motion_intent;
-    MotionIntent trajectory_motion_intent;
+    MotionIntent current_motion_intent{};
+    MotionIntent trajectory_motion_intent{};
     
     bool has_joint_states = false;
     bool positions_initialized = false;
@@ -93,9 +93,6 @@ public:
     void gaitTimerCallback();
     void home();
     void startup();
-    bool shouldRegenerateTrajectory();
-    void retargetSwingSplines();
-    void retargetStanceTrajectories();
     void PerformLegStep(bool idle, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();
