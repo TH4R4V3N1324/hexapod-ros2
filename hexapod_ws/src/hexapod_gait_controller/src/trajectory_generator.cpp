@@ -165,21 +165,17 @@ void TrajectoryGenerator::GenerateTrajectories(
         gaitState.stanceSplines[i].active = false;
     }
 
-    std::map<int, Vector3d> swingTargetsBodyFrame;
-    std::map<int, Vector3d> stanceTargetsBodyFrame;
+    std::map<int, Vector3d> swingTargets;
+    std::map<int, Vector3d> stanceTargets;
 
     // Calculate swing and stance targets in body frame
     for (int legNum : swingGroup) {
         Vector3d currentPos = currentPositions[legNum];
-        Vector3d targetLegFrame = swingTargetFunc(legNum, currentPos);
-        Vector3d targetBodyFrame = converter.legToBodyFrame(targetLegFrame, legNum);
-        swingTargetsBodyFrame[legNum] = targetBodyFrame;
+        swingTargets[legNum] = swingTargetFunc(legNum, currentPos);
     }
     for (int legNum : stanceGroup) {
         Vector3d currentPos = currentPositions[legNum];
-        Vector3d targetLegFrame = stanceTargetFunc(legNum, currentPos);
-        Vector3d targetBodyFrame = converter.legToBodyFrame(targetLegFrame, legNum);
-        stanceTargetsBodyFrame[legNum] = targetBodyFrame;
+        stanceTargets[legNum] = stanceTargetFunc(legNum, currentPos);
     }
 
     // Clear all swing splines first
@@ -191,7 +187,7 @@ void TrajectoryGenerator::GenerateTrajectories(
     for (int legNum : swingGroup) {
         SwingSpline& spline = gaitState.swingSplines[legNum];
         Vector3d start = currentPositions[legNum];
-        Vector3d end = converter.bodyToLegFrame(swingTargetsBodyFrame[legNum], legNum);
+        Vector3d end = swingTargets[legNum];
         Vector3d dir = end - start;
 
         if (dir.norm() < 1e-6) {
@@ -211,7 +207,7 @@ void TrajectoryGenerator::GenerateTrajectories(
     // Stance
     for (int legNum : stanceGroup) {
         LineSpline& spline = gaitState.stanceSplines[legNum];
-        Vector3d targetLegFrame = converter.bodyToLegFrame(stanceTargetsBodyFrame[legNum], legNum);
+        Vector3d targetLegFrame = stanceTargets[legNum];
         spline.P0 = currentPositions[legNum];
         spline.P1 = targetLegFrame;
         spline.s = 0.0;
