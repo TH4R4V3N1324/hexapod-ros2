@@ -249,123 +249,6 @@ void GaitController::startup() {
 }
 
 /*
-@brief Check if cmd_vel has changed significantly enough to warrant mid-trajectory regeneration
-@return true if trajectory should be regenerated
-*/
-bool GaitController::shouldRegenerateTrajectory() {
-    double df = std::abs(current_motion_intent.forward - trajectory_motion_intent.forward);
-    double dl = std::abs(current_motion_intent.lateral - trajectory_motion_intent.lateral);
-    double dy = std::abs(current_motion_intent.yaw - trajectory_motion_intent.yaw);
-
-    return (df > CMD_VEL_CHANGE_THRESHOLD ||
-            dl > CMD_VEL_CHANGE_THRESHOLD ||
-            dy > CMD_VEL_CHANGE_THRESHOLD);
-}
-
-void GaitController::retargetSwingSplines() {
-    bool anySwingActive = false;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        if (trajectoryGen.gaitState.swingSplines[legNum].active) {
-            anySwingActive = true;
-            break;
-        }
-    }
-    if (!anySwingActive) return;
-
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        auto& spline = trajectoryGen.gaitState.swingSplines[legNum];
-        if (!spline.active) continue;
-
-        // Only retarget mid-swing (expanded window for smoother transitions)
-        if (spline.s < 0.15 || spline.s > 0.85) continue;
-
-        Vector3d currentPos = current_leg_positions[legNum];
-
-        // Compute new target using current cmd_vel
-        Vector3d forwardPos = trajectoryGen.linearTarget(
-            current_motion_intent.forward,
-            current_motion_intent.lateral,
-            currentPos,
-            legNum,
-            false
-        );
-
-        Vector3d rotationPos = trajectoryGen.rotationalTarget(
-            current_motion_intent.yaw,
-            currentPos,
-            legNum,
-            false
-        );
-
-        Vector3d idealTarget = trajectoryGen.BlendTargetPosition(
-            currentPos,
-            forwardPos,
-            rotationPos,
-            legNum
-        );
-
-        // Update spline endpoint
-        spline.P3 = idealTarget;
-
-        Vector3d dir = spline.P3 - currentPos;
-        if (dir.norm() < 1e-6) continue;
-
-        Vector3d dirNorm = dir.normalized();
-        double offsetScale = dir.norm() * 0.25;
-
-        spline.P2 = spline.P3 + dirNorm * offsetScale;
-        spline.P2.z() = spline.P3.z() + LIFT_HEIGHT;
-    }
-}
-
-void GaitController::retargetStanceTrajectories() {
-    bool anyStanceActive = false;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        if (trajectoryGen.gaitState.stanceSplines[legNum].active) {
-            anyStanceActive = true;
-            break;
-        }
-    }
-    if (!anyStanceActive) return;
-
-    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
-
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        auto& spline = trajectoryGen.gaitState.stanceSplines[legNum];
-        if (!spline.active) continue;
-
-        Vector3d currentPos = current_leg_positions[legNum];
-
-        Vector3d forwardPos = trajectoryGen.linearTarget(
-            current_motion_intent.forward,
-            current_motion_intent.lateral,
-            currentPos,
-            legNum,
-            true
-        );
-
-        Vector3d rotationPos = trajectoryGen.rotationalTarget(
-            current_motion_intent.yaw,
-            currentPos,
-            legNum,
-            true
-        );
-
-        Vector3d idealTarget = trajectoryGen.BlendTargetPosition(
-            currentPos,
-            forwardPos,
-            rotationPos,
-            legNum,
-            strideMultiplier
-        );
-
-        spline.P0 = currentPos;
-        spline.P1 = idealTarget;
-        spline.s = 0.0;
-    }
-}
-
-/*
 @brief Perform a leg step based on the current trajectories
 @param idle Whether the joystick is idle
 @param handlePhaseTransition Whether to handle phase transitions
@@ -597,12 +480,6 @@ void GaitController::walk() {
 
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
-
-    if (shouldRegenerateTrajectory()) {
-        retargetSwingSplines();
-        retargetStanceTrajectories();
-        trajectory_motion_intent = current_motion_intent;
-    }
 
     // Calculate stride multiplier safely
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();

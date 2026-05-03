@@ -76,6 +76,7 @@ public:
     );
     void EnsureGaitConfig();
     double CalculateStrideMultiplier();
+    void genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end);
     Vector3d evalBezier(
         const Vector3d& P0, 
         const Vector3d& P1, 

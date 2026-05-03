@@ -190,30 +190,22 @@ void TrajectoryGenerator::GenerateTrajectories(
     // Setup swing splines
     for (int legNum : swingGroup) {
         SwingSpline& spline = gaitState.swingSplines[legNum];
+        Vector3d start = currentPositions[legNum];
+        Vector3d end = converter.bodyToLegFrame(swingTargetsBodyFrame[legNum], legNum);
+        Vector3d dir = end - start;
 
-        spline.P0 = currentPositions[legNum];
-        spline.P4 = converter.bodyToLegFrame(
-            swingTargetsBodyFrame[legNum], legNum
-        );
-
-        Eigen::Vector3d dir = spline.P3 - spline.P0;
         if (dir.norm() < 1e-6) {
             spline.s = 0.0;
-            spline.active = true;
-            continue;
+            spline.P0 = start;
+            spline.P1 = start;
+            spline.P2 = start;
+            spline.P3 = start;
+            spline.P4 = end;
+            spline.active = false;
+            return;
         }
 
-        spline.P1 = spline.P0;
-        spline.P1.z() += LIFT_HEIGHT;
-
-        spline.P2 = spline.P0 + dir * 0.60;
-        spline.P2.z() += LIFT_HEIGHT * 0.5;
-
-        spline.P3 = spline.P4;
-        spline.P3.z() += LIFT_HEIGHT * 1.5;
-
-        spline.s = 0.0;
-        spline.active = true;
+        genSwingSpline(spline, start, end);
     }
 
     // Stance
@@ -315,6 +307,25 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
     double groundZ = gaitConfig.currentHeight;
 
     return {newX, newY, groundZ};
+}
+
+void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end){
+    Eigen::Vector3d dir = end - start;
+
+    spline.P0 = start;
+    spline.P4 = end;
+
+    spline.P1 = spline.P0;
+    spline.P1.z() += LIFT_HEIGHT;
+
+    spline.P2 = spline.P0 + dir * 0.60;
+    spline.P2.z() += LIFT_HEIGHT * 0.5;
+
+    spline.P3 = spline.P4;
+    spline.P3.z() += LIFT_HEIGHT * 1.5;
+
+    spline.s = 0.0;
+    spline.active = true;
 }
 
 Vector3d TrajectoryGenerator::evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, const Vector3d& P4, const double s) {
