@@ -231,11 +231,10 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     double ly = linearY;
     std::swap(lx, ly);
 
-    // Apply inversion if needed (for stance phase)
-    if (invert) {ly = -ly;}
-
-    // Apply leg mirroring
-    if (converter.legConfigs[legNum].mirrored) {ly = -ly;}
+    if (invert ^ converter.legConfigs[legNum].mirrored) {
+        ly = -ly;
+        lx = -lx;
+    }
 
     double magnitude = std::hypot(lx, ly) / MAX_LINEAR_VELOCITY;
     if (magnitude > 1.0) magnitude = 1.0;
@@ -254,7 +253,6 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     double dy_rot = deltaX * sin(legAngle) + deltaY * cos(legAngle);
 
     // Get the neutral/start position for this leg and offset from there
-    auto it = gaitConfig.startPosition.find(legNum);
     Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
     
     return {neutralPos.x() + dx_rot, neutralPos.y() + dy_rot, groundZ};
@@ -281,7 +279,6 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, int legNu
     if (magnitude > 1.0) magnitude = 1.0;
 
     // Get the neutral/start position for this leg
-    auto it = gaitConfig.startPosition.find(legNum);
     Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
     
     // Calculate rotational offset as arc displacement from neutral
