@@ -226,7 +226,7 @@ void TrajectoryGenerator::GenerateTrajectories(
 @return The calculated target position
 @note Linear offset is computed relative to the leg's neutral position to prevent drift.
 */
-Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, const Vector3d& start, int legNum, bool invert) {
+Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, int legNum, bool invert) {
     double lx = linearX;
     double ly = linearY;
     std::swap(lx, ly);
@@ -255,7 +255,7 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
 
     // Get the neutral/start position for this leg and offset from there
     auto it = gaitConfig.startPosition.find(legNum);
-    Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : start;
+    Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
     
     return {neutralPos.x() + dx_rot, neutralPos.y() + dy_rot, groundZ};
 }
@@ -271,7 +271,7 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
 @note Rotation is computed relative to the leg's neutral position, not current position.
       This prevents legs from drifting outside their workspace during sustained rotation.
 */
-Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vector3d& start, int legNum, bool invert) {
+Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, int legNum, bool invert) {
     double az = angularZ;
 
     // Apply inversion if needed (for stance phase)
@@ -282,7 +282,7 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, const Vec
 
     // Get the neutral/start position for this leg
     auto it = gaitConfig.startPosition.find(legNum);
-    Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : start;
+    Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
     
     // Calculate rotational offset as arc displacement from neutral
     // For small angles, arc length ≈ radius * angle

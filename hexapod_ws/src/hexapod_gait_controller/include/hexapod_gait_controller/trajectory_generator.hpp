@@ -57,13 +57,11 @@ public:
     Vector3d linearTarget(
         const double& linearX, 
         const double& linearY, 
-        const Vector3d& start, 
         int legNum, 
         bool invert
     );
     Vector3d rotationalTarget(
         const double& angularZ, 
-        const Vector3d& start, 
         int legNum, 
         bool invert
     );
