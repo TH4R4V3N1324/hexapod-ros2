@@ -135,7 +135,7 @@ void GaitController::gaitTimerCallback() {
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
-            current_motion_intent.lateral = filtered_cmd_vel.linear.y;
+            current_motion_intent.lateral = -filtered_cmd_vel.linear.y;
             current_motion_intent.yaw = filtered_cmd_vel.angular.z;
             break;
         case Mode::MODE_NORMAL:
