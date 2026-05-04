@@ -45,7 +45,7 @@ int main(int argc, char * argv[]) {
 void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     constexpr std::size_t kAxisLinearY = 0;   // Left/right
     constexpr std::size_t kAxisLinearX = 1;   // Forward/backward
-    constexpr std::size_t kAxisAngularZ = 2;  // Rotation
+    constexpr std::size_t kAxisAngularZ = 3;  // Right stick left/right
 
     const std::size_t required_axes = std::max({kAxisLinearY, kAxisLinearX, kAxisAngularZ}) + 1;
     if (msg->axes.size() < required_axes) {
