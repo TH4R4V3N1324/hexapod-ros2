@@ -470,15 +470,15 @@ void GaitController::walk() {
         trajectoryGen.GenerateTrajectories(
             // Swing target - use Twist-based direction
             [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, false);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, legNum, false);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, legNum, false);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
                 return targetPos;
             },
             // Stance target - use Twist-based direction (inverted)
             [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, currentPos, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, currentPos, legNum, true);
+                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, legNum, true);
+                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, legNum, true);
                 Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
                 return targetPos;
             },
