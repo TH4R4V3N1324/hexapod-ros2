@@ -157,31 +157,41 @@ void GaitController::gaitTimerCallback() {
     walk();
 }
 
+void GaitController::appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum) {
+    // Compute IK to get joint angles (pass mirrored flag for legs 4-6)
+    auto angles = ikSolver.solveIK(target);
+    
+    // Add joint names and positions
+    joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
+    joint_state_msg.position.push_back(angles.coxa);
+    
+    joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_femur_joint");
+    joint_state_msg.position.push_back(angles.femur);
+    
+    joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_tibia_joint");
+    joint_state_msg.position.push_back(angles.tibia);
+
+    current_leg_positions[legNum] = target;
+}
+
+void GaitController::sendJointcommands(JointState& msg) {
+    msg.header.stamp = this->now();
+    joint_cmd_pub->publish(msg);
+    msg.name.clear();
+    msg.position.clear();
+}
+
 /*
 @brief Move all legs to the home position and deactivate servos
 */
 void GaitController::home() {
     auto joint_state_msg = JointState();
-    joint_state_msg.header.stamp = this->now();
 
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        // Compute IK to get joint angles
-        auto angles = ikSolver.solveIK(gaitConfig.homePos);
-        
-        // Add joint names and positions
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
-        joint_state_msg.position.push_back(angles.coxa);
-        
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_femur_joint");
-        joint_state_msg.position.push_back(angles.femur);
-        
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_tibia_joint");
-        joint_state_msg.position.push_back(angles.tibia);
-
-        current_leg_positions[legNum] = gaitConfig.homePos;
+        appendJointCommand(joint_state_msg, gaitConfig.homePos, legNum);
     }
     // Publish joint states
-    joint_cmd_pub->publish(joint_state_msg);
+    sendJointcommands(joint_state_msg);
     rclcpp::sleep_for(std::chrono::milliseconds(500));  // Wait for legs to reach home position
     RCLCPP_INFO(this->get_logger(), "Moved to home position");
 }
@@ -191,7 +201,6 @@ void GaitController::home() {
 */
 void GaitController::startup() {
     auto joint_state_msg = JointState();
-    joint_state_msg.header.stamp = this->now();
     static bool initialized = false;
 
     if(!initialized){
@@ -203,7 +212,7 @@ void GaitController::startup() {
             trajectoryGen.GenStraightTrajectory(
                 startup_trajectory[leg].data(), 
                 startup_sizes[leg], 
-                gaitConfig.homePos, 
+                gaitConfig.homePos,
                 gaitConfig.startPosition.at(leg)
             );
         }
@@ -221,24 +230,10 @@ void GaitController::startup() {
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         if (startup_step < startup_sizes[leg]) {
             Vector3d pos = startup_trajectory[leg][startup_step];
-
-            // Compute IK to get joint angles
-            auto angles = ikSolver.solveIK(pos);
-            
-            // Add joint names and positions
-            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_coxa_joint");
-            joint_state_msg.position.push_back(angles.coxa);
-            
-            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_femur_joint");
-            joint_state_msg.position.push_back(angles.femur);
-            
-            joint_state_msg.name.push_back("leg" + std::to_string(leg) + "_tibia_joint");
-            joint_state_msg.position.push_back(angles.tibia);
-
-            current_leg_positions[leg] = pos;
+            appendJointCommand(joint_state_msg, pos, leg);
         }
     }
-    joint_cmd_pub->publish(joint_state_msg);
+    sendJointcommands(joint_state_msg);
     startup_step++;
     
     // Check if startup sequence is complete
@@ -257,7 +252,6 @@ void GaitController::startup() {
 */
 void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
     auto joint_state_msg = JointState();
-    joint_state_msg.header.stamp = this->now();
     
     // Prepare joint names (18 joints total: 6 legs × 3 joints)
     joint_state_msg.name.reserve(18);
@@ -305,28 +299,14 @@ void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
         Eigen::Vector3d delta = targetPos - current_leg_positions[legNum];
         double maxStep = 0.03; // 3 cm per control cycle
 
-            if (delta.norm() > maxStep) {
-                targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
+        if (delta.norm() > maxStep) {
+            targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
         }
-
-        // Compute IK to get joint angles
-        auto angles = ikSolver.solveIK(targetPos);
-        
-        // Add joint names and positions
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
-        joint_state_msg.position.push_back(angles.coxa);
-        
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_femur_joint");
-        joint_state_msg.position.push_back(angles.femur);
-        
-        joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_tibia_joint");
-        joint_state_msg.position.push_back(angles.tibia);
-
-        current_leg_positions[legNum] = targetPos;
+        appendJointCommand(joint_state_msg, targetPos, legNum);
     }
     
     // Publish joint states
-    joint_cmd_pub->publish(joint_state_msg);
+    sendJointcommands(joint_state_msg);
     
     // Advance step if not idle
     if (!idle) step++;

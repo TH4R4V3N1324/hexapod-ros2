@@ -91,6 +91,8 @@ public:
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
     void getCapabilitiesCallback(const std::shared_ptr<GetCapabilities::Request> request, std::shared_ptr<GetCapabilities::Response> response);
     void gaitTimerCallback();
+    void appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum);
+    void sendJointcommands(JointState& msg);
     void home();
     void startup();
     void PerformLegStep(bool idle, bool handlePhaseTransition = true);
