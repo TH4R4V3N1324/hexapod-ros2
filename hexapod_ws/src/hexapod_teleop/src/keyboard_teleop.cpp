@@ -103,10 +103,10 @@ void KeyboardTeleop::userInputLoop() {
         linearY -= 0.01;
         RCLCPP_INFO(this->get_logger(), "Decreasing linear Y: %.2f", linearY);
     } else if (key == 'e') {
-        angularZ += 0.1;
+        angularZ -= 0.1;
         RCLCPP_INFO(this->get_logger(), "Increasing angular Z: %.2f", angularZ);
     } else if (key == 'q') {
-        angularZ -= 0.1;
+        angularZ += 0.1;
         RCLCPP_INFO(this->get_logger(), "Decreasing angular Z: %.2f", angularZ);
     } else if (key == 'x') {
         linearX = 0;
