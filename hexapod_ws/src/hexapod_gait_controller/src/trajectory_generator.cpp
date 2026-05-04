@@ -198,7 +198,7 @@ void TrajectoryGenerator::GenerateTrajectories(
             spline.P3 = start;
             spline.P4 = end;
             spline.active = false;
-            return;
+            continue;
         }
 
         genSwingSpline(spline, start, end);
