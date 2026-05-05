@@ -15,10 +15,6 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     joy_sub = this->create_subscription<Joy>("joy", rclcpp::SensorDataQoS(), std::bind(&ControllerTeleop::joyCallback, this, _1));
     get_capabilities_client = this->create_client<GetCapabilities>("get_capabilities");
 
-    // Safe defaults until capabilities are fetched.
-    max_linear_vel = 1.0;
-    max_angular_vel = 1.0;
-
     fetchCapabilities();
 }
 private:
@@ -27,8 +23,6 @@ private:
     rclcpp::Client<GetCapabilities>::SharedPtr get_capabilities_client;
     std::vector<hexapod_interfaces::msg::LocomotionOption> available_gaits;
 	std::vector<hexapod_interfaces::msg::LocomotionOption> available_modes;
-    double max_linear_vel;
-    double max_angular_vel;
 public:
     void joyCallback(const Joy::SharedPtr msg);
     void fetchCapabilities();
@@ -64,9 +58,9 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     const double raw_angular_z = std::clamp(static_cast<double>(msg->axes[kAxisAngularZ]), -1.0, 1.0);
 
     Twist cmd_vel_msg;
-    cmd_vel_msg.linear.x = raw_linear_x * max_linear_vel;
-    cmd_vel_msg.linear.y = raw_linear_y * max_linear_vel;
-    cmd_vel_msg.angular.z = raw_angular_z * max_angular_vel;
+    cmd_vel_msg.linear.x = raw_linear_x;
+    cmd_vel_msg.linear.y = raw_linear_y;
+    cmd_vel_msg.angular.z = raw_angular_z;
 
     /* RCLCPP_INFO(this->get_logger(), "Received joystick input: axes[0]=%.2f, axes[1]=%.2f, axes[3]=%.2f",
                 raw_linear_y, raw_linear_x, raw_angular_z);
@@ -93,13 +87,11 @@ void ControllerTeleop::fetchCapabilities() {
 
         available_gaits = response->gaits;
         available_modes = response->modes;
-        max_linear_vel = response->max_linear_vel;
-        max_angular_vel = response->max_angular_vel;
 
         RCLCPP_INFO(this->get_logger(), "Received capabilities: %zu gaits, %zu modes",
                     response->gaits.size(), response->modes.size());
         RCLCPP_INFO(this->get_logger(), "Max velocities: linear=%.2f m/s, angular=%.2f rad/s",
-                    max_linear_vel, max_angular_vel);
+                    response->max_linear_vel, response->max_angular_vel);
     } else {
         RCLCPP_ERROR(this->get_logger(), "Failed to call GetCapabilities service");
     }
