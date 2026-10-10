@@ -7,7 +7,8 @@
 #include "hexapod_gait_controller/gait_config.hpp"
 #include "hexapod_gait_controller/leg_odometry.hpp"
 #include "nav_msgs/msg/odometry.hpp"
-#include "tf2_ros/static_transform_broadcaster.h"
+#include "tf2_ros/transform_broadcaster.h"
+#include "sensor_msgs/msg/imu.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
@@ -69,9 +70,11 @@ public:
         base_frame = this->declare_parameter("base_frame", "base_footprint");
         odom_publish_period = 1.0 / this->declare_parameter("odom_rate", 50.0);
 
-        // After base_frame is known: publish base_footprint -> base_link
-        footprint_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
-        publishFootprint();
+        // base_footprint -> base_link carries the body height and its roll/pitch from the IMU,
+        // published every gait tick
+        footprint_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
+        imu_sub = this->create_subscription<sensor_msgs::msg::Imu>("imu/data", rclcpp::SensorDataQoS(),
+            std::bind(&GaitController::imuCallback, this, _1));
         nominal_dt = 1.0 / loop_rate_hz;
 
         // ROS timer, so the gait follows simulation time when use_sim_time is set
@@ -83,7 +86,10 @@ private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     rclcpp::Publisher<Odometry>::SharedPtr odom_pub;
-    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> footprint_broadcaster;
+    std::shared_ptr<tf2_ros::TransformBroadcaster> footprint_broadcaster;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
+    double body_roll = 0.0;   // rad, from the IMU
+    double body_pitch = 0.0;  // rad, from the IMU
     rclcpp::Subscription<JointState>::SharedPtr joint_state_sub;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
@@ -152,6 +158,7 @@ public:
     void updateLegOdometry(const rclcpp::Time& stamp);
     void publishOdometry(const rclcpp::Time& stamp);
     void publishFootprint();
+    void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);

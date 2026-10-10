@@ -433,10 +433,12 @@ Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.la
    magnetometer its yaw drifts.
 
 **`base_footprint`** is the point on the floor directly below `base_link`.
-The gait controller publishes `base_footprint` → `base_link` (the body height,
-republished whenever `set_height` changes it), and odometry, SLAM and Nav2 all
-use `base_footprint` as the robot's base. So z = 0 in `odom` is the floor,
-which lets the costmaps tell the floor from low obstacles.
+The gait controller publishes `base_footprint` → `base_link` every tick: the
+body height, plus the body's roll and pitch from the IMU. Odometry, SLAM and
+Nav2 all use `base_footprint` as the robot's base. So z = 0 in `odom` is the
+floor, which lets the costmaps tell the floor from low obstacles. The tilt
+matters: the body rocks by up to ~0.8° while walking, which without it put
+floor 3.5 m away 5 cm too high and marked phantom obstacles across the room.
 
 In Gazebo, after driving forward, turning 143° and driving forward again,
 leg odometry alone was 5.7 cm and 12° off; the fused odometry was 2.4 cm and
