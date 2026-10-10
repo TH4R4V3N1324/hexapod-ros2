@@ -147,12 +147,22 @@ void GaitController::getCapabilitiesCallback(
 
 /**
  * @brief Main gait loop - called by timer at fixed rate
- * @note This replaces your embedded while(true) loop
+ * @note This replaces your embedded while(true) loop.
+ *       Each tick advances the gait by the measured time since the last tick,
+ *       clamped so a stalled tick cannot make the legs jump.
 */
 void GaitController::gaitTimerCallback() {
+    constexpr double MAX_TICK_DT = 0.1;  // s
+
+    rclcpp::Time now = this->now();
+    double dt = has_last_tick ? (now - last_tick_time).seconds() : nominal_dt;
+    dt = std::clamp(dt, 0.0, MAX_TICK_DT);
+    last_tick_time = now;
+    has_last_tick = true;
+
     // Run the startup sequence until the legs reach their start positions
     if (!positions_initialized) {
-        positions_initialized = startup();
+        positions_initialized = startup(dt);
         return;
     }
 
@@ -178,7 +188,7 @@ void GaitController::gaitTimerCallback() {
             RCLCPP_WARN(this->get_logger(), "Invalid or unimplemented mode");
             break;
     }
-    walk();
+    walk(dt);
 }
 
 /**
@@ -233,13 +243,13 @@ void GaitController::home() {
 
 /**
  * @brief Startup sequence to move legs from where they are to their start positions
+ * @param[in] dt The time since the last tick (s)
  * @return true once the sequence is complete, false while it is still running
- * @note Waits for joint states first, so the trajectories start from the measured
- *       leg positions instead of assuming a pose
+ * @note Waits for joint states first, so the move starts from the measured leg positions
+ *       instead of assuming a pose. The move takes startup_duration, or longer if a joint
+ *       would otherwise exceed max_joint_speed.
 */
-bool GaitController::startup() {
-    auto joint_state_msg = JointState();
-
+bool GaitController::startup(double dt) {
     if (!startup_planned) {
         if (!has_joint_states) {
             RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for joint states from all 18 joints");
@@ -247,17 +257,8 @@ bool GaitController::startup() {
         }
         RCLCPP_INFO(this->get_logger(), "Moving legs from their measured positions to the start positions");
         current_leg_positions = measured_leg_positions;
-
-        // Pre-generate all trajectories for the startup sequence
-        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
-            trajectoryGen.GenStraightTrajectory(
-                startup_trajectory[leg].data(),
-                startup_sizes[leg],
-                current_leg_positions[leg],
-                gaitConfig.startPosition.at(leg)
-            );
-        }
-        startup_step = 0;
+        startup_start_positions = measured_leg_positions;
+        startup_progress = 0.0;
         startup_planned = true;
     }
 
@@ -267,19 +268,28 @@ bool GaitController::startup() {
     // Update start positions based on current height
     gaitConfig.setHeight(gaitConfig.currentHeight);
 
-    // Execute one step of the startup sequence per timer callback
-    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
-        if (startup_step < startup_sizes[leg]) {
-            Vector3d pos = startup_trajectory[leg][startup_step];
-            appendJointCommand(joint_state_msg, pos, leg);
+    // Straight line from the measured position to the start position
+    auto targetsAt = [this](double progress) {
+        std::array<Vector3d, MAX_LEGS + 1> targets;
+        for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+            const Vector3d& start = startup_start_positions[leg];
+            targets[leg] = start + (gaitConfig.startPosition.at(leg) - start) * progress;
         }
+        return targets;
+    };
+
+    double ds = dt / startup_duration;
+    double scale = jointSpeedScale(targetsAt(std::min(1.0, startup_progress + ds)), dt);
+    startup_progress = std::min(1.0, startup_progress + ds * scale);
+
+    auto targets = targetsAt(startup_progress);
+    auto joint_state_msg = JointState();
+    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        appendJointCommand(joint_state_msg, targets[leg], leg);
     }
     sendJointcommands(joint_state_msg);
-    startup_step++;
-    
-    // Check if startup sequence is complete
-    int max_startup_size = *std::max_element(startup_sizes.begin() + 1, startup_sizes.end());
-    if (startup_step >= max_startup_size) {
+
+    if (startup_progress >= 1.0) {
         RCLCPP_INFO(this->get_logger(), "Startup sequence complete");
         return true;
     }
@@ -287,92 +297,123 @@ bool GaitController::startup() {
 }
 
 /**
+ * @brief Evaluate every leg's trajectory target after advancing it by ds, without changing the splines
+ * @param[in] ds How far to advance each spline (fraction of a phase)
+ * @return The target foot position of each leg (leg frame)
+ * @note Legs with no active swing or stance spline hold their commanded position
+*/
+std::array<Vector3d, MAX_LEGS + 1> GaitController::legTargets(double ds) {
+    std::array<Vector3d, MAX_LEGS + 1> targets;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        // Each leg is assigned EITHER swing OR stance trajectory for this phase (not both)
+        const SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
+        const LineSpline& stanceSpline = trajectoryGen.gaitState.stanceSplines[legNum];
+
+        if (spline.active) {
+            double s = std::min(1.0, spline.s + ds);
+            targets[legNum] = (s >= 1.0) ? spline.P4
+                : trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s);
+        } else if (stanceSpline.active) {
+            double s = std::min(1.0, stanceSpline.s + ds);
+            targets[legNum] = stanceSpline.P0 + (stanceSpline.P1 - stanceSpline.P0) * s;
+        } else {
+            targets[legNum] = current_leg_positions[legNum];
+        }
+    }
+    return targets;
+}
+
+/**
+ * @brief Work out how much to slow this tick so no joint moves faster than max_joint_speed
+ * @param[in] targets The foot target of each leg for this tick (leg frame)
+ * @param[in] dt The time since the last tick (s)
+ * @return A factor from 0 to 1 to scale this tick's progress by (1 = full speed)
+ * @note Compares the joint angles of the targets with those of the last commanded positions.
+ *       Joint motion is close to linear over one tick, so scaling progress scales joint speed.
+*/
+double GaitController::jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt) {
+    double max_delta = 0.0;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        JointAngles from = ikSolver.solveIK(current_leg_positions[legNum]);
+        JointAngles to = ikSolver.solveIK(targets[legNum]);
+        max_delta = std::max({max_delta,
+            std::abs(to.coxa - from.coxa),
+            std::abs(to.femur - from.femur),
+            std::abs(to.tibia - from.tibia)});
+    }
+    double allowed = max_joint_speed * dt;
+    return (max_delta > allowed) ? allowed / max_delta : 1.0;
+}
+
+/**
  * @brief Perform a leg step based on the current trajectories
+ * @param[in] dt The time since the last tick (s)
  * @param[in] idle Whether the joystick is idle
  * @param[in] handlePhaseTransition Whether to handle phase transitions
  * @note If idle is true, the step will not advance
  * @note If handlePhaseTransition is false, phase transitions will be skipped and must be handled externally
+ * @note Progress is dt / phase_duration per tick, reduced if a joint would exceed max_joint_speed.
+ *       All legs share the same progress, so they stay in phase when the gait slows down.
 */
-void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
-    auto joint_state_msg = JointState();
-    
-    // Prepare joint names (18 joints total: 6 legs × 3 joints)
-    joint_state_msg.name.reserve(18);
-    joint_state_msg.position.reserve(18);
-    
+void GaitController::PerformLegStep(double dt, bool idle, bool handlePhaseTransition) {
+    double ds = idle ? 0.0 : dt / phase_duration;
+    std::array<Vector3d, MAX_LEGS + 1> targets = legTargets(ds);
+    double scale = jointSpeedScale(targets, dt);
+    if (scale < 1.0) {
+        ds *= scale;
+        targets = legTargets(ds);
+    }
+
+    // Advance the splines and deactivate any that have reached their end
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        // Get target position for this leg
-        // Each leg is assigned EITHER swing OR stance trajectory for this phase (not both)
-        Eigen::Vector3d targetPos = current_leg_positions[legNum];
         SwingSpline& spline = trajectoryGen.gaitState.swingSplines[legNum];
         LineSpline& stanceSpline = trajectoryGen.gaitState.stanceSplines[legNum];
-
         if (spline.active) {
-            targetPos = trajectoryGen.evalBezier(
-                spline.P0,
-                spline.P1,
-                spline.P2,
-                spline.P3,
-                spline.P4,
-                spline.s
-            );
-
-            // Advance spline progress
-            double ds = idle ? 0.0 : (1.0 / MAX_RESOLUTION);
-            spline.s += ds;
-            if (spline.s >= 1.0) {
-                spline.s = 1.0;
-                // Snap to exact endpoint and deactivate to prevent drift
-                targetPos = spline.P4;
-                spline.active = false;
-            }
+            spline.s = std::min(1.0, spline.s + ds);
+            spline.active = spline.s < 1.0;
+        } else if (stanceSpline.active) {
+            stanceSpline.s = std::min(1.0, stanceSpline.s + ds);
+            stanceSpline.active = stanceSpline.s < 1.0;
         }
-        else if (stanceSpline.active) {
-            targetPos = stanceSpline.P0 + (stanceSpline.P1 - stanceSpline.P0) * stanceSpline.s;
+    }
 
-            double ds = idle ? 0.0 : (1.0 / MAX_RESOLUTION);
-            stanceSpline.s += ds;
-            if (stanceSpline.s >= 1.0) {
-                stanceSpline.s = 1.0;
-                targetPos = stanceSpline.P1;
-                stanceSpline.active = false;
-            }
-        }
-        
+    auto joint_state_msg = JointState();
+    joint_state_msg.name.reserve(18);
+    joint_state_msg.position.reserve(18);
+
+    const double maxStep = max_foot_speed * dt;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        Eigen::Vector3d targetPos = targets[legNum];
         Eigen::Vector3d delta = targetPos - current_leg_positions[legNum];
-        double maxStep = 0.03; // 3 cm per control cycle
-
         if (delta.norm() > maxStep) {
             targetPos = current_leg_positions[legNum] + delta.normalized() * maxStep;
         }
         appendJointCommand(joint_state_msg, targetPos, legNum);
     }
-    
-    // Publish joint states
     sendJointcommands(joint_state_msg);
-    
-    // Advance step if not idle
-    if (!idle) step++;
+
+    phase_progress = std::min(1.0, phase_progress + ds);
     if (!handlePhaseTransition) return;
 
     // Phase transition
-    if (step > MAX_RESOLUTION) {
+    if (phase_progress >= 1.0) {
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
-        step = 0;
-    }    
+        phase_progress = 0.0;
+    }
 }
 
 /**
  * @brief Returns the hexapod to its start position
+ * @param[in] dt The time since the last tick (s)
 */
-void GaitController::returnToStart() {
+void GaitController::returnToStart(double dt) {
     static int counter = 0;
 
     // Safety check: phase must be valid
     if (phase >= trajectoryGen.gaitState.config.size()) {
         idleReturning = false;
         counter = 0;
-        step = 0;
+        phase_progress = 0.0;
         return;
     }
 
@@ -394,12 +435,12 @@ void GaitController::returnToStart() {
         // Already at start, finish immediately
         idleReturning = false;
         counter = 0;
-        step = 0;
+        phase_progress = 0.0;
         phase = 0;
         return;
     }
 
-    if (step == 0) {
+    if (phase_progress == 0.0) {
         trajectoryGen.GenerateTrajectories(
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
@@ -417,12 +458,12 @@ void GaitController::returnToStart() {
     }
 
     // Move all legs for this step
-    PerformLegStep(false, false);
+    PerformLegStep(dt, false, false);
 
     // Phase transition
-    if (step > MAX_RESOLUTION-1) {
+    if (phase_progress >= 1.0) {
         counter++;
-        step = 0;
+        phase_progress = 0.0;
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
 
         // After all phases, finish return-to-start and handle gait change if requested
@@ -434,7 +475,7 @@ void GaitController::returnToStart() {
                 gaitConfig.currentGait = gaitConfig.pendingGait;
                 trajectoryGen.gaitState.config = gaitConfig.getGaitConfig(gaitConfig.currentGait);
                 phase = 0;
-                step = 0;
+                phase_progress = 0.0;
                 gaitConfig.gaitChangeRequested = false;
             }
         }
@@ -443,11 +484,12 @@ void GaitController::returnToStart() {
 
 /**
  * @brief Handle idle/return-to-start logic
+ * @param[in] dt The time since the last tick (s)
  * @return true if the stick is idle, false otherwise
+ * @note The legs return to their start positions after idle_return_delay seconds idle
 */
-bool GaitController::HandleIdleReturn() {
-    static int idleCount = 0;
-    static const int idleThreshold = 100;
+bool GaitController::HandleIdleReturn(double dt) {
+    static double idleTime = 0.0;
     static bool hasMovedFromStart = false;
     static bool returnCompleted = false;  // Track if we just finished returning
 
@@ -460,46 +502,47 @@ bool GaitController::HandleIdleReturn() {
                       std::abs(current_motion_intent.yaw) < DEADZONE);
 
     // Track if we've ever moved (received non-zero command and started stepping)
-    if (!idle && step > 0) {
+    if (!idle && phase_progress > 0.0) {
         hasMovedFromStart = true;
         returnCompleted = false;  // Reset since we're moving again
     }
 
     if (idle) {
-        idleCount++;
+        idleTime += dt;
     } else {
-        idleCount = 0;
+        idleTime = 0.0;
     }
 
     // Handle idle/return-to-start logic
     // Only trigger if: we've moved, been idle long enough, haven't just completed return, OR already returning
     if (idleReturning) {
-        returnToStart();
+        returnToStart(dt);
         // Check if returnToStart finished (it sets idleReturning = false when done)
         if (!idleReturning) {
             returnCompleted = true;
             hasMovedFromStart = false;  // Reset so we don't re-trigger until user moves again
         }
-        idleCount = 0;
-    } else if (hasMovedFromStart && !returnCompleted && idleCount > idleThreshold) {
+        idleTime = 0.0;
+    } else if (hasMovedFromStart && !returnCompleted && idleTime > idle_return_delay) {
         idleReturning = true;
-        step = 0;
-        returnToStart();
-        idleCount = 0;
+        phase_progress = 0.0;
+        returnToStart(dt);
+        idleTime = 0.0;
     }
     return idle; // Return whether stick is idle
 }
 
 /**
  * @brief Handles walking motion of the hexapod
+ * @param[in] dt The time since the last tick (s)
  * @note The direction of movement is determined by the current_motion_intent,
  *       which is updated from cmd_vel in the timer callback based on the current mode.
  *       This allows for dynamic switching between different control schemes (e.g. strafing vs normal)
  *       while maintaining a consistent gait generation logic.
 */
-void GaitController::walk() {
+void GaitController::walk(double dt) {
     // Check if velocity is idle
-    bool velocityIdle = HandleIdleReturn();
+    bool velocityIdle = HandleIdleReturn(dt);
     if (idleReturning) return;
 
     // Ensure gait config is set
@@ -509,7 +552,7 @@ void GaitController::walk() {
     double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
 
     // Generate trajectories at the start of each phase
-    if (step == 0) {
+    if (phase_progress == 0.0) {
         trajectory_motion_intent = current_motion_intent;
         trajectoryGen.GenerateTrajectories(
             // Swing target - use Twist-based direction
@@ -531,5 +574,5 @@ void GaitController::walk() {
         );
     }
     // Move all legs for this step
-    PerformLegStep(velocityIdle);
+    PerformLegStep(dt, velocityIdle);
 }

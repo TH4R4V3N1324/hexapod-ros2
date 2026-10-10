@@ -44,11 +44,19 @@ public:
         set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
         get_capabilities_service = this->create_service<GetCapabilities>("get_capabilities", std::bind(&GaitController::getCapabilitiesCallback, this, _1, _2));
         
-        double loop_rate_hz = 50.0;
-        gait_timer = this->create_wall_timer(std::chrono::duration<double>(1.0 / loop_rate_hz), std::bind(&GaitController::gaitTimerCallback, this));
+        double loop_rate_hz = this->declare_parameter("loop_rate", 50.0);
+        phase_duration = this->declare_parameter("phase_duration", 1.0);
+        max_foot_speed = this->declare_parameter("max_foot_speed", 1.5);
+        max_joint_speed = this->declare_parameter("max_joint_speed", 4.0);
+        idle_return_delay = this->declare_parameter("idle_return_delay", 2.0);
+        startup_duration = this->declare_parameter("startup_duration", 1.0);
+        nominal_dt = 1.0 / loop_rate_hz;
 
-        RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz", loop_rate_hz);
-    }    
+        // ROS timer, so the gait follows simulation time when use_sim_time is set
+        gait_timer = this->create_timer(std::chrono::duration<double>(nominal_dt), std::bind(&GaitController::gaitTimerCallback, this));
+
+        RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz, %.2f s per phase", loop_rate_hz, phase_duration);
+    }
 private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
@@ -62,9 +70,19 @@ private:
     GaitConfig gaitConfig;
     KinematicSolver ikSolver;
     
-    uint8_t step = 0;
     uint8_t phase = 0;
-    uint8_t startup_step = 0;
+    double phase_progress = 0.0;    // fraction of the current phase completed, 0 to 1
+    double startup_progress = 0.0;  // fraction of the startup move completed, 0 to 1
+
+    // Timing params, in seconds or SI units so the gait is independent of the loop rate
+    double phase_duration;   // s per gait phase
+    double max_foot_speed;   // m/s, cap on how fast a foot target can move
+    double max_joint_speed;  // rad/s, phases slow down so no joint exceeds this
+    double idle_return_delay;  // s idle before the legs return to their start positions
+    double startup_duration;   // s for the startup move to the start positions
+    double nominal_dt;       // s, expected time between gait ticks
+    rclcpp::Time last_tick_time;
+    bool has_last_tick = false;
     
     Twist last_cmd_vel;
     Twist filtered_cmd_vel;
@@ -79,11 +97,10 @@ private:
     
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
 
-    std::array<std::array<Vector3d, MAX_RESOLUTION + 1>, MAX_LEGS + 1> startup_trajectory;
     std::array<Vector3d, MAX_LEGS + 1> current_leg_positions;   // commanded foot positions (leg frame)
     std::array<Vector3d, MAX_LEGS + 1> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
+    std::array<Vector3d, MAX_LEGS + 1> startup_start_positions;
     bool startup_planned = false;
-    std::array<int, MAX_LEGS + 1> startup_sizes{};
     
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
@@ -96,11 +113,13 @@ public:
     void appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum);
     void sendJointcommands(JointState& msg);
     void home();
-    bool startup();
-    void PerformLegStep(bool idle, bool handlePhaseTransition = true);
-    void returnToStart();
-    bool HandleIdleReturn();
-    void walk();
+    bool startup(double dt);
+    std::array<Vector3d, MAX_LEGS + 1> legTargets(double ds);
+    double jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
+    void PerformLegStep(double dt, bool idle, bool handlePhaseTransition = true);
+    void returnToStart(double dt);
+    bool HandleIdleReturn(double dt);
+    void walk(double dt);
 };
 
 #endif // HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP

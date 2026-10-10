@@ -33,6 +33,7 @@ def generate_launch_description():
         executable='gait_controller',
         name='hexapod_gait_controller',
         output='screen',
+        parameters=[{'use_sim_time': True}]
     )
 
     controller_teleop_node = Node(
