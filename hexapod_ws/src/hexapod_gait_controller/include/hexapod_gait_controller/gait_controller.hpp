@@ -46,6 +46,7 @@ public:
         
         double loop_rate_hz = this->declare_parameter("loop_rate", 50.0);
         phase_duration = this->declare_parameter("phase_duration", 1.0);
+        min_phase_duration = this->declare_parameter("min_phase_duration", 0.7);
         max_foot_speed = this->declare_parameter("max_foot_speed", 1.5);
         max_joint_speed = this->declare_parameter("max_joint_speed", 4.0);
         idle_return_delay = this->declare_parameter("idle_return_delay", 2.0);
@@ -75,7 +76,9 @@ private:
     double startup_progress = 0.0;  // fraction of the startup move completed, 0 to 1
 
     // Timing params, in seconds or SI units so the gait is independent of the loop rate
-    double phase_duration;   // s per gait phase
+    double phase_duration;      // s per gait phase at low speeds
+    double min_phase_duration;  // s, shortest phase allowed, which sets each gait's top speed
+    double current_phase_duration = 1.0;  // s, duration chosen for the phase in progress
     double max_foot_speed;   // m/s, cap on how fast a foot target can move
     double max_joint_speed;  // rad/s, phases slow down so no joint exceeds this
     double idle_return_delay;  // s idle before the legs return to their start positions
@@ -114,6 +117,7 @@ public:
     void sendJointcommands(JointState& msg);
     void home();
     bool startup(double dt);
+    double maxFootSpeed();
     std::array<Vector3d, MAX_LEGS + 1> legTargets(double ds);
     double jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
     void PerformLegStep(double dt, bool idle, bool handlePhaseTransition = true);

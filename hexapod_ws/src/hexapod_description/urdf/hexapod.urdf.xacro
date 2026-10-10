@@ -1,6 +1,9 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <xacro:arg name="controllers_file" default=""/>
+  <!-- Waveshare ST3215 at 12 V: 2.94 N·m stall torque, 0.222 s/60° no-load speed -->
+  <xacro:property name="servo_effort" value="2.94"/>
+  <xacro:property name="servo_velocity" value="4.7"/>
   <!-- ros2_control hardware: gazebo, mock or st3215 (see hexapod.ros2_control.xacro) -->
   <xacro:arg name="hardware" default="mock"/>
   <xacro:arg name="serial_port" default="/dev/ttyAMA0"/>
@@ -115,7 +118,7 @@
     <child link="${name}_coxa"/>
     <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 ${yaw}"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- FEMUR JOINT -->
@@ -124,7 +127,7 @@
     <child link="${name}_femur"/>
     <origin xyz="${coxa_length} 0 ${femur_z_offset}" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- TIBIA JOINT -->
@@ -133,7 +136,7 @@
     <child link="${name}_tibia"/>
     <origin xyz="${femur_length} 0 0" rpy="0 1.5708 0"/> 
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- COXA TRANSMISSION -->
