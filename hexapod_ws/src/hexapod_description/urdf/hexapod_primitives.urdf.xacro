@@ -1,6 +1,9 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <xacro:arg name="controllers_file" default=""/>
+  <!-- Waveshare ST3215 at 12 V: 2.94 N·m stall torque, 0.222 s/60° no-load speed -->
+  <xacro:property name="servo_effort" value="2.94"/>
+  <xacro:property name="servo_velocity" value="4.7"/>
   <xacro:arg name="front_depth_width" default="640"/>
   <xacro:arg name="front_depth_height" default="480"/>
   <xacro:arg name="front_depth_rate" default="8"/>
@@ -17,6 +20,10 @@
   <xacro:property name="tibia_radius" value="0.0225"/>
 
   <xacro:property name="cscale" value="0.95"/>
+
+  <!-- Rubber foot at the tibia tip; its bottom sits at tibia_length so the IK leg length is unchanged -->
+  <xacro:property name="foot_radius" value="0.012"/>
+  <xacro:property name="foot_friction" value="1.5"/>
 
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
@@ -104,6 +111,13 @@
       </geometry>
       <material name="${colour}"/>
     </visual>
+    <!-- Foot sphere. Left unnamed: the URDF converter only applies mu1/mu2 to collisions named after the link -->
+    <collision>
+      <origin xyz="${tibia_length - foot_radius} 0 0"/>
+      <geometry>
+        <sphere radius="${foot_radius}"/>
+      </geometry>
+    </collision>
     <collision>
       <origin xyz="${tibia_length/2} 0 0" rpy="0 -1.5708 0"/>
       <geometry>
@@ -117,13 +131,18 @@
     </inertial>
   </link>
 
+  <gazebo reference="${name}_tibia">
+    <mu1>${foot_friction}</mu1>
+    <mu2>${foot_friction}</mu2>
+  </gazebo>
+
   <!-- COXA JOINT -->
   <joint name="${name}_coxa_joint" type="revolute">
     <parent link="base_link"/>
     <child link="${name}_coxa"/>
     <origin xyz="${x_offset} ${y_offset} 0" rpy="0 0 ${yaw}"/>
     <axis xyz="0 0 1"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- FEMUR JOINT -->
@@ -132,7 +151,7 @@
     <child link="${name}_femur"/>
     <origin xyz="${coxa_length} 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- TIBIA JOINT -->
@@ -141,7 +160,7 @@
     <child link="${name}_tibia"/>
     <origin xyz="${femur_length} 0 0" rpy="0 1.5708 0"/> 
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="1" velocity="1"/>
+    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- COXA TRANSMISSION -->

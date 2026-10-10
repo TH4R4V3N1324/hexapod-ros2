@@ -11,6 +11,7 @@ def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
     rviz_config = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
     bridge_vision = LaunchConfiguration('bridge_vision')
+    world = LaunchConfiguration('world')
     front_depth_width = LaunchConfiguration('front_depth_width')
     front_depth_height = LaunchConfiguration('front_depth_height')
     front_depth_rate = LaunchConfiguration('front_depth_rate')
@@ -20,6 +21,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource([str(Path(pkg_path) / "launch" / "gazebo.launch.py")]),
         launch_arguments={
             "use_sim_time": "true",
+            "world": world,
             "bridge_vision": bridge_vision,
             "front_depth_width": front_depth_width,
             "front_depth_height": front_depth_height,
@@ -60,6 +62,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'world',
+            default_value='hexapod_world',
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world or empty_world).'
+        ),
         DeclareLaunchArgument(
             'bridge_vision',
             default_value='false',

@@ -5,12 +5,13 @@ from launch.event_handlers import OnProcessExit
 from launch.conditions import IfCondition
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
-from launch.substitutions import Command, LaunchConfiguration
+from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
     bridge_vision = LaunchConfiguration('bridge_vision')
+    world = LaunchConfiguration('world')
     front_depth_width = LaunchConfiguration('front_depth_width')
     front_depth_height = LaunchConfiguration('front_depth_height')
     front_depth_rate = LaunchConfiguration('front_depth_rate')
@@ -19,7 +20,7 @@ def generate_launch_description():
     pkg_share_parent = os.path.dirname(pkg_path)
     xacro_file = os.path.join(pkg_path, 'urdf', 'hexapod_primitives.urdf.xacro')
     controllers_file = os.path.join(pkg_path, 'config', 'controllers.yaml')
-    world_file = os.path.join(pkg_path, 'worlds', 'hexapod_world.sdf')
+    world_file = PathJoinSubstitution([pkg_path, 'worlds', [world, '.sdf']])
 
     robot_description = ParameterValue(
         Command([
@@ -140,6 +141,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'world',
+            default_value='hexapod_world',
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world or empty_world).'
+        ),
         DeclareLaunchArgument(
             'bridge_vision',
             default_value='false',
