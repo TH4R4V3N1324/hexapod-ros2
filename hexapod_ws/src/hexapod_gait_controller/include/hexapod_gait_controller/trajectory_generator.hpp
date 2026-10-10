@@ -54,6 +54,8 @@ public:
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
         uint8_t currentPhase
     );
+    double legYaw(int legNum);
+    Vector3d neutralFootInBody(int legNum);
     Vector3d footDisplacement(double forward, double lateral, double yaw, int legNum, double duration);
     double bodyRadius(int legNum);
     double maxBodyRadius();

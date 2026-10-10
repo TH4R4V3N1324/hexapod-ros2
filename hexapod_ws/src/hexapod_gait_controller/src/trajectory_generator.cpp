@@ -169,45 +169,45 @@ void TrajectoryGenerator::GenerateTrajectories(
 }
 
 /**
+ * @brief Yaw of a leg's frame relative to the body frame
+ * @param[in] legNum The leg number
+ * @return The yaw (rad), matching the coxa joint origins in the URDF
+ * @note Mirrored legs (4-6) face the other way, so their frame is turned a further half turn.
+ *       The body frame has +y forward and +x to the right.
+*/
+double TrajectoryGenerator::legYaw(int legNum) {
+    const LegConfig& leg = converter.legConfigs.at(legNum);
+    return leg.mirrored ? -(leg.mounting_angle + M_PI) : leg.mounting_angle;
+}
+
+/**
+ * @brief Position of a leg's neutral foot in the body frame
+ * @param[in] legNum The leg number
+ * @return The foot position relative to the body centre (body frame, z = 0)
+*/
+Vector3d TrajectoryGenerator::neutralFootInBody(int legNum) {
+    const Vector3d& neutral = gaitConfig.startPosition.at(legNum);
+    Vector3d foot = Eigen::AngleAxisd(legYaw(legNum), Vector3d::UnitZ()) * Vector3d(neutral.x(), neutral.y(), 0.0);
+    return foot + Vector3d(converter.legConfigs.at(legNum).translation_offset.x(),
+                           converter.legConfigs.at(legNum).translation_offset.y(), 0.0);
+}
+
+/**
  * @brief Foot displacement in a leg's frame for a body velocity held for a duration
  * @param[in] forward Forward body velocity (m/s)
- * @param[in] lateral Lateral body velocity (m/s)
- * @param[in] yaw Body yaw rate (rad/s)
+ * @param[in] lateral Lateral body velocity (m/s, positive to the right)
+ * @param[in] yaw Body yaw rate (rad/s, positive anticlockwise)
  * @param[in] legNum The leg number
  * @param[in] duration How long the velocity is held (s)
  * @return The displacement (leg frame, z = 0), in the direction the foot swings
- * @note A stance foot moves by the negative of this. Yaw is approximated as an arc about the
- *       coxa whose length matches the foot's travel around the body centre.
+ * @note Worked out in the body frame, then rotated into the leg frame. Yaw rotates the
+ *       neutral foot about the body centre. A stance foot moves by the negative of this.
 */
 Vector3d TrajectoryGenerator::footDisplacement(double forward, double lateral, double yaw, int legNum, double duration) {
-    const LegConfig& leg = converter.legConfigs.at(legNum);
-    const Vector3d& neutralPos = gaitConfig.startPosition.at(legNum);
-
-    // Linear: body velocity to leg frame (axis swap, mirroring, then mounting angle)
-    double lx = lateral * duration;
-    double ly = forward * duration;
-    if (leg.mirrored) {
-        lx = -lx;
-        ly = -ly;
-    }
-    double legAngle = leg.mirrored ? leg.mounting_angle : -leg.mounting_angle;
-    Vector3d linear(
-        lx * cos(legAngle) - ly * sin(legAngle),
-        lx * sin(legAngle) + ly * cos(legAngle),
-        0.0
-    );
-
-    // Yaw: rotate the neutral position about the coxa by the matching arc
-    double neutralReach = std::hypot(neutralPos.x(), neutralPos.y());
-    double arc = yaw * bodyRadius(legNum) * duration;
-    double angle = (neutralReach > 0.01) ? arc / neutralReach : 0.0;
-    Vector3d rotation(
-        neutralPos.x() * cos(angle) - neutralPos.y() * sin(angle) - neutralPos.x(),
-        neutralPos.x() * sin(angle) + neutralPos.y() * cos(angle) - neutralPos.y(),
-        0.0
-    );
-
-    return linear + rotation;
+    Vector3d foot = neutralFootInBody(legNum);
+    Vector3d linear(lateral * duration, forward * duration, 0.0);
+    Vector3d rotation = Eigen::AngleAxisd(yaw * duration, Vector3d::UnitZ()) * foot - foot;
+    return Eigen::AngleAxisd(-legYaw(legNum), Vector3d::UnitZ()) * (linear + rotation);
 }
 
 /**
@@ -216,8 +216,7 @@ Vector3d TrajectoryGenerator::footDisplacement(double forward, double lateral, d
  * @return The horizontal distance (m)
 */
 double TrajectoryGenerator::bodyRadius(int legNum) {
-    Vector3d foot = converter.legToBodyFrame(gaitConfig.startPosition.at(legNum), legNum);
-    return std::hypot(foot.x(), foot.y());
+    return neutralFootInBody(legNum).norm();
 }
 
 /**

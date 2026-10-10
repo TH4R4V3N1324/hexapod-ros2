@@ -280,7 +280,7 @@ types; these cover only what has no standard equivalent.
 ## Gait controller internals
 
 `gait_controller` (in `hexapod_gait_controller`) is the central node. It
-runs a 50 Hz ROS timer (`gaitTimerCallback`) and composes three helper
+runs a 100 Hz ROS timer (`gaitTimerCallback`) and composes three helper
 classes.
 
 Gait timing is in seconds, not ticks. Each tick advances the gait by the time
@@ -290,7 +290,7 @@ it is in the Gazebo launch. Parameters:
 
 | Parameter | Default | Meaning |
 |---|---|---|
-| `loop_rate` | 50.0 Hz | How often joint commands are sent |
+| `loop_rate` | 100.0 Hz | How often joint commands are sent; matches the controller manager's rate |
 | `phase_duration` | 1.0 s | Length of one gait phase at low speed |
 | `min_phase_duration` | 0.7 s | Shortest phase; sets each gait's top speed (0.17 m/s for tripod) |
 | `max_foot_speed` | 1.5 m/s | Cap on how fast a foot target can move |
@@ -306,6 +306,22 @@ stroke would exceed `MAX_STRIDE_LENGTH`, the phases get shorter, down to
 down. `get_capabilities` reports the current gait's top linear and angular
 speeds. In normal mode, `linear.y` turns the robot, scaled so the full linear
 range maps to the full yaw range.
+
+Directions follow ROS conventions for `/cmd_vel`: positive `linear.x` is
+forward (towards the cameras), positive `linear.y` is left in strafe mode, and
+positive yaw is anticlockwise. Turning rotates each foot about the body centre.
+In the URDF body frame, +y is forward and +x is to the robot's right.
+
+To check directions:
+
+```bash
+# Unit tests of the foot motion maths (no simulation needed)
+colcon test --packages-select hexapod_gait_controller && colcon test-result --verbose
+
+# End-to-end in Gazebo: drives each direction and checks how the robot moved
+ros2 launch hexapod_bringup hexapod_simulation.launch.py world:=empty_world
+ros2 run hexapod_bringup sim_direction_check.py   # in a second terminal
+```
 
 The helper classes:
 

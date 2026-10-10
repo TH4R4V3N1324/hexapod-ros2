@@ -61,6 +61,13 @@ install(TARGETS
 )
 
 install(TARGETS gait_controller leg_axis_tester DESTINATION lib/${PROJECT_NAME}/)
+
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_foot_directions test/test_foot_directions.cpp)
+  target_link_libraries(test_foot_directions trajectory_generator)
+  ament_target_dependencies(test_foot_directions rclcpp hexapod_interfaces geometry_msgs Eigen3)
+endif()
 install(DIRECTORY include/ DESTINATION include)
 
 ament_package()
