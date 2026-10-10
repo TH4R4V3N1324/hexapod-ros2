@@ -267,10 +267,11 @@ void GaitController::gaitTimerCallback() {
             current_motion_intent.yaw = filtered_cmd_vel.angular.z;
             break;
         case Mode::MODE_NORMAL:
-            // linear.y turns in this mode, scaled so its full range maps to the full yaw range
+            // No strafing in this mode. Turning comes from angular.z (as Nav2 sends it) plus
+            // linear.y, scaled so the gamepad's full linear range maps to the full yaw range
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
             current_motion_intent.left = 0.0;
-            current_motion_intent.yaw = filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
+            current_motion_intent.yaw = filtered_cmd_vel.angular.z + filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
             break;
         case Mode::MODE_CONFIG:
             // TODO: Configuration mode handling

@@ -21,6 +21,8 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-robot-localization \
     ros-jazzy-rplidar-ros \
     ros-jazzy-slam-toolbox \
+    ros-jazzy-navigation2 \
+    ros-jazzy-nav2-bringup \
     ros-jazzy-xacro \
     python3-colcon-common-extensions \
     python3-rosdep \
