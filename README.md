@@ -329,6 +329,15 @@ ros2 launch hexapod_bringup hexapod_simulation.launch.py world:=empty_world
 ros2 run hexapod_bringup sim_direction_check.py   # in a second terminal
 ```
 
+Commands take effect every tick, not just at phase boundaries: stance feet move
+with the current body velocity, swing feet re-aim their landing target (at up
+to `max_target_speed`, 0.5 m/s), and the phase length follows the commanded
+speed. A forward-to-backward reversal shows up in the body's motion within
+0.06 s (it used to take ~1.9 s). Every foot stays within `MAX_STRIDE_LENGTH`
+of its neutral position, and both ends of a swing are inside that circle, so
+the whole swing is too. Neighbouring legs can't collide inside those circles:
+the smallest gap between their segments is ~2.5 cm (`test_leg_clearance`).
+
 The helper classes:
 
 - **`GaitConfig`** — holds the three supported gaits (tripod / ripple /
@@ -436,8 +445,12 @@ nav2_bringup's defaults:
 
 - **Robot:** 0.32 m radius (the legs plus stride), 0.45 m inflation so 1 m
   doorways stay passable.
+- **Omnidirectional:** with `nav:=true` the gait starts in strafe mode
+  (`initial_mode` parameter), where `/cmd_vel` follows the standard holonomic
+  convention, and MPPI uses its `Omni` motion model. The robot walks sideways
+  or diagonally instead of turning first, and only turns for the goal heading.
 - **Speeds:** MPPI and the velocity smoother are capped just under the gait's
-  limits (0.15 m/s, 0.6 rad/s), as are recovery spins.
+  limits (0.15 m/s forward and sideways, 0.6 rad/s), as are recovery spins.
 - **MPPI acceleration limits** are left at Nav2's defaults. MPPI starts each
   cycle from the measured speed, and the gait takes up to ~1 s to respond, so
   low limits stop it ever speeding up; the velocity smoother ramps gently
@@ -446,11 +459,9 @@ nav2_bringup's defaults:
   `map` → `odom` 1 s ahead (more than its 0.5 s scan interval), so Nav2 never
   looks up a transform that hasn't arrived yet.
 
-In the house world, Nav2 reached a goal across the room (turning round first)
-13 cm from target in 22 s, and a goal through a doorway into the next room 6 cm
-from target, though that took 150 s. The gait only applies a new command at the
-start of each step phase, so fine corrections near obstacles turn into
-stop-start motion and occasional progress-check recoveries.
+In the house world, Nav2 reached a goal across the room (ending turned round)
+0 cm from target in 21 s, and a goal through a doorway into the next room 4 cm
+from target in 32 s, with no recoveries.
 
 ## Simulation (Gazebo Harmonic)
 

@@ -2,9 +2,10 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import LaunchConfiguration, PythonExpression
 from ament_index_python.packages import get_package_share_directory
 from pathlib import Path
 
@@ -37,7 +38,9 @@ def generate_launch_description():
         executable='gait_controller',
         name='hexapod_gait_controller',
         output='screen',
-        parameters=[{'use_sim_time': True}]
+        # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel)
+        parameters=[{'use_sim_time': True}, {'initial_mode': ParameterValue(
+            PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int)}]
     )
 
     controller_teleop_node = Node(

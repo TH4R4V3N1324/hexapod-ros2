@@ -108,18 +108,18 @@ controller_server:
       ay_min: -3.0
       az_max: 3.5
       vx_std: 0.1
-      vy_std: 0.2
+      vy_std: 0.1
       wz_std: 0.3
       vx_max: 0.15   # gait top speed is 0.171 m/s
       vx_min: -0.12
-      vy_max: 0.0    # normal mode does not strafe
+      vy_max: 0.15   # the gait runs in strafe mode under Nav2
       wz_max: 0.6    # gait top yaw rate is 0.665 rad/s
       iteration_count: 1
       prune_distance: 1.7
       transform_tolerance: 0.5
       temperature: 0.3
       gamma: 0.015
-      motion_model: "DiffDrive"
+      motion_model: "Omni"   # walk sideways instead of turning when that is quicker
       visualize: true
       regenerate_noises: true
       TrajectoryVisualizer:
@@ -130,7 +130,7 @@ controller_server:
       critics: [
         "ConstraintCritic", "CostCritic", "GoalCritic",
         "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
-        "PathAngleCritic", "PreferForwardCritic"]
+        "PathAngleCritic", "TwirlingCritic"]   # omnidirectional: no PreferForwardCritic
       ConstraintCritic:
         enabled: true
         cost_power: 1
@@ -145,8 +145,8 @@ controller_server:
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
-      PreferForwardCritic:
-        enabled: true
+      PreferForwardCritic:   # not in the critics list: the hexapod is omnidirectional
+        enabled: false
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 0.5
@@ -182,11 +182,11 @@ controller_server:
         offset_from_furthest: 4
         threshold_to_consider: 0.5
         max_angle_to_furthest: 1.0
-        mode: 0
-      # TwirlingCritic:
-      #   enabled: true
-      #   twirling_cost_power: 1
-      #   twirling_cost_weight: 10.0
+        mode: 2   # no direction preference: don't turn to face along the path
+      TwirlingCritic:   # discourage turning that isn't needed
+        enabled: true
+        twirling_cost_power: 1
+        twirling_cost_weight: 10.0
 
 local_costmap:
   local_costmap:
@@ -368,10 +368,10 @@ velocity_smoother:
     stamp_smoothed_velocity_with_smoothing_time: False
     scale_velocities: False
     feedback: "OPEN_LOOP"
-    max_velocity: [0.15, 0.0, 0.6]
-    min_velocity: [-0.12, 0.0, -0.6]
-    max_accel: [0.3, 0.0, 1.0]
-    max_decel: [-0.3, 0.0, -1.0]
+    max_velocity: [0.15, 0.15, 0.6]
+    min_velocity: [-0.12, -0.15, -0.6]
+    max_accel: [0.3, 0.3, 1.0]
+    max_decel: [-0.3, -0.3, -1.0]
     odom_topic: "odometry/filtered"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]

@@ -76,6 +76,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_foot_directions trajectory_generator)
   ament_target_dependencies(test_foot_directions rclcpp hexapod_interfaces geometry_msgs Eigen3)
 
+  ament_add_gtest(test_leg_clearance test/test_leg_clearance.cpp)
+  target_link_libraries(test_leg_clearance trajectory_generator kinematic_solver)
+  ament_target_dependencies(test_leg_clearance rclcpp hexapod_interfaces geometry_msgs Eigen3)
+
   ament_add_gtest(test_leg_odometry test/test_leg_odometry.cpp)
   target_link_libraries(test_leg_odometry leg_odometry)
   ament_target_dependencies(test_leg_odometry Eigen3)

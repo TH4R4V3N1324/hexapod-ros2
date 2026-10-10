@@ -58,6 +58,7 @@ public:
     Vector3d legToBody(int legNum, const Vector3d& position);
     Vector3d neutralFootInBody(int legNum);
     Vector3d footDisplacement(double forward, double left, double yaw, int legNum, double duration);
+    Vector3d footDisplacementFrom(double forward, double left, double yaw, int legNum, const Vector3d& footPos, double duration);
     double bodyRadius(int legNum);
     double maxBodyRadius();
     Vector3d swingTarget(int legNum, const Vector3d& displacement);

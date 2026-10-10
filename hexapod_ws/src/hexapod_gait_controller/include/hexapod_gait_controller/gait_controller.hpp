@@ -55,6 +55,14 @@ public:
         max_joint_speed = this->declare_parameter("max_joint_speed", 4.0);
         idle_return_delay = this->declare_parameter("idle_return_delay", 2.0);
         startup_duration = this->declare_parameter("startup_duration", 1.0);
+        max_target_speed = this->declare_parameter("max_target_speed", 0.5);
+        // Mode at startup: 0 normal (no strafing, linear.y turns), 1 strafe (standard holonomic /cmd_vel)
+        int initial_mode = this->declare_parameter("initial_mode", 0);
+        if (initial_mode < 0 || initial_mode >= NUM_MODES) {
+            RCLCPP_WARN(this->get_logger(), "initial_mode %d is not a valid mode, using normal", initial_mode);
+            initial_mode = MODE_NORMAL;
+        }
+        gaitConfig.setMode(static_cast<Mode>(initial_mode));
         odom_frame = this->declare_parameter("odom_frame", "odom");
         base_frame = this->declare_parameter("base_frame", "base_link");
         odom_publish_period = 1.0 / this->declare_parameter("odom_rate", 50.0);
@@ -113,6 +121,12 @@ private:
     std::array<Vector3d, MAX_LEGS + 1> startup_start_positions;
     bool startup_planned = false;
 
+    // Walking: swing legs fly from where they lifted off to a landing target that follows the command
+    std::array<Vector3d, MAX_LEGS + 1> swing_start;   // lift-off position (leg frame)
+    std::array<Vector3d, MAX_LEGS + 1> swing_target;  // landing target (leg frame), rate limited
+    std::array<bool, MAX_LEGS + 1> leg_swinging{};
+    double max_target_speed;  // m/s, how fast a landing target can move when the command changes
+
     // Leg odometry
     LegOdometry legOdometry;
     std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
@@ -141,6 +155,9 @@ public:
     bool startup(double dt);
     double maxFootSpeed();
     std::array<Vector3d, MAX_LEGS + 1> legTargets(double ds);
+    std::array<Vector3d, MAX_LEGS + 1> walkTargets(double forward, double left, double yaw, double ds, double moveDt);
+    void sendFootTargets(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
+    bool isSwinging(int legNum) const;
     double jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
     void PerformLegStep(double dt, bool idle, bool handlePhaseTransition = true);
     void returnToStart(double dt);
