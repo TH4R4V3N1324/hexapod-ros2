@@ -2,6 +2,7 @@ import os
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch_ros.actions import Node
+from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
@@ -55,6 +56,18 @@ def generate_launch_description():
         parameters=[ekf_file, {'use_sim_time': True}]
     )
 
+    # SLAM: builds a map from the lidar and publishes map -> odom
+    slam = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')),
+        launch_arguments={
+            'slam_params_file': os.path.join(
+                get_package_share_directory('hexapod_bringup'), 'config', 'slam_toolbox.yaml'),
+            'use_sim_time': 'true',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('slam'))
+    )
+
     foxglove_bridge_node = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -72,6 +85,11 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        DeclareLaunchArgument(
+            'slam',
+            default_value='false',
+            description='Run slam_toolbox to build a map from the lidar.'
+        ),
         DeclareLaunchArgument(
             'world',
             default_value='hexapod_world',
@@ -101,6 +119,7 @@ def generate_launch_description():
         hexapod_gait_controller,
         controller_teleop_node,
         ekf_node,
+        slam,
         foxglove_bridge_node,
         rviz2_node,
     ])

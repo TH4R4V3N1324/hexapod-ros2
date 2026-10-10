@@ -7,7 +7,10 @@
   -->
   <xacro:property name="lidar_x" value="0.0"/>
   <xacro:property name="lidar_y" value="0.0"/>
-  <xacro:property name="lidar_z" value="0.05"/>    <!-- above base_link, on top of the body -->
+  <!-- Height of the scan plane above base_link (the hip joint plane). It must clear the legs:
+       the knees reach ~9 cm above the hips at the end of a stride, ~12 cm with the leg's thickness.
+       Below that, the lidar sees the robot's own legs (20% of each scan at 5 cm). -->
+  <xacro:property name="lidar_z" value="0.15"/>
   <xacro:property name="lidar_radius" value="0.038"/>
   <xacro:property name="lidar_height" value="0.041"/>
 
