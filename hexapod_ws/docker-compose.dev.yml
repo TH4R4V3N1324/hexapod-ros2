@@ -11,10 +11,10 @@ services:
     privileged: true
     stdin_open: true
     tty: true
-    devices:
-      - /dev/input:/dev/input
     volumes:
       - ./src:/hexapod_ws/src
+      # Bind-mounted (not a device mapping) so controllers attached after start still appear
+      - /dev/input:/dev/input
       # WSL sets X11_SOCKET_DIR=/mnt/wslg/.X11-unix in .env
       - ${X11_SOCKET_DIR:-/tmp/.X11-unix}:/tmp/.X11-unix
     environment:
