@@ -88,7 +88,7 @@ void GaitController::updateLegOdometry(const rclcpp::Time& stamp) {
     if (has_previous_feet && stamp > previous_feet_stamp) {
         std::vector<Eigen::Vector2d> before, after;
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-            if (!trajectoryGen.gaitState.swingSplines[legNum].active) {
+            if (!isSwinging(legNum)) {
                 before.push_back(previous_feet[legNum]);
                 after.push_back(feet[legNum]);
             }
@@ -473,6 +473,24 @@ void GaitController::PerformLegStep(double dt, bool idle, bool handlePhaseTransi
         }
     }
 
+    sendFootTargets(targets, dt);
+
+    phase_progress = std::min(1.0, phase_progress + ds);
+    if (!handlePhaseTransition) return;
+
+    // Phase transition
+    if (phase_progress >= 1.0) {
+        phase = (phase + 1) % trajectoryGen.gaitState.config.size();
+        phase_progress = 0.0;
+    }
+}
+
+/**
+ * @brief Command every foot towards its target, limited to max_foot_speed
+ * @param[in] targets The foot target of each leg (leg frame)
+ * @param[in] dt The time since the last tick (s)
+*/
+void GaitController::sendFootTargets(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt) {
     auto joint_state_msg = JointState();
     joint_state_msg.name.reserve(18);
     joint_state_msg.position.reserve(18);
@@ -487,15 +505,15 @@ void GaitController::PerformLegStep(double dt, bool idle, bool handlePhaseTransi
         appendJointCommand(joint_state_msg, targetPos, legNum);
     }
     sendJointcommands(joint_state_msg);
+}
 
-    phase_progress = std::min(1.0, phase_progress + ds);
-    if (!handlePhaseTransition) return;
-
-    // Phase transition
-    if (phase_progress >= 1.0) {
-        phase = (phase + 1) % trajectoryGen.gaitState.config.size();
-        phase_progress = 0.0;
-    }
+/**
+ * @brief Whether a leg is currently in the air
+ * @param[in] legNum The leg number
+ * @return true if the leg is swinging, while walking or returning to start
+*/
+bool GaitController::isSwinging(int legNum) const {
+    return leg_swinging[legNum] || trajectoryGen.gaitState.swingSplines[legNum].active;
 }
 
 /**
@@ -623,6 +641,7 @@ bool GaitController::HandleIdleReturn(double dt) {
     } else if (hasMovedFromStart && !returnCompleted && idleTime > idle_return_delay) {
         idleReturning = true;
         phase_progress = 0.0;
+        leg_swinging.fill(false);
         returnToStart(dt);
         idleTime = 0.0;
     }
@@ -630,12 +649,44 @@ bool GaitController::HandleIdleReturn(double dt) {
 }
 
 /**
+ * @brief Foot targets for one walking tick, without changing any state
+ * @param[in] forward Forward body velocity (m/s)
+ * @param[in] left Leftward body velocity (m/s)
+ * @param[in] yaw Body yaw rate (rad/s)
+ * @param[in] ds How far to advance the phase this tick (fraction of a phase)
+ * @param[in] moveDt How much body motion to apply to the stance feet this tick (s)
+ * @return The target foot position of each leg (leg frame)
+ * @note Swing feet follow a curve from their lift-off point to their landing target. Stance feet
+ *       move back by the body's motion. Both stay within MAX_STRIDE_LENGTH of neutral, which keeps
+ *       neighbouring legs from colliding (see test_leg_clearance).
+*/
+std::array<Vector3d, MAX_LEGS + 1> GaitController::walkTargets(double forward, double left, double yaw, double ds, double moveDt) {
+    std::array<Vector3d, MAX_LEGS + 1> targets;
+    const double s = std::min(1.0, phase_progress + ds);
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if (leg_swinging[legNum]) {
+            if (s >= 1.0) {
+                targets[legNum] = swing_target[legNum];
+                continue;
+            }
+            SwingSpline spline;
+            trajectoryGen.genSwingSpline(spline, swing_start[legNum], swing_target[legNum]);
+            targets[legNum] = trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s);
+        } else {
+            const Vector3d& current = current_leg_positions[legNum];
+            targets[legNum] = trajectoryGen.stanceTarget(legNum, current,
+                trajectoryGen.footDisplacementFrom(forward, left, yaw, legNum, current, moveDt));
+        }
+    }
+    return targets;
+}
+
+/**
  * @brief Handles walking motion of the hexapod
  * @param[in] dt The time since the last tick (s)
- * @note The direction of movement is determined by the current_motion_intent,
- *       which is updated from cmd_vel in the timer callback based on the current mode.
- *       This allows for dynamic switching between different control schemes (e.g. strafing vs normal)
- *       while maintaining a consistent gait generation logic.
+ * @note The command is re-read every tick, so changes take effect immediately rather than at the
+ *       next phase: stance feet follow the current body velocity, and swing feet re-aim their
+ *       landing target (at up to max_target_speed). The phase length also follows the command.
 */
 void GaitController::walk(double dt) {
     // Check if velocity is idle
@@ -645,47 +696,71 @@ void GaitController::walk(double dt) {
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
 
-    // Plan each phase at its start from the commanded velocity
-    if (phase_progress == 0.0) {
-        trajectory_motion_intent = current_motion_intent;
-        double forward = current_motion_intent.forward;
-        double left = current_motion_intent.left;
-        double yaw = current_motion_intent.yaw;
-
-        // Fastest any foot must move relative to the body, capped at what this gait can do
-        double footSpeed = std::hypot(forward, left) + std::abs(yaw) * trajectoryGen.maxBodyRadius();
-        double maxSpeed = maxFootSpeed();
-        if (footSpeed > maxSpeed) {
-            double scale = maxSpeed / footSpeed;
-            forward *= scale;
-            left *= scale;
-            yaw *= scale;
-            footSpeed = maxSpeed;
-        }
-
-        // Step faster once the stride would exceed MAX_STRIDE_LENGTH
-        size_t groups = std::max<size_t>(2, trajectoryGen.gaitState.config.size());
-        current_phase_duration = phase_duration;
-        if (footSpeed > 1e-6) {
-            double strideLimitedDuration = 2.0 * MAX_STRIDE_LENGTH / ((groups - 1) * footSpeed);
-            current_phase_duration = std::clamp(strideLimitedDuration, min_phase_duration, phase_duration);
-        }
-        const double stanceTime = (groups - 1) * current_phase_duration;
-        const double phaseTime = current_phase_duration;
-
-        trajectoryGen.GenerateTrajectories(
-            // Swing: land ahead of neutral by half the stroke the stance will sweep
-            [this, forward, left, yaw, stanceTime](int legNum, const Vector3d&) {
-                return trajectoryGen.swingTarget(legNum, trajectoryGen.footDisplacement(forward, left, yaw, legNum, stanceTime / 2.0));
-            },
-            // Stance: move back by the body's motion over this phase
-            [this, forward, left, yaw, phaseTime](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.stanceTarget(legNum, currentPos, trajectoryGen.footDisplacement(forward, left, yaw, legNum, phaseTime));
-            },
-            current_leg_positions,
-            phase
-        );
+    // Current command, capped at what this gait can do
+    double forward = current_motion_intent.forward;
+    double left = current_motion_intent.left;
+    double yaw = current_motion_intent.yaw;
+    double footSpeed = std::hypot(forward, left) + std::abs(yaw) * trajectoryGen.maxBodyRadius();
+    double maxSpeed = maxFootSpeed();
+    if (footSpeed > maxSpeed) {
+        double scale = maxSpeed / footSpeed;
+        forward *= scale;
+        left *= scale;
+        yaw *= scale;
+        footSpeed = maxSpeed;
     }
-    // Move all legs for this step
-    PerformLegStep(dt, velocityIdle);
+
+    // Step faster once the stride would exceed MAX_STRIDE_LENGTH
+    size_t groups = std::max<size_t>(2, trajectoryGen.gaitState.config.size());
+    current_phase_duration = phase_duration;
+    if (footSpeed > 1e-6) {
+        double strideLimitedDuration = 2.0 * MAX_STRIDE_LENGTH / ((groups - 1) * footSpeed);
+        current_phase_duration = std::clamp(strideLimitedDuration, min_phase_duration, phase_duration);
+    }
+    const double stanceTime = (groups - 1) * current_phase_duration;
+
+    // Start of a phase: the next group lifts off from where it stands
+    if (phase_progress == 0.0) {
+        const auto& swingGroup = trajectoryGen.gaitState.config[phase];
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            leg_swinging[legNum] = std::find(swingGroup.begin(), swingGroup.end(), legNum) != swingGroup.end();
+            swing_start[legNum] = current_leg_positions[legNum];
+            swing_target[legNum] = current_leg_positions[legNum];
+            trajectoryGen.gaitState.swingSplines[legNum].active = false;
+            trajectoryGen.gaitState.stanceSplines[legNum].active = false;
+        }
+    }
+
+    // Swing landing targets follow the command, at a limited rate. Both ends stay inside the
+    // stride circle, so every point in between does too.
+    const double maxTargetStep = max_target_speed * dt;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if (!leg_swinging[legNum]) continue;
+        Vector3d desired = trajectoryGen.swingTarget(legNum,
+            trajectoryGen.footDisplacement(forward, left, yaw, legNum, stanceTime / 2.0));
+        Vector3d step = desired - swing_target[legNum];
+        if (step.norm() > maxTargetStep) {
+            step *= maxTargetStep / step.norm();
+        }
+        swing_target[legNum] += step;
+    }
+
+    // Advance, slowing the whole gait if a joint would move faster than max_joint_speed
+    double ds = velocityIdle ? 0.0 : dt / current_phase_duration;
+    double moveDt = velocityIdle ? 0.0 : dt;
+    auto targets = walkTargets(forward, left, yaw, ds, moveDt);
+    double scale = jointSpeedScale(targets, dt);
+    if (scale < 1.0) {
+        ds *= scale;
+        moveDt *= scale;
+        targets = walkTargets(forward, left, yaw, ds, moveDt);
+    }
+    sendFootTargets(targets, dt);
+
+    phase_progress = std::min(1.0, phase_progress + ds);
+    if (phase_progress >= 1.0) {
+        leg_swinging.fill(false);
+        phase = (phase + 1) % trajectoryGen.gaitState.config.size();
+        phase_progress = 0.0;
+    }
 }

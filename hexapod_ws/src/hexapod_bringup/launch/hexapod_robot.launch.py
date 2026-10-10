@@ -65,7 +65,10 @@ def generate_launch_description():
         package='hexapod_gait_controller',
         executable='gait_controller',
         name='hexapod_gait_controller',
-        output='screen'
+        output='screen',
+        # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel)
+        parameters=[{'initial_mode': ParameterValue(
+            PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int)}]
     )
 
     controller_teleop = Node(
