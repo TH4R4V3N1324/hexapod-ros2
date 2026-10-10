@@ -154,6 +154,22 @@ void GaitController::publishOdometry(const rclcpp::Time& stamp) {
 }
 
 /**
+ * @brief Publish base_footprint, the point on the floor directly below base_link
+ * @note base_footprint -> base_link is the body height. Odometry, SLAM and Nav2 use base_footprint,
+ *       so z = 0 in odom is the floor and the costmap can tell the floor from low obstacles.
+ *       Republished whenever the body height changes.
+*/
+void GaitController::publishFootprint() {
+    geometry_msgs::msg::TransformStamped t;
+    t.header.stamp = this->now();
+    t.header.frame_id = base_frame;
+    t.child_frame_id = "base_link";
+    t.transform.translation.z = -gaitConfig.currentHeight;  // feet are at currentHeight below the hips
+    t.transform.rotation.w = 1.0;
+    footprint_broadcaster->sendTransform(t);
+}
+
+/**
  * @brief Service callback to change gait
  * @param[in] request The service request
  * @param[out] response The service response
@@ -194,6 +210,7 @@ void GaitController::setHeightCallback(
 ) {
     double height = static_cast<double>(request->height);
     gaitConfig.setHeight(height);
+    publishFootprint();
     response->success = true;
     RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
 }

@@ -12,6 +12,7 @@ find_package(hexapod_interfaces REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(tf2_ros REQUIRED)
 
 include_directories(include ${EIGEN3_INCLUDE_DIR})
 
@@ -49,6 +50,7 @@ ament_target_dependencies(gait_controller
   hexapod_interfaces
   geometry_msgs
   nav_msgs
+  tf2_ros
 )
 
 add_executable(leg_axis_tester src/leg_axis_test.cpp)

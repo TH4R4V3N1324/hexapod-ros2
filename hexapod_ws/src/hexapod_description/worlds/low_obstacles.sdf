@@ -1,0 +1,156 @@
+<?xml version="1.0" ?>
+<sdf version="1.9">
+  <world name="low_obstacles">
+
+    <!-- Physics -->
+    <physics name="1ms" type="bullet">
+      <max_step_size>0.001</max_step_size>
+      <real_time_factor>1.0</real_time_factor>
+    </physics>
+
+    <!-- Required Harmonic system plugins -->
+    <plugin filename="gz-sim-physics-system"
+            name="gz::sim::systems::Physics"/>
+    <plugin filename="gz-sim-user-commands-system"
+            name="gz::sim::systems::UserCommands"/>
+    <plugin filename="gz-sim-scene-broadcaster-system"
+            name="gz::sim::systems::SceneBroadcaster"/>
+    <plugin filename="gz-sim-contact-system"
+            name="gz::sim::systems::Contact"/>
+    <plugin filename="gz-sim-sensors-system"
+            name="gz::sim::systems::Sensors"/>
+    <!-- IMU and magnetometer sensors only publish when their systems are loaded -->
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-magnetometer-system"
+            name="gz::sim::systems::Magnetometer"/>
+
+    <!-- Lighting -->
+    <light type="directional" name="sun">
+      <cast_shadows>true</cast_shadows>
+      <pose>0 0 10 0 0 0</pose>
+      <diffuse>0.8 0.8 0.8 1</diffuse>
+      <specular>0.2 0.2 0.2 1</specular>
+      <direction>-0.5 0.1 -0.9</direction>
+    </light>
+
+    <!-- Flat ground with obstacles below the lidar (27 cm), for testing the depth camera -->
+    <model name="ground_plane">
+      <static>true</static>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+          <surface>
+            <friction>
+              <!-- Gazebo's default engine (DART) uses the lower of the two surfaces' mu -->
+              <ode>
+                <mu>1.5</mu>
+                <mu2>1.5</mu2>
+              </ode>
+            </friction>
+          </surface>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <plane>
+              <normal>0 0 1</normal>
+              <size>200 200</size>
+            </plane>
+          </geometry>
+          <material>
+            <ambient>0.4 0.4 0.4 1</ambient>
+            <diffuse>0.6 0.6 0.6 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <!-- 8 x 6 m room, so the lidar has walls to map -->
+    <model name="wall_north">
+      <static>true</static>
+      <pose>2.0 3.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>8.2 0.2 1.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.2 0.2 1.0</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_south">
+      <static>true</static>
+      <pose>2.0 -3.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>8.2 0.2 1.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>8.2 0.2 1.0</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_west">
+      <static>true</static>
+      <pose>-2.0 0.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.2 6.0 1.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.2 6.0 1.0</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="wall_east">
+      <static>true</static>
+      <pose>6.0 0.0 0.5 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.2 6.0 1.0</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.2 6.0 1.0</size></box></geometry>
+          <material><ambient>0.88 0.88 0.88 1</ambient><diffuse>0.9 0.9 0.9 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <!-- Staggered across the route from the origin to (4.2, 0); all below the lidar -->
+    <model name="box_10cm">
+      <static>true</static>
+      <pose>1.2 0.0 0.05 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 0.3 0.1</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.3 0.3 0.1</size></box></geometry>
+          <material><ambient>0.8 0.3 0.2 1</ambient><diffuse>0.8 0.3 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="bin_12cm">
+      <static>true</static>
+      <pose>2.2 0.5 0.06 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><cylinder><radius>0.06</radius><length>0.12</length></cylinder></geometry></collision>
+        <visual name="visual"><geometry><cylinder><radius>0.06</radius><length>0.12</length></cylinder></geometry>
+          <material><ambient>0.2 0.5 0.8 1</ambient><diffuse>0.2 0.5 0.8 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="box_6cm">
+      <static>true</static>
+      <pose>2.2 -0.5 0.03 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.4 0.2 0.06</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.4 0.2 0.06</size></box></geometry>
+          <material><ambient>0.8 0.7 0.2 1</ambient><diffuse>0.8 0.7 0.2 1</diffuse></material></visual>
+      </link>
+    </model>
+
+    <model name="box_20cm">
+      <static>true</static>
+      <pose>3.2 0.0 0.1 0 0 0</pose>
+      <link name="link">
+        <collision name="collision"><geometry><box><size>0.3 0.3 0.2</size></box></geometry></collision>
+        <visual name="visual"><geometry><box><size>0.3 0.3 0.2</size></box></geometry>
+          <material><ambient>0.3 0.7 0.3 1</ambient><diffuse>0.3 0.7 0.3 1</diffuse></material></visual>
+      </link>
+    </model>
+
+  </world>
+</sdf>

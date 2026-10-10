@@ -7,6 +7,7 @@
 #include "hexapod_gait_controller/gait_config.hpp"
 #include "hexapod_gait_controller/leg_odometry.hpp"
 #include "nav_msgs/msg/odometry.hpp"
+#include "tf2_ros/static_transform_broadcaster.h"
 #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
@@ -63,9 +64,14 @@ public:
             initial_mode = MODE_NORMAL;
         }
         gaitConfig.setMode(static_cast<Mode>(initial_mode));
+
         odom_frame = this->declare_parameter("odom_frame", "odom");
-        base_frame = this->declare_parameter("base_frame", "base_link");
+        base_frame = this->declare_parameter("base_frame", "base_footprint");
         odom_publish_period = 1.0 / this->declare_parameter("odom_rate", 50.0);
+
+        // After base_frame is known: publish base_footprint -> base_link
+        footprint_broadcaster = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+        publishFootprint();
         nominal_dt = 1.0 / loop_rate_hz;
 
         // ROS timer, so the gait follows simulation time when use_sim_time is set
@@ -77,6 +83,7 @@ private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     rclcpp::Publisher<Odometry>::SharedPtr odom_pub;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> footprint_broadcaster;
     rclcpp::Subscription<JointState>::SharedPtr joint_state_sub;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
@@ -144,6 +151,7 @@ public:
     void jointStateCallback(const JointState::SharedPtr msg);
     void updateLegOdometry(const rclcpp::Time& stamp);
     void publishOdometry(const rclcpp::Time& stamp);
+    void publishFootprint();
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
