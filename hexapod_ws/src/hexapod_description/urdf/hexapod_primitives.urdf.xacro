@@ -38,13 +38,13 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <box size="0.18 0.17 0.05"/>
+        <box size="0.17 0.18 0.05"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
       <geometry>
-        <box size="0.18 0.17 0.05"/>
+        <box size="0.17 0.18 0.05"/>
       </geometry>
     </collision>
     <inertial>
@@ -202,23 +202,25 @@
 </xacro:macro>
 
   <!-- ================= LEGS ================= -->
-  <!-- Front left -->
-  <xacro:leg name="leg1" x_offset="0.06733" y_offset="0.0846" yaw="0.5236" colour="red"/>
-
-  <!-- Middle left -->
-  <xacro:leg name="leg2" x_offset="0.090" y_offset="0" yaw="0" colour="green"/>
-
-  <!-- Rear left -->
-  <xacro:leg name="leg3" x_offset="0.06733" y_offset="-0.0846" yaw="-0.5236" colour="blue"/>
+  <!-- Body frame follows REP 103: +x forward, +y left, +z up -->
 
   <!-- Front right -->
-  <xacro:leg name="leg4" x_offset="-0.06733" y_offset="-0.0846" yaw="-2.61799" colour="yellow"/>
+  <xacro:leg name="leg1" x_offset="0.0846" y_offset="-0.06733" yaw="-1.0472" colour="red"/>
 
   <!-- Middle right -->
-  <xacro:leg name="leg5" x_offset="-0.090" y_offset="0" yaw="-3.14159" colour="cyan"/>
+  <xacro:leg name="leg2" x_offset="0" y_offset="-0.090" yaw="-1.5708" colour="green"/>
 
   <!-- Rear right -->
-  <xacro:leg name="leg6" x_offset="-0.06733" y_offset="0.0846" yaw="2.61799" colour="magenta"/>
+  <xacro:leg name="leg3" x_offset="-0.0846" y_offset="-0.06733" yaw="-2.0944" colour="blue"/>
+
+  <!-- Rear left -->
+  <xacro:leg name="leg4" x_offset="-0.0846" y_offset="0.06733" yaw="2.0944" colour="yellow"/>
+
+  <!-- Middle left -->
+  <xacro:leg name="leg5" x_offset="0" y_offset="0.090" yaw="1.5708" colour="cyan"/>
+
+  <!-- Front left -->
+  <xacro:leg name="leg6" x_offset="0.0846" y_offset="0.06733" yaw="1.0472" colour="magenta"/>
 
   <!-- ================= SENSORS ================= -->
   <link name="camera_link">
@@ -238,7 +240,7 @@
   <joint name="camera_joint" type="fixed">
     <parent link="base_link"/>
     <child link="camera_link"/>
-    <origin xyz="0.0 0.0846 0" rpy="0 0 1.5708"/>
+    <origin xyz="0.0846 0.0 0" rpy="0 0 0"/>
   </joint>
 
   <gazebo reference="camera_link">
@@ -279,7 +281,7 @@
 <joint name="front_depth_camera_joint" type="fixed">
   <parent link="base_link"/>
   <child link="front_depth_camera_link"/>
-  <origin xyz="0.0 0.0846 0.02" rpy="0 0 1.5708"/>
+  <origin xyz="0.0846 0.0 0.02" rpy="0 0 0"/>
 </joint>
 
 <gazebo reference="front_depth_camera_link">

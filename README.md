@@ -310,7 +310,9 @@ range maps to the full yaw range.
 Directions follow ROS conventions for `/cmd_vel`: positive `linear.x` is
 forward (towards the cameras), positive `linear.y` is left in strafe mode, and
 positive yaw is anticlockwise. Turning rotates each foot about the body centre.
-In the URDF body frame, +y is forward and +x is to the robot's right.
+The URDF body frame follows REP 103 as well (+x forward, +y left, +z up). Legs
+1–3 are on the right (front, middle, rear) and legs 4–6 on the left (rear,
+middle, front).
 
 To check directions:
 
