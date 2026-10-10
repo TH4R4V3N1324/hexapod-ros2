@@ -15,9 +15,6 @@ find_package(sensor_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
 #interfaces go here "msg/messageType.msg"
-  "msg/LegContact.msg"
-  "msg/PowerStatus.msg"
-  "msg/ControllerInput.msg"
   "msg/LocomotionOption.msg"
   "srv/FKSolver.srv"
   "srv/IKSolver.srv"

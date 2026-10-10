@@ -1,0 +1,135 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
+from launch import LaunchDescription
+from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.conditions import IfCondition
+from launch.substitutions import Command, LaunchConfiguration, PythonExpression
+from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
+
+
+def generate_launch_description():
+    """
+    @brief Bring up the hexapod on real servos (hardware:=st3215) or mock hardware (hardware:=mock)
+    @return The launch description
+    @note The IMU and power monitor drivers only start with the st3215 hardware.
+    """
+    hardware = LaunchConfiguration('hardware')
+    serial_port = LaunchConfiguration('serial_port')
+    update_rate = LaunchConfiguration('update_rate')
+
+    description_path = get_package_share_directory('hexapod_description')
+    hardware_path = get_package_share_directory('hexapod_hardware_interface')
+    xacro_file = os.path.join(description_path, 'urdf', 'hexapod.urdf.xacro')
+    controllers_file = os.path.join(description_path, 'config', 'controllers.yaml')
+    sensors_file = os.path.join(hardware_path, 'config', 'sensors.yaml')
+
+    robot_description = ParameterValue(
+        Command(['xacro ', xacro_file, ' hardware:=', hardware, ' serial_port:=', serial_port]),
+        value_type=str
+    )
+
+    robot_state_publisher = Node(
+        package='robot_state_publisher',
+        executable='robot_state_publisher',
+        output='screen',
+        parameters=[{'robot_description': robot_description}]
+    )
+
+    # controllers.yaml runs at 1000 Hz for Gazebo, the servo bus needs a much lower rate
+    controller_manager = Node(
+        package='controller_manager',
+        executable='ros2_control_node',
+        output='screen',
+        parameters=[controllers_file, {'update_rate': ParameterValue(update_rate, value_type=int)}],
+        remappings=[('~/robot_description', '/robot_description')]
+    )
+
+    controller_spawner = Node(
+        package='controller_manager',
+        executable='spawner',
+        arguments=['joint_state_broadcaster', 'hexapod_joint_controller'],
+        output='screen'
+    )
+
+    joint_state_relay = Node(
+        package='hexapod_description',
+        executable='joint_state_relay',
+        output='screen'
+    )
+
+    gait_controller = Node(
+        package='hexapod_gait_controller',
+        executable='gait_controller',
+        name='hexapod_gait_controller',
+        output='screen'
+    )
+
+    controller_teleop = Node(
+        package='hexapod_teleop',
+        executable='controller_teleop',
+        name='controller_teleop',
+        output='screen'
+    )
+
+    foxglove_bridge = Node(
+        package='foxglove_bridge',
+        executable='foxglove_bridge',
+        name='foxglove_bridge',
+        output='screen'
+    )
+
+    sensors = GroupAction(
+        condition=IfCondition(PythonExpression(["'", hardware, "' == 'st3215'"])),
+        actions=[
+            Node(
+                package='hexapod_hardware_interface',
+                executable='bmi088_node',
+                name='bmi088',
+                output='screen',
+                parameters=[sensors_file]
+            ),
+            # Fuses imu/data_raw into an orientation estimate on imu/data
+            Node(
+                package='imu_filter_madgwick',
+                executable='imu_filter_madgwick_node',
+                name='imu_filter',
+                output='screen',
+                parameters=[sensors_file]
+            ),
+            Node(
+                package='hexapod_hardware_interface',
+                executable='ina226_node',
+                name='ina226',
+                output='screen',
+                parameters=[sensors_file]
+            ),
+        ]
+    )
+
+    return LaunchDescription([
+        DeclareLaunchArgument(
+            'hardware',
+            default_value='st3215',
+            description='ros2_control hardware: st3215 (real servos) or mock.'
+        ),
+        DeclareLaunchArgument(
+            'serial_port',
+            default_value='/dev/ttyAMA0',
+            description='Serial device for the servo bus.'
+        ),
+        DeclareLaunchArgument(
+            'update_rate',
+            default_value='100',
+            description='Controller manager update rate in Hz.'
+        ),
+        robot_state_publisher,
+        controller_manager,
+        controller_spawner,
+        joint_state_relay,
+        gait_controller,
+        controller_teleop,
+        foxglove_bridge,
+        sensors,
+    ])

@@ -1,0 +1,7 @@
+<library path="hexapod_hardware_interface">
+  <class name="hexapod_hardware_interface/ST3215System"
+         type="hexapod_hardware_interface::ST3215System"
+         base_class_type="hardware_interface::SystemInterface">
+    <description>ros2_control system for the hexapod's Waveshare ST3215 serial bus servos.</description>
+  </class>
+</library>

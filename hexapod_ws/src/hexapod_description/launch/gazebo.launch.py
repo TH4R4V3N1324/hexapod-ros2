@@ -121,6 +121,8 @@ def generate_launch_description():
             '/front_depth/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
             '/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
         ],
+        # Match the real robot, where imu_filter_madgwick publishes orientation on /imu/data
+        remappings=[('/imu', '/imu/data')],
         output='screen'
     )
 

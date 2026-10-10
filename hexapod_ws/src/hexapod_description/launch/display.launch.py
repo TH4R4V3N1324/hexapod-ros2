@@ -18,13 +18,8 @@ def generate_launch_description():
             parameters=[{'robot_description': robot_description}]
         ),
         Node(
-            package='hexapod_hardware_interface',
-            executable='hardware_interface_fake',
-            name='hardware_interface_fake',
-            output='screen',
-            parameters=[{
-                'publish_rate': 100.0,
-            }]
+            package='joint_state_publisher_gui',
+            executable='joint_state_publisher_gui'
         ),
         Node(
             package='rviz2',

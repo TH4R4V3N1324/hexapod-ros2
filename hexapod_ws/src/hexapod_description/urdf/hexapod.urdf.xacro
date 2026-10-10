@@ -1,6 +1,9 @@
 <robot xmlns:xacro="http://ros.org/wiki/xacro" name="hexapod">
 
   <xacro:arg name="controllers_file" default=""/>
+  <!-- ros2_control hardware: gazebo, mock or st3215 (see hexapod.ros2_control.xacro) -->
+  <xacro:arg name="hardware" default="mock"/>
+  <xacro:arg name="serial_port" default="/dev/ttyAMA0"/>
 
   <!-- ================= CONSTANTS ================= -->
   <xacro:property name="coxa_length" value="0.0375"/>
@@ -190,43 +193,25 @@
   <!-- Rear right -->
   <xacro:leg name="leg6" x_offset="-0.06733" y_offset="0.0846" yaw="2.61799" colour="magenta"/>
 
+  <!-- ================= IMU ================= -->
+  <link name="imu_link"/>
+
+  <joint name="imu_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="imu_link"/>
+    <origin xyz="0.0 0.0 0.03" rpy="0 0 0"/>
+  </joint>
+
   <!-- ================= ROS2 CONTROL ================= -->
-  <xacro:macro name="ros2_control_joint" params="joint_name">
-    <joint name="${joint_name}">
-      <command_interface name="position"/>
-      <state_interface name="position"/>
-      <state_interface name="velocity"/>
-    </joint>
-  </xacro:macro>
+  <xacro:include filename="$(find hexapod_description)/urdf/hexapod.ros2_control.xacro"/>
+  <xacro:hexapod_ros2_control hardware="$(arg hardware)" serial_port="$(arg serial_port)"/>
 
-  <ros2_control name="HexapodHardware" type="system">
-    <hardware>
-      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
-    </hardware>
-    <xacro:ros2_control_joint joint_name="leg1_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg1_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg1_tibia_joint"/>
-    <xacro:ros2_control_joint joint_name="leg2_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg2_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg2_tibia_joint"/>
-    <xacro:ros2_control_joint joint_name="leg3_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg3_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg3_tibia_joint"/>
-    <xacro:ros2_control_joint joint_name="leg4_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg4_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg4_tibia_joint"/>
-    <xacro:ros2_control_joint joint_name="leg5_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg5_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg5_tibia_joint"/>
-    <xacro:ros2_control_joint joint_name="leg6_coxa_joint"/>
-    <xacro:ros2_control_joint joint_name="leg6_femur_joint"/>
-    <xacro:ros2_control_joint joint_name="leg6_tibia_joint"/>
-  </ros2_control>
-
-  <gazebo>
-    <plugin name="gz_ros2_control::GazeboSimROS2ControlPlugin" filename="libgz_ros2_control-system.so">
-      <parameters>$(arg controllers_file)</parameters>
-    </plugin>
-  </gazebo>
+  <xacro:if value="${'$(arg hardware)' == 'gazebo'}">
+    <gazebo>
+      <plugin name="gz_ros2_control::GazeboSimROS2ControlPlugin" filename="libgz_ros2_control-system.so">
+        <parameters>$(arg controllers_file)</parameters>
+      </plugin>
+    </gazebo>
+  </xacro:if>
 
 </robot>
