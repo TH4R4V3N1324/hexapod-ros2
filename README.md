@@ -279,8 +279,24 @@ types; these cover only what has no standard equivalent.
 ## Gait controller internals
 
 `gait_controller` (in `hexapod_gait_controller`) is the central node. It
-runs a 50 Hz wall timer (`gaitTimerCallback`) and composes three helper
-classes:
+runs a 50 Hz ROS timer (`gaitTimerCallback`) and composes three helper
+classes.
+
+Gait timing is in seconds, not ticks. Each tick advances the gait by the time
+since the last tick, so the loop rate can change without changing how the
+robot walks. The timer follows simulation time when `use_sim_time` is set, as
+it is in the Gazebo launch. Parameters:
+
+| Parameter | Default | Meaning |
+|---|---|---|
+| `loop_rate` | 50.0 Hz | How often joint commands are sent |
+| `phase_duration` | 1.0 s | Length of one gait phase |
+| `max_foot_speed` | 1.5 m/s | Cap on how fast a foot target can move |
+| `max_joint_speed` | 4.0 rad/s | The gait slows down so no joint exceeds this; keep it below the servos' top speed |
+| `idle_return_delay` | 2.0 s | Idle time before the legs return to their start positions |
+| `startup_duration` | 1.0 s | Time for the startup move (longer if `max_joint_speed` requires it) |
+
+The helper classes:
 
 - **`GaitConfig`** — holds the three supported gaits (tripod / ripple /
   wave) and four modes (normal / strafe / tilt / config), per-leg home
@@ -299,9 +315,9 @@ classes:
 
 State machine, roughly:
 
-1. **Startup** — on first joint-state message, interpolates every leg from
-   its current position to its configured home stance
-   (`startup()`/`startup_trajectory`) before gait execution begins.
+1. **Startup** — waits for joint states from all 18 joints, then moves every
+   leg in a straight line from its measured position to its start position
+   (`startup()`) before gait execution begins.
 2. **Walk** — while `/cmd_vel` is non-zero (beyond
    `CMD_VEL_CHANGE_THRESHOLD = 0.05`), continuously regenerates swing/stance
    trajectories per the active gait's leg groupings (tripod/ripple/wave
