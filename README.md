@@ -203,10 +203,11 @@ See [Gait controller internals](#gait-controller-internals) below.
 
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
   `joy_node`, published by the operator side) and maps axis 1 → `linear.x`,
-  axis 0 → `linear.y`, axis 3 → `angular.z`, all clamped to `[-1, 1]` and
-  published on `/cmd_vel`. Also queries `get_capabilities` once at startup
-  (gait/mode lists aren't currently used to drive gait switching from the
-  gamepad — see [Known gaps](#known-gaps--todo)).
+  axis 0 → `linear.y`, axis 3 → `angular.z`. Full stick is the gait
+  controller's top speed from `get_capabilities`, which it requests in the
+  background until the gait controller answers; joystick input is ignored
+  until then. The gait/mode lists aren't used to switch gaits from the gamepad
+  yet — see [Known gaps](#known-gaps--todo).
 
 ### `hexapod_bringup`
 
@@ -290,11 +291,21 @@ it is in the Gazebo launch. Parameters:
 | Parameter | Default | Meaning |
 |---|---|---|
 | `loop_rate` | 50.0 Hz | How often joint commands are sent |
-| `phase_duration` | 1.0 s | Length of one gait phase |
+| `phase_duration` | 1.0 s | Length of one gait phase at low speed |
+| `min_phase_duration` | 0.7 s | Shortest phase; sets each gait's top speed (0.17 m/s for tripod) |
 | `max_foot_speed` | 1.5 m/s | Cap on how fast a foot target can move |
 | `max_joint_speed` | 4.0 rad/s | The gait slows down so no joint exceeds this; keep it below the servos' top speed |
 | `idle_return_delay` | 2.0 s | Idle time before the legs return to their start positions |
 | `startup_duration` | 1.0 s | Time for the startup move (longer if `max_joint_speed` requires it) |
+
+`/cmd_vel` is in real units (m/s and rad/s). Each phase is planned from the
+commanded velocity: stance feet move back at the body's speed, and swing feet
+land ahead of neutral by half the stroke the stance will sweep. Once that
+stroke would exceed `MAX_STRIDE_LENGTH`, the phases get shorter, down to
+`min_phase_duration`. Commands above the current gait's top speed are scaled
+down. `get_capabilities` reports the current gait's top linear and angular
+speeds. In normal mode, `linear.y` turns the robot, scaled so the full linear
+range maps to the full yaw range.
 
 The helper classes:
 
@@ -327,9 +338,9 @@ State machine, roughly:
    back to a stable stance (`HandleIdleReturn`/`returnToStart`) rather than
    stopping mid-stride.
 
-Motion limits are capped at `MAX_LINEAR_VELOCITY = 0.2 m/s`,
-`MAX_ANGULAR_VELOCITY = 2.0 rad/s`, `MAX_STRIDE_LENGTH = 0.06 m` — these are
-also what `get_capabilities` reports back to teleop clients.
+Each foot stays within `MAX_STRIDE_LENGTH = 0.06 m` of its neutral position.
+Top speeds follow from that and `min_phase_duration`, and are what
+`get_capabilities` reports back to teleop clients.
 
 `leg_axis_tester` is a small diagnostic executable that shares the same
 kinematics/trajectory libraries as `gait_controller`, publishing to

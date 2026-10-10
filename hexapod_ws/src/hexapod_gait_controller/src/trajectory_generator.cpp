@@ -85,54 +85,6 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
 }
 
 /**
- * @brief Blend target positions from forward and rotation inputs
- * @param[in] currentPos The current position of the leg (used for reference)
- * @param[in] forwardPos The target position based on forward input (relative to neutral)
- * @param[in] rotationPos The target position based on rotation input (relative to neutral)
- * @param[in] legNum The leg number
- * @param[in] strideMultiplier Multiplier for stride length
- * @return The blended target position
- * @note Both forwardPos and rotationPos are computed relative to the leg's neutral position.
- *       We blend them by averaging their displacements from neutral.
-*/
-Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, const Vector3d& forwardPos, const Vector3d& rotationPos, int legNum, double strideMultiplier) {
-    auto it = gaitConfig.startPosition.find(legNum);
-    Vector3d neutralPos = (it != gaitConfig.startPosition.end()) ? it->second : currentPos;
-
-    const bool incremental = strideMultiplier < 1.0;
-    const Vector3d anchorPos = incremental ? currentPos : neutralPos;
-
-    // Convert absolute targets → deltas from neutral
-    Vector3d forwardDelta  = forwardPos  - anchorPos;
-    Vector3d rotationDelta = rotationPos - anchorPos;
-
-    // Blend deltas
-    Vector3d blendedDelta = forwardDelta + rotationDelta;
-
-    // Clamp blended delta using stride multiplier
-    double maxStride = MAX_STRIDE_LENGTH* strideMultiplier;
-    double deltaMag = std::hypot(blendedDelta.x(), blendedDelta.y());
-
-    if (deltaMag > maxStride && deltaMag > 1e-6) {
-        blendedDelta *= (maxStride / deltaMag);
-    }
-
-    return {
-        anchorPos.x() + blendedDelta.x(),
-        anchorPos.y() + blendedDelta.y(),
-        gaitConfig.currentHeight
-    };
-}
-
-/**
- * @brief Calculate stride multiplier based on gait configuration
- * @return The stride multiplier
-*/
-double TrajectoryGenerator::CalculateStrideMultiplier() {
-    return (gaitState.config.size() > 1) ? 1.0 / (gaitState.config.size() - 1) : 1.0;
-}
-
-/**
  * @brief Ensure the gait configuration is set up correctly
 */
 void TrajectoryGenerator::EnsureGaitConfig() {
@@ -217,86 +169,106 @@ void TrajectoryGenerator::GenerateTrajectories(
 }
 
 /**
- * @brief Calculate linear target position based on input velocities
- * @param[in] linearX The forward linear velocity
- * @param[in] linearY The lateral linear velocity
+ * @brief Foot displacement in a leg's frame for a body velocity held for a duration
+ * @param[in] forward Forward body velocity (m/s)
+ * @param[in] lateral Lateral body velocity (m/s)
+ * @param[in] yaw Body yaw rate (rad/s)
  * @param[in] legNum The leg number
- * @param[in] invert Whether to invert the direction (for stance phase)
- * @return The calculated target position
- * @note Linear offset is computed relative to the leg's neutral position to prevent drift.
+ * @param[in] duration How long the velocity is held (s)
+ * @return The displacement (leg frame, z = 0), in the direction the foot swings
+ * @note A stance foot moves by the negative of this. Yaw is approximated as an arc about the
+ *       coxa whose length matches the foot's travel around the body centre.
 */
-Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, int legNum, bool invert) {
-    double lx = linearX;
-    double ly = linearY;
-    std::swap(lx, ly);
+Vector3d TrajectoryGenerator::footDisplacement(double forward, double lateral, double yaw, int legNum, double duration) {
+    const LegConfig& leg = converter.legConfigs.at(legNum);
+    const Vector3d& neutralPos = gaitConfig.startPosition.at(legNum);
 
-    if (invert ^ converter.legConfigs[legNum].mirrored) {
-        ly = -ly;
+    // Linear: body velocity to leg frame (axis swap, mirroring, then mounting angle)
+    double lx = lateral * duration;
+    double ly = forward * duration;
+    if (leg.mirrored) {
         lx = -lx;
+        ly = -ly;
     }
+    double legAngle = leg.mirrored ? leg.mounting_angle : -leg.mounting_angle;
+    Vector3d linear(
+        lx * cos(legAngle) - ly * sin(legAngle),
+        lx * sin(legAngle) + ly * cos(legAngle),
+        0.0
+    );
 
-    double magnitude = std::hypot(lx, ly) / MAX_LINEAR_VELOCITY;
-    if (magnitude > 1.0) magnitude = 1.0;
+    // Yaw: rotate the neutral position about the coxa by the matching arc
+    double neutralReach = std::hypot(neutralPos.x(), neutralPos.y());
+    double arc = yaw * bodyRadius(legNum) * duration;
+    double angle = (neutralReach > 0.01) ? arc / neutralReach : 0.0;
+    Vector3d rotation(
+        neutralPos.x() * cos(angle) - neutralPos.y() * sin(angle) - neutralPos.x(),
+        neutralPos.x() * sin(angle) + neutralPos.y() * cos(angle) - neutralPos.y(),
+        0.0
+    );
 
-    double stride = MAX_STRIDE_LENGTH * magnitude;
-    double angle = atan2(ly, lx);
-
-    double deltaX = stride * cos(angle);
-    double deltaY = stride * sin(angle);
-    double groundZ = gaitConfig.currentHeight;
-
-    double legAngle = converter.legConfigs[legNum].mounting_angle;
-    if (!converter.legConfigs[legNum].mirrored) {legAngle = -legAngle;}
-
-    double dx_rot = deltaX * cos(legAngle) - deltaY * sin(legAngle);
-    double dy_rot = deltaX * sin(legAngle) + deltaY * cos(legAngle);
-
-    // Get the neutral/start position for this leg and offset from there
-    Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
-    
-    return {neutralPos.x() + dx_rot, neutralPos.y() + dy_rot, groundZ};
+    return linear + rotation;
 }
 
 /**
- * @brief Calculate rotational target position based on input angular velocity
- * @param[in] angularZ The angular velocity around the Z-axis
+ * @brief Distance from the body centre to a leg's neutral foot position
  * @param[in] legNum The leg number
- * @param[in] invert Whether to invert the direction (for stance phase)
- * @return The calculated target position
- * @note Rotation is computed relative to the leg's neutral position, not current position.
- *       This prevents legs from drifting outside their workspace during sustained rotation.
+ * @return The horizontal distance (m)
 */
-Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, int legNum, bool invert) {
-    double az = angularZ;
+double TrajectoryGenerator::bodyRadius(int legNum) {
+    Vector3d foot = converter.legToBodyFrame(gaitConfig.startPosition.at(legNum), legNum);
+    return std::hypot(foot.x(), foot.y());
+}
 
-    // Apply inversion if needed (for stance phase)
-    if (invert) {az = -az;}
+/**
+ * @brief Largest bodyRadius of any leg
+ * @return The distance (m)
+*/
+double TrajectoryGenerator::maxBodyRadius() {
+    double radius = 0.0;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        radius = std::max(radius, bodyRadius(legNum));
+    }
+    return radius;
+}
 
-    double magnitude = std::abs(az) / MAX_ANGULAR_VELOCITY;
-    if (magnitude > 1.0) magnitude = 1.0;
+/**
+ * @brief Where a swinging foot should land
+ * @param[in] legNum The leg number
+ * @param[in] displacement The foot displacement ahead of neutral (leg frame)
+ * @return The target foot position (leg frame), at most MAX_STRIDE_LENGTH from neutral
+*/
+Vector3d TrajectoryGenerator::swingTarget(int legNum, const Vector3d& displacement) {
+    return clampToStride(legNum, gaitConfig.startPosition.at(legNum) + displacement);
+}
 
-    // Get the neutral/start position for this leg
-    Vector3d neutralPos = gaitConfig.startPosition.at(legNum);
-    
-    // Calculate rotational offset as arc displacement from neutral
-    // For small angles, arc length ≈ radius * angle
-    // We use the neutral leg reach as the radius
-    double neutralReach = std::hypot(neutralPos.x(), neutralPos.y());
-    double maxArcLength = MAX_STRIDE_LENGTH;
-    double arcOffset = maxArcLength * magnitude * (az > 0 ? 1.0 : -1.0);
-    
-    // Convert arc offset to angular displacement (radians)
-    double angularOffset = (neutralReach > 0.01) ? (arcOffset / neutralReach) : 0.0;
-    
-    // Rotate the neutral position by this angle
-    double cosA = cos(angularOffset);
-    double sinA = sin(angularOffset);
-    
-    double newX = neutralPos.x() * cosA - neutralPos.y() * sinA;
-    double newY = neutralPos.x() * sinA + neutralPos.y() * cosA;
-    double groundZ = gaitConfig.currentHeight;
+/**
+ * @brief Where a stance foot should be at the end of the phase
+ * @param[in] legNum The leg number
+ * @param[in] currentPos The foot's current position (leg frame)
+ * @param[in] displacement The body's movement over the phase, as a foot displacement (leg frame)
+ * @return The target foot position (leg frame), at most MAX_STRIDE_LENGTH from neutral
+*/
+Vector3d TrajectoryGenerator::stanceTarget(int legNum, const Vector3d& currentPos, const Vector3d& displacement) {
+    return clampToStride(legNum, currentPos - displacement);
+}
 
-    return {newX, newY, groundZ};
+/**
+ * @brief Keep a foot target within MAX_STRIDE_LENGTH of neutral and on the ground
+ * @param[in] legNum The leg number
+ * @param[in] target The foot target (leg frame)
+ * @return The clamped target, with z at the current body height
+*/
+Vector3d TrajectoryGenerator::clampToStride(int legNum, const Vector3d& target) {
+    const Vector3d& neutralPos = gaitConfig.startPosition.at(legNum);
+    double dx = target.x() - neutralPos.x();
+    double dy = target.y() - neutralPos.y();
+    double distance = std::hypot(dx, dy);
+    if (distance > MAX_STRIDE_LENGTH) {
+        dx *= MAX_STRIDE_LENGTH / distance;
+        dy *= MAX_STRIDE_LENGTH / distance;
+    }
+    return {neutralPos.x() + dx, neutralPos.y() + dy, gaitConfig.currentHeight};
 }
 
 /**

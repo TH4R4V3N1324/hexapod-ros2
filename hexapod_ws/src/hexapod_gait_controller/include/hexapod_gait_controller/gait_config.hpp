@@ -13,9 +13,7 @@ namespace hexapod_gait_controller {
 
 static constexpr int MAX_LEGS = 6;
 static constexpr int MAX_RESOLUTION = 50;
-static const double MAX_LINEAR_VELOCITY = 0.2; // m/s
-static const double MAX_STRIDE_LENGTH = 0.06; // m
-static const double MAX_ANGULAR_VELOCITY = 2.0; // rad/s
+static const double MAX_STRIDE_LENGTH = 0.06; // m, furthest a foot moves from its neutral position
 static const double LIFT_HEIGHT = 0.05;
 
 struct LocomotionOption {

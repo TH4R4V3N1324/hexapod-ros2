@@ -141,8 +141,19 @@ void GaitController::getCapabilitiesCallback(
         response->modes.push_back(toMsg(mode));
     }
 
-    response->max_linear_vel = MAX_LINEAR_VELOCITY;
-    response->max_angular_vel = MAX_ANGULAR_VELOCITY;
+    response->max_linear_vel = maxFootSpeed();
+    response->max_angular_vel = maxFootSpeed() / trajectoryGen.maxBodyRadius();
+}
+
+/**
+ * @brief Fastest a foot can travel relative to the body in the current gait
+ * @return The speed (m/s), which is also the gait's top walking speed
+ * @note A stance foot sweeps up to 2 x MAX_STRIDE_LENGTH over (groups - 1) phases,
+ *       and phases can be no shorter than min_phase_duration
+*/
+double GaitController::maxFootSpeed() {
+    size_t groups = std::max<size_t>(2, gaitConfig.getGaitConfig(gaitConfig.currentGait).size());
+    return 2.0 * MAX_STRIDE_LENGTH / ((groups - 1) * min_phase_duration);
 }
 
 /**
@@ -173,9 +184,10 @@ void GaitController::gaitTimerCallback() {
             current_motion_intent.yaw = filtered_cmd_vel.angular.z;
             break;
         case Mode::MODE_NORMAL:
+            // linear.y turns in this mode, scaled so its full range maps to the full yaw range
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
             current_motion_intent.lateral = 0.0;
-            current_motion_intent.yaw = filtered_cmd_vel.linear.y;
+            current_motion_intent.yaw = filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
             break;
         case Mode::MODE_CONFIG:
             // TODO: Configuration mode handling
@@ -356,7 +368,7 @@ double GaitController::jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>&
  *       All legs share the same progress, so they stay in phase when the gait slows down.
 */
 void GaitController::PerformLegStep(double dt, bool idle, bool handlePhaseTransition) {
-    double ds = idle ? 0.0 : dt / phase_duration;
+    double ds = idle ? 0.0 : dt / current_phase_duration;
     std::array<Vector3d, MAX_LEGS + 1> targets = legTargets(ds);
     double scale = jointSpeedScale(targets, dt);
     if (scale < 1.0) {
@@ -441,6 +453,7 @@ void GaitController::returnToStart(double dt) {
     }
 
     if (phase_progress == 0.0) {
+        current_phase_duration = phase_duration;
         trajectoryGen.GenerateTrajectories(
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
@@ -548,26 +561,42 @@ void GaitController::walk(double dt) {
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
 
-    // Calculate stride multiplier safely
-    double strideMultiplier = trajectoryGen.CalculateStrideMultiplier();
-
-    // Generate trajectories at the start of each phase
+    // Plan each phase at its start from the commanded velocity
     if (phase_progress == 0.0) {
         trajectory_motion_intent = current_motion_intent;
+        double forward = current_motion_intent.forward;
+        double lateral = current_motion_intent.lateral;
+        double yaw = current_motion_intent.yaw;
+
+        // Fastest any foot must move relative to the body, capped at what this gait can do
+        double footSpeed = std::hypot(forward, lateral) + std::abs(yaw) * trajectoryGen.maxBodyRadius();
+        double maxSpeed = maxFootSpeed();
+        if (footSpeed > maxSpeed) {
+            double scale = maxSpeed / footSpeed;
+            forward *= scale;
+            lateral *= scale;
+            yaw *= scale;
+            footSpeed = maxSpeed;
+        }
+
+        // Step faster once the stride would exceed MAX_STRIDE_LENGTH
+        size_t groups = std::max<size_t>(2, trajectoryGen.gaitState.config.size());
+        current_phase_duration = phase_duration;
+        if (footSpeed > 1e-6) {
+            double strideLimitedDuration = 2.0 * MAX_STRIDE_LENGTH / ((groups - 1) * footSpeed);
+            current_phase_duration = std::clamp(strideLimitedDuration, min_phase_duration, phase_duration);
+        }
+        const double stanceTime = (groups - 1) * current_phase_duration;
+        const double phaseTime = current_phase_duration;
+
         trajectoryGen.GenerateTrajectories(
-            // Swing target - use Twist-based direction
-            [this](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, legNum, false);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, legNum, false);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum);
-                return targetPos;
+            // Swing: land ahead of neutral by half the stroke the stance will sweep
+            [this, forward, lateral, yaw, stanceTime](int legNum, const Vector3d&) {
+                return trajectoryGen.swingTarget(legNum, trajectoryGen.footDisplacement(forward, lateral, yaw, legNum, stanceTime / 2.0));
             },
-            // Stance target - use Twist-based direction (inverted)
-            [this, strideMultiplier](int legNum, const Vector3d& currentPos) {
-                Vector3d forwardPos = trajectoryGen.linearTarget(current_motion_intent.forward, current_motion_intent.lateral, legNum, true);
-                Vector3d rotationPos = trajectoryGen.rotationalTarget(current_motion_intent.yaw, legNum, true);
-                Vector3d targetPos = trajectoryGen.BlendTargetPosition(currentPos, forwardPos, rotationPos, legNum, strideMultiplier);
-                return targetPos;
+            // Stance: move back by the body's motion over this phase
+            [this, forward, lateral, yaw, phaseTime](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.stanceTarget(legNum, currentPos, trajectoryGen.footDisplacement(forward, lateral, yaw, legNum, phaseTime));
             },
             current_leg_positions,
             phase

@@ -54,26 +54,13 @@ public:
         std::array<Vector3d, MAX_LEGS + 1> currentPositions,
         uint8_t currentPhase
     );
-    Vector3d linearTarget(
-        const double& linearX, 
-        const double& linearY, 
-        int legNum, 
-        bool invert
-    );
-    Vector3d rotationalTarget(
-        const double& angularZ, 
-        int legNum, 
-        bool invert
-    );
-    Vector3d BlendTargetPosition(
-        const Vector3d& currentPos, 
-        const Vector3d& translationPos, 
-        const Vector3d& rotationPos,
-        int legNum,
-        double strideMultiplier = 1.0
-    );
+    Vector3d footDisplacement(double forward, double lateral, double yaw, int legNum, double duration);
+    double bodyRadius(int legNum);
+    double maxBodyRadius();
+    Vector3d swingTarget(int legNum, const Vector3d& displacement);
+    Vector3d stanceTarget(int legNum, const Vector3d& currentPos, const Vector3d& displacement);
+    Vector3d clampToStride(int legNum, const Vector3d& target);
     void EnsureGaitConfig();
-    double CalculateStrideMultiplier();
     void genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end);
     Vector3d evalBezier(
         const Vector3d& P0, 
