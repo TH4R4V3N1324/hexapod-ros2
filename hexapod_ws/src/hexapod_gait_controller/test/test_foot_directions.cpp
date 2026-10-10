@@ -8,9 +8,9 @@ using hexapod_gait_controller::MAX_LEGS;
 using hexapod_gait_controller::TrajectoryGenerator;
 using Eigen::Vector3d;
 
-// Body frame: +y forward (towards the cameras), +x right, +z up
-static const Vector3d FORWARD(0.0, 1.0, 0.0);
-static const Vector3d RIGHT(1.0, 0.0, 0.0);
+// Body frame follows REP 103: +x forward (towards the cameras), +y left, +z up
+static const Vector3d FORWARD(1.0, 0.0, 0.0);
+static const Vector3d LEFT(0.0, 1.0, 0.0);
 
 /**
  * @brief Rotate a leg-frame displacement into the body frame
@@ -36,7 +36,7 @@ static double angleDiff(double a, double b) {
 TEST(FootDirections, LegFramesMatchUrdf) {
     TrajectoryGenerator gen;
     // Coxa joint yaws from hexapod_primitives.urdf.xacro
-    const double urdf_yaw[MAX_LEGS + 1] = {0.0, 0.5236, 0.0, -0.5236, -2.61799, -3.14159, 2.61799};
+    const double urdf_yaw[MAX_LEGS + 1] = {0.0, -1.0472, -1.5708, -2.0944, 2.0944, 1.5708, 1.0472};
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         EXPECT_NEAR(angleDiff(gen.legYaw(leg), urdf_yaw[leg]), 0.0, 1e-3) << "leg " << leg;
     }
@@ -59,12 +59,27 @@ TEST(FootDirections, ForwardMovesEveryFootForward) {
     }
 }
 
-TEST(FootDirections, PositiveLateralMovesEveryFootRight) {
+TEST(FootDirections, PositiveLeftMovesEveryFootLeft) {
     TrajectoryGenerator gen;
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         Vector3d body = toBody(gen, leg, gen.footDisplacement(0.0, 0.1, 0.0, leg, 1.0));
-        EXPECT_NEAR((body - 0.1 * RIGHT).norm(), 0.0, 1e-9) << "leg " << leg;
+        EXPECT_NEAR((body - 0.1 * LEFT).norm(), 0.0, 1e-9) << "leg " << leg;
     }
+}
+
+TEST(FootDirections, LegsAreOnTheRightSides) {
+    TrajectoryGenerator gen;
+    // Legs 1-3 are on the right (-y), 4-6 on the left (+y); legs 1 and 6 are at the front
+    for (int leg = 1; leg <= 3; ++leg) {
+        EXPECT_LT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
+    }
+    for (int leg = 4; leg <= 6; ++leg) {
+        EXPECT_GT(gen.neutralFootInBody(leg).y(), 0.0) << "leg " << leg;
+    }
+    EXPECT_GT(gen.neutralFootInBody(1).x(), 0.0);
+    EXPECT_GT(gen.neutralFootInBody(6).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(3).x(), 0.0);
+    EXPECT_LT(gen.neutralFootInBody(4).x(), 0.0);
 }
 
 TEST(FootDirections, PositiveYawIsAnticlockwiseAboutBodyCentre) {

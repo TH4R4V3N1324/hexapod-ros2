@@ -85,24 +85,24 @@ class DirectionCheck(Node):
         elapsed = self.now() - t0
         self.drive(Twist(), 0.5)
 
-        # Body frame: +y forward, +x right
+        # Body frame (REP 103): +x forward, +y left
         dx, dy = x1 - x0, y1 - y0
-        forward = -dx * math.sin(yaw0) + dy * math.cos(yaw0)
-        right = dx * math.cos(yaw0) + dy * math.sin(yaw0)
+        forward = dx * math.cos(yaw0) + dy * math.sin(yaw0)
+        left = -dx * math.sin(yaw0) + dy * math.cos(yaw0)
         turn = math.remainder(yaw1 - yaw0, 2 * math.pi)
 
         moves = {
             'forward': forward, 'backward': -forward,
-            'right': right, 'left': -right,
+            'left': left, 'right': -left,
             'turn_left': turn, 'turn_right': -turn,
         }
-        linear = math.hypot(forward, right)
+        linear = math.hypot(forward, left)
         if expect.startswith('turn'):
             ok = moves[expect] > 0.05 and linear < 0.1
             detail = f'turned {math.degrees(turn):+.1f} deg ({turn / elapsed:+.3f} rad/s), drifted {linear:.3f} m'
         else:
             ok = moves[expect] > 0.8 * linear and moves[expect] > 0.05
-            detail = (f'forward {forward:+.3f} m, right {right:+.3f} m, '
+            detail = (f'forward {forward:+.3f} m, left {left:+.3f} m, '
                       f'turned {math.degrees(turn):+.1f} deg, speed {linear / elapsed:.3f} m/s')
         print(f'{"PASS" if ok else "FAIL"}  {name:<22} {detail}')
         return ok

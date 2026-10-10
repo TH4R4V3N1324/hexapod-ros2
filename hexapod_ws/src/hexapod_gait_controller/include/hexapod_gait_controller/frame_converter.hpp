@@ -11,14 +11,14 @@ namespace hexapod_gait_controller {
 using Eigen::Vector3d;
 
 struct LegConfig {
-    double mounting_angle;      // radians - rotation around Z-axis
-    bool mirrored;              // if true, invert Y and angle for mirrored legs
-    Vector3d translation_offset; // mm - position of coxa in body frame
+    double yaw;                  // rad, rotation of the leg frame about the body z axis
+    Vector3d translation_offset; // m, position of the coxa joint in the body frame
 };
 
 /**
- * @brief Simple frame converter for leg <-> body transformations
- * @note Uses only translation (no rotation matrices needed)
+ * @brief Converts positions between each leg's frame and the body frame
+ * @note The body frame follows REP 103 (+x forward, +y left, +z up) and matches the URDF.
+ *       Each leg frame has +x pointing out along the leg from its coxa joint.
 */
 class FrameConverter {
 public:
@@ -27,13 +27,13 @@ public:
      * @brief Initialise the mounting configuration of each leg
     */
     FrameConverter() {
-        // Matching embedded config: mounting_angle (rad), mirrored, offset (meters)
-        legConfigs[1] = {M_PI / 6.0, false, Vector3d(0.06733, 0.0846, 0)};    // 30°
-        legConfigs[2] = {0, false, Vector3d(0.09, 0, 0)};                      // 0°
-        legConfigs[3] = {-M_PI / 6.0, false, Vector3d(0.06733, -0.0846, 0)};  // -30°
-        legConfigs[4] = {-M_PI / 6.0, true, Vector3d(-0.06733, -0.0846, 0)};  // -30°, mirrored
-        legConfigs[5] = {0, true, Vector3d(-0.09, 0, 0)};                      // 0°, mirrored
-        legConfigs[6] = {M_PI / 6.0, true, Vector3d(-0.06733, 0.0846, 0)};    // 30°, mirrored
+        // Coxa joint yaw (rad) and position (m), matching the URDF
+        legConfigs[1] = {-M_PI / 3.0, Vector3d(0.0846, -0.06733, 0)};       // front right
+        legConfigs[2] = {-M_PI / 2.0, Vector3d(0.0, -0.09, 0)};             // middle right
+        legConfigs[3] = {-2.0 * M_PI / 3.0, Vector3d(-0.0846, -0.06733, 0)}; // rear right
+        legConfigs[4] = {2.0 * M_PI / 3.0, Vector3d(-0.0846, 0.06733, 0)};   // rear left
+        legConfigs[5] = {M_PI / 2.0, Vector3d(0.0, 0.09, 0)};               // middle left
+        legConfigs[6] = {M_PI / 3.0, Vector3d(0.0846, 0.06733, 0)};         // front left
     }
     
     /**
@@ -44,7 +44,7 @@ public:
     */
     Vector3d legToBodyFrame(const Vector3d& position, int leg_num) {
         const auto& config = legConfigs.at(leg_num);
-        double angle = config.mounting_angle;
+        double angle = config.yaw;
         
         // Rotate from leg frame to body frame (positive rotation)
         double x_body = position.x() * cos(angle) - position.y() * sin(angle);
@@ -62,7 +62,7 @@ public:
     */
     Vector3d bodyToLegFrame(const Vector3d& position, int leg_num) {
         const auto& config = legConfigs.at(leg_num);
-        double angle = config.mounting_angle;
+        double angle = config.yaw;
         
         // First translate to remove coxa offset
         Vector3d translated = position - config.translation_offset;
@@ -86,7 +86,7 @@ public:
     /**
      * @brief Get coxa attachment point in body frame
      * @param[in] leg_num Leg number (1-6)
-     * @return Position of coxa joint in body frame (mm)
+     * @return Position of coxa joint in body frame (m)
     */
     Vector3d getCoxaPosition(int leg_num) const {
         return legConfigs.at(leg_num).translation_offset;

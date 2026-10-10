@@ -180,13 +180,13 @@ void GaitController::gaitTimerCallback() {
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
-            current_motion_intent.lateral = -filtered_cmd_vel.linear.y;
+            current_motion_intent.left = filtered_cmd_vel.linear.y;
             current_motion_intent.yaw = filtered_cmd_vel.angular.z;
             break;
         case Mode::MODE_NORMAL:
             // linear.y turns in this mode, scaled so its full range maps to the full yaw range
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
-            current_motion_intent.lateral = 0.0;
+            current_motion_intent.left = 0.0;
             current_motion_intent.yaw = filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
             break;
         case Mode::MODE_CONFIG:
@@ -211,7 +211,7 @@ void GaitController::gaitTimerCallback() {
  * @note Also records target as the leg's current position
 */
 void GaitController::appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum) {
-    // Compute IK to get joint angles (pass mirrored flag for legs 4-6)
+    // Compute IK to get joint angles
     auto angles = ikSolver.solveIK(target);
     
     // Add joint names and positions
@@ -511,7 +511,7 @@ bool GaitController::HandleIdleReturn(double dt) {
 
     // Check if motion intent is idle (mode-aware)
     bool idle = (std::abs(current_motion_intent.forward) < DEADZONE &&
-                      std::abs(current_motion_intent.lateral) < DEADZONE &&
+                      std::abs(current_motion_intent.left) < DEADZONE &&
                       std::abs(current_motion_intent.yaw) < DEADZONE);
 
     // Track if we've ever moved (received non-zero command and started stepping)
@@ -565,16 +565,16 @@ void GaitController::walk(double dt) {
     if (phase_progress == 0.0) {
         trajectory_motion_intent = current_motion_intent;
         double forward = current_motion_intent.forward;
-        double lateral = current_motion_intent.lateral;
+        double left = current_motion_intent.left;
         double yaw = current_motion_intent.yaw;
 
         // Fastest any foot must move relative to the body, capped at what this gait can do
-        double footSpeed = std::hypot(forward, lateral) + std::abs(yaw) * trajectoryGen.maxBodyRadius();
+        double footSpeed = std::hypot(forward, left) + std::abs(yaw) * trajectoryGen.maxBodyRadius();
         double maxSpeed = maxFootSpeed();
         if (footSpeed > maxSpeed) {
             double scale = maxSpeed / footSpeed;
             forward *= scale;
-            lateral *= scale;
+            left *= scale;
             yaw *= scale;
             footSpeed = maxSpeed;
         }
@@ -591,12 +591,12 @@ void GaitController::walk(double dt) {
 
         trajectoryGen.GenerateTrajectories(
             // Swing: land ahead of neutral by half the stroke the stance will sweep
-            [this, forward, lateral, yaw, stanceTime](int legNum, const Vector3d&) {
-                return trajectoryGen.swingTarget(legNum, trajectoryGen.footDisplacement(forward, lateral, yaw, legNum, stanceTime / 2.0));
+            [this, forward, left, yaw, stanceTime](int legNum, const Vector3d&) {
+                return trajectoryGen.swingTarget(legNum, trajectoryGen.footDisplacement(forward, left, yaw, legNum, stanceTime / 2.0));
             },
             // Stance: move back by the body's motion over this phase
-            [this, forward, lateral, yaw, phaseTime](int legNum, const Vector3d& currentPos) {
-                return trajectoryGen.stanceTarget(legNum, currentPos, trajectoryGen.footDisplacement(forward, lateral, yaw, legNum, phaseTime));
+            [this, forward, left, yaw, phaseTime](int legNum, const Vector3d& currentPos) {
+                return trajectoryGen.stanceTarget(legNum, currentPos, trajectoryGen.footDisplacement(forward, left, yaw, legNum, phaseTime));
             },
             current_leg_positions,
             phase

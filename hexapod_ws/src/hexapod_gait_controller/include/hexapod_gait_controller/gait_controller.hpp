@@ -26,9 +26,9 @@ using std::placeholders::_1;
 using std::placeholders::_2;
 
 struct MotionIntent {
-    double forward;
-    double lateral;
-    double yaw;
+    double forward;  // m/s
+    double left;     // m/s
+    double yaw;      // rad/s, positive anticlockwise
 };
 
 class GaitController : public rclcpp::Node { 
