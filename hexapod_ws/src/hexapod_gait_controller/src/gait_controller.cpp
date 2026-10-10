@@ -82,7 +82,9 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
 void GaitController::updateLegOdometry(const rclcpp::Time& stamp) {
     std::array<Eigen::Vector2d, MAX_LEGS + 1> feet;
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        feet[legNum] = trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]).head<2>();
+        // In the level frame, so tilting the body to level it doesn't count as movement
+        feet[legNum] = trajectoryGen.unposedBodyPoint(
+            trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]), walk_level).head<2>();
     }
 
     if (has_previous_feet && stamp > previous_feet_stamp) {
@@ -209,6 +211,9 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "tilt_max_translation") tilt_max_translation = parameter.as_double();
         else if (name == "tilt_angle_rate") tilt_angle_rate = parameter.as_double();
         else if (name == "tilt_translation_rate") tilt_translation_rate = parameter.as_double();
+        else if (name == "walk_leveling") walk_leveling = parameter.as_bool();
+        else if (name == "walk_level_gain") walk_level_gain = parameter.as_double();
+        else if (name == "walk_max_angle") walk_max_angle = parameter.as_double();
     }
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
@@ -257,6 +262,12 @@ void GaitController::setModeCallback(
     const std::shared_ptr<SetMode::Request> request,
     std::shared_ptr<SetMode::Response> response
 ) {
+    if (request->mode >= NUM_MODES) {
+        response->success = false;
+        response->message = "Mode " + std::to_string(request->mode) + " is not a valid mode";
+        RCLCPP_WARN(this->get_logger(), "%s", response->message.c_str());
+        return;
+    }
     gaitConfig.setMode(static_cast<Mode>(request->mode));
     response->success = true;
     response->message = "Mode changed to " + std::to_string(request->mode);
@@ -365,17 +376,13 @@ void GaitController::gaitTimerCallback() {
             current_motion_intent.left = 0.0;
             current_motion_intent.yaw = filtered_cmd_vel.angular.z + filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
             break;
-        case Mode::MODE_CONFIG:
-        case Mode::MODE_TILT:
-            // TODO: configuration mode. Until then, stand still: leaving the intent unchanged
-            // kept the robot walking with whatever it was last told, ignoring stop commands
-            current_motion_intent = MotionIntent{};
-            break;
+        case Mode::MODE_TILT:  // handled by tilt() above
         case Mode::NUM_MODES:
         default:
             RCLCPP_WARN(this->get_logger(), "Invalid or unimplemented mode");
             break;
     }
+    updateWalkLeveling(dt);
     walk(dt);
 }
 
@@ -387,8 +394,8 @@ void GaitController::gaitTimerCallback() {
  * @note Also records target as the leg's current position
 */
 void GaitController::appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum) {
-    // Compute IK to get joint angles
-    auto angles = ikSolver.solveIK(target);
+    // Compute IK to get joint angles, with the body leveled while walking
+    auto angles = ikSolver.solveIK(trajectoryGen.posedFoot(legNum, target, walk_level));
     
     // Add joint names and positions
     joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
@@ -889,22 +896,83 @@ void GaitController::walk(double dt) {
  *         neighbouring legs apart (see test_leg_clearance), and every joint is within reach
 */
 bool GaitController::tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets) {
-    constexpr double MAX_JOINT_ANGLE = 1.4;   // rad, inside the servos' +-1.57 range
-    constexpr double REACH_TOLERANCE = 1e-3;  // m, IK has to land the foot this close to the target
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         targets[legNum] = trajectoryGen.posedFoot(legNum, tilt_ground_feet[legNum], pose);
         const Vector3d offset = targets[legNum] - gaitConfig.startPosition.at(legNum);
         if (std::hypot(offset.x(), offset.y()) > MAX_STRIDE_LENGTH) {
             return false;
         }
-        const JointAngles angles = ikSolver.solveIK(targets[legNum]);
-        if (std::abs(angles.coxa) > MAX_JOINT_ANGLE || std::abs(angles.femur) > MAX_JOINT_ANGLE ||
-            std::abs(angles.tibia) > MAX_JOINT_ANGLE ||
-            (ikSolver.solveFK(angles) - targets[legNum]).norm() > REACH_TOLERANCE) {
+        if (!reachable(targets[legNum])) {
             return false;
         }
     }
     return true;
+}
+
+/**
+ * @brief Whether a leg can put its foot at a target
+ * @param[in] target The foot position (leg frame)
+ * @return true if IK lands the foot within 1 mm of the target with every joint inside +-1.4 rad
+*/
+bool GaitController::reachable(const Vector3d& target) {
+    constexpr double MAX_JOINT_ANGLE = 1.4;   // rad, inside the servos' +-1.57 range
+    constexpr double REACH_TOLERANCE = 1e-3;  // m
+    const JointAngles angles = ikSolver.solveIK(target);
+    return std::abs(angles.coxa) <= MAX_JOINT_ANGLE && std::abs(angles.femur) <= MAX_JOINT_ANGLE &&
+        std::abs(angles.tibia) <= MAX_JOINT_ANGLE && (ikSolver.solveFK(angles) - target).norm() <= REACH_TOLERANCE;
+}
+
+/**
+ * @brief Update the leveling correction used while walking
+ * @param[in] dt The time since the last tick (s)
+ * @note The correction builds up the IMU's measured roll and pitch, so the body levels out on a
+ *       slope. It rotates the body about the ground point under it, which keeps the body above
+ *       the middle of its feet and barely moves them sideways, so they stay in their stride
+ *       circles. It changes at most 0.5 rad/s and only as far as every foot can still reach.
+ *       With walk_leveling off it unwinds; without fresh IMU data it holds.
+*/
+void GaitController::updateWalkLeveling(double dt) {
+    constexpr double MAX_RATE = 0.5;  // rad/s
+    const double maxStep = MAX_RATE * dt;
+    const bool imuFresh = has_imu && (this->now() - last_imu_time).seconds() < 0.2;
+
+    double roll = walk_level_roll;
+    double pitch = walk_level_pitch;
+    if (!walk_leveling) {
+        roll = 0.0;
+        pitch = 0.0;
+    } else if (imuFresh) {
+        roll -= walk_level_gain * dt * body_roll;
+        pitch -= walk_level_gain * dt * body_pitch;
+    }
+    roll = std::clamp(roll, -walk_max_angle, walk_max_angle);
+    pitch = std::clamp(pitch, -walk_max_angle, walk_max_angle);
+    roll = walk_level_roll + std::clamp(roll - walk_level_roll, -maxStep, maxStep);
+    pitch = walk_level_pitch + std::clamp(pitch - walk_level_pitch, -maxStep, maxStep);
+
+    // Scale back towards level until every foot is reachable (level always is)
+    const Vector3d pivot(0.0, 0.0, gaitConfig.currentHeight);
+    auto fits = [&](double scale) {
+        const BodyPose pose = TrajectoryGenerator::rotationAbout(roll * scale, pitch * scale, pivot);
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            if (!reachable(trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], pose))) {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!fits(1.0)) {
+        double low = 0.0, high = 1.0;
+        for (int i = 0; i < 10; ++i) {
+            const double mid = 0.5 * (low + high);
+            (fits(mid) ? low : high) = mid;
+        }
+        roll *= low;
+        pitch *= low;
+    }
+    walk_level_roll = roll;
+    walk_level_pitch = pitch;
+    walk_level = TrajectoryGenerator::rotationAbout(roll, pitch, pivot);
 }
 
 /**
@@ -932,7 +1000,15 @@ void GaitController::tilt(double dt, bool exiting) {
             returnToStart(dt);
             return;
         }
-        tilt_ground_feet = current_leg_positions;
+        // Take over from walk leveling: the feet as actually placed become tilt mode's neutral
+        tilt_saved_roll = walk_level_roll;
+        tilt_saved_pitch = walk_level_pitch;
+        tilt_saved_feet = current_leg_positions;
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            tilt_ground_feet[legNum] = trajectoryGen.posedFoot(legNum, current_leg_positions[legNum], walk_level);
+        }
+        current_leg_positions = tilt_ground_feet;
+        walk_level = BodyPose{};
         body_pose_request = BodyPose{};
         tilt_command = BodyPose{};
         tilt_correction = BodyPose{};
@@ -1038,6 +1114,12 @@ void GaitController::tilt(double dt, bool exiting) {
     if (exiting && neutral) {
         tilt_active = false;
         tilt_applied = BodyPose{};
+        // Hand back to walk leveling where it left off; the feet are where it had them
+        walk_level_roll = tilt_saved_roll;
+        walk_level_pitch = tilt_saved_pitch;
+        walk_level = TrajectoryGenerator::rotationAbout(walk_level_roll, walk_level_pitch,
+            Vector3d(0.0, 0.0, gaitConfig.currentHeight));
+        current_leg_positions = tilt_saved_feet;
         phase = 0;
         phase_progress = 0.0;
         RCLCPP_INFO(this->get_logger(), "Tilt mode finished, body back to neutral");

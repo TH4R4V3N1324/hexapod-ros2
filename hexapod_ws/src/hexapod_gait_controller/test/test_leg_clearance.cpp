@@ -74,10 +74,13 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
 
     // Foot offsets across the stride circle, at heights from walking (standing and mid-swing) and
     // from tilt mode, where a tilted or shifted body puts feet higher or lower than standing
+    // Walk leveling can put a foot up to 7 mm beyond its stride circle (see test_body_pose)
+    constexpr double LEVELING_SHIFT = 0.007;  // m
     std::vector<Vector3d> offsets = {Vector3d::Zero()};
     for (int k = 0; k < 16; ++k) {
         double a = 2.0 * M_PI * k / 16.0;
-        offsets.emplace_back(MAX_STRIDE_LENGTH * std::cos(a), MAX_STRIDE_LENGTH * std::sin(a), 0.0);
+        double r = MAX_STRIDE_LENGTH + LEVELING_SHIFT;
+        offsets.emplace_back(r * std::cos(a), r * std::sin(a), 0.0);
     }
     const std::vector<double> heights = {-0.10, -0.05, 0.0, 0.05, 0.10};
 

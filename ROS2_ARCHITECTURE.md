@@ -201,7 +201,7 @@ Change behavior mode.
 
 ```
 # Request
-uint8 mode  # 0=normal, 1=strafe, 2=tilt, 3=config
+uint8 mode  # 0=normal, 1=strafe, 2=tilt
 ---
 # Response
 bool success
