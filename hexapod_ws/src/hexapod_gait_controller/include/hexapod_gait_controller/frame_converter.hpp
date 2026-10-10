@@ -17,12 +17,15 @@ struct LegConfig {
 };
 
 /**
- * Simple frame converter for leg <-> body transformations
- * Uses only translation (no rotation matrices needed)
- */
+ * @brief Simple frame converter for leg <-> body transformations
+ * @note Uses only translation (no rotation matrices needed)
+*/
 class FrameConverter {
 public:
     std::map<int, LegConfig> legConfigs;
+    /**
+     * @brief Initialise the mounting configuration of each leg
+    */
     FrameConverter() {
         // Matching embedded config: mounting_angle (rad), mirrored, offset (meters)
         legConfigs[1] = {M_PI / 6.0, false, Vector3d(0.06733, 0.0846, 0)};    // 30°
@@ -34,11 +37,11 @@ public:
     }
     
     /**
-     * Convert position from leg frame to body frame
-     * @param position Position in leg frame (m)
-     * @param leg_num Leg number (1-6)
+     * @brief Convert position from leg frame to body frame
+     * @param[in] position Position in leg frame (m)
+     * @param[in] leg_num Leg number (1-6)
      * @return Position in body frame (m)
-     */
+    */
     Vector3d legToBodyFrame(const Vector3d& position, int leg_num) {
         const auto& config = legConfigs.at(leg_num);
         double angle = config.mounting_angle;
@@ -52,11 +55,11 @@ public:
     }
     
     /**
-     * Convert position from body frame to leg frame
-     * @param position Position in body frame (m)
-     * @param leg_num Leg number (1-6)
+     * @brief Convert position from body frame to leg frame
+     * @param[in] position Position in body frame (m)
+     * @param[in] leg_num Leg number (1-6)
      * @return Position in leg frame (m)
-     */
+    */
     Vector3d bodyToLegFrame(const Vector3d& position, int leg_num) {
         const auto& config = legConfigs.at(leg_num);
         double angle = config.mounting_angle;
@@ -72,19 +75,19 @@ public:
     }
     
     /**
-     * Get the leg configuration for a specific leg
-     * @param leg_num Leg number (1-6)
+     * @brief Get the leg configuration for a specific leg
+     * @param[in] leg_num Leg number (1-6)
      * @return Reference to leg configuration
-     */
+    */
     const LegConfig& getLegConfig(int leg_num) const {
         return legConfigs.at(leg_num);
     }
     
     /**
-     * Get coxa attachment point in body frame
-     * @param leg_num Leg number (1-6)
+     * @brief Get coxa attachment point in body frame
+     * @param[in] leg_num Leg number (1-6)
      * @return Position of coxa joint in body frame (mm)
-     */
+    */
     Vector3d getCoxaPosition(int leg_num) const {
         return legConfigs.at(leg_num).translation_offset;
     }

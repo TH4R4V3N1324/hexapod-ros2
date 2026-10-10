@@ -3,6 +3,10 @@
 
 namespace hexapod_hardware_interface {
 
+/**
+ * @brief Create the joint command subscription and joint state publisher
+ * @param[in] node The node that owns the subscription and publisher
+*/
 ServoHandler::ServoHandler(rclcpp::Node* node) : node(node) {
     joint_cmd_sub = node->create_subscription<JointState>("joint_commands", 10, std::bind(&ServoHandler::jointCommandCallback, this, _1));
     joint_state_pub = node->create_publisher<JointState>("joint_states", 10);
@@ -14,6 +18,11 @@ ServoHandler::ServoHandler(rclcpp::Node* node) : node(node) {
     RCLCPP_INFO(node->get_logger(), "ServoHandler initialized");
 }
 
+/**
+ * @brief Store commanded joint positions from the gait controller
+ * @param[in] msg The incoming joint commands
+ * @note Messages without exactly 18 positions are ignored
+*/
 void ServoHandler::jointCommandCallback(const JointState::SharedPtr msg) {
     if (msg->position.size() != 18) {
         RCLCPP_WARN(node->get_logger(), 
@@ -28,6 +37,11 @@ void ServoHandler::jointCommandCallback(const JointState::SharedPtr msg) {
     has_new_commands = true;
 }
 
+/**
+ * @brief Build a serial packet containing the commanded joint positions
+ * @return The packet bytes
+ * @note Format: [0xAA][length][18 floats][checksum]. Clears the new-command flag
+*/
 std::vector<uint8_t> ServoHandler::buildPacket() {
     // Protocol: [0xAA][length][18 floats][checksum]
     std::vector<uint8_t> packet;
@@ -48,6 +62,10 @@ std::vector<uint8_t> ServoHandler::buildPacket() {
     return packet;
 }
 
+/**
+ * @brief Publish the current servo positions as joint states
+ * @param[in] timestamp The timestamp for the message header
+*/
 void ServoHandler::publishJointStates(const rclcpp::Time& timestamp) {
     JointState msg;
     msg.header.stamp = timestamp;
@@ -66,6 +84,10 @@ void ServoHandler::publishJointStates(const rclcpp::Time& timestamp) {
     joint_state_pub->publish(msg);
 }
 
+/**
+ * @brief Move the current positions toward the commanded positions
+ * @param[in] alpha Fraction of the remaining error to cover each call
+*/
 void ServoHandler::simulateMovement(double alpha) {
     // Gradually move current positions toward commanded positions
     for (size_t i = 0; i < 18; i++) {
@@ -74,12 +96,22 @@ void ServoHandler::simulateMovement(double alpha) {
     }
 }
 
+/**
+ * @brief Append the raw bytes of a float to a buffer
+ * @param[in,out] buffer The buffer to append to
+ * @param[in] value The value to pack
+*/
 void ServoHandler::packFloat(std::vector<uint8_t>& buffer, float value) {
     uint8_t bytes[4];
     std::memcpy(bytes, &value, sizeof(float));
     buffer.insert(buffer.end(), bytes, bytes + 4);
 }
 
+/**
+ * @brief Calculate the XOR checksum of a packet
+ * @param[in] data The packet bytes
+ * @return The XOR of all bytes
+*/
 uint8_t ServoHandler::calculateChecksum(const std::vector<uint8_t>& data) {
     uint8_t sum = 0;
     for (uint8_t byte : data) {

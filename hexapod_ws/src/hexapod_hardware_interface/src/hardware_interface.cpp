@@ -4,6 +4,10 @@
 
 using namespace hexapod_hardware_interface;
 
+/**
+ * @brief Hardware interface node for the real robot, creates the sensor and servo handlers
+ * @note Does not yet drive the serial port
+*/
 class HardwareInterface : public rclcpp::Node {public: HardwareInterface() : Node("hardware_interface") {
         // Declare parameters
         declare_parameter("publish_rate", 100.0);
@@ -21,6 +25,12 @@ private:
     std::unique_ptr<ServoHandler> servo_handler;  
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<HardwareInterface>());

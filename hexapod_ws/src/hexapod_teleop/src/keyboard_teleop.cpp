@@ -15,6 +15,9 @@ using hexapod_interfaces::srv::GetCapabilities;
 using hexapod_interfaces::srv::SetMode;
 using hexapod_interfaces::srv::SetGait;
 
+/**
+ * @brief Keyboard teleop node, converts key presses into /cmd_vel commands and gait/mode changes
+*/
 class KeyboardTeleop : public rclcpp::Node {public: KeyboardTeleop() : Node("keyboard_teleop") {
   	RCLCPP_INFO(this->get_logger(), "Keyboard Teleop Node has been started.");
   	cmd_vel_pub = this->create_publisher<Twist>("cmd_vel", 10);
@@ -46,6 +49,12 @@ public:
   	void fetchCapabilities();
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char * argv[]) {
 	rclcpp::init(argc, argv);
 	auto node = std::make_shared<KeyboardTeleop>();
@@ -55,6 +64,10 @@ int main(int argc, char * argv[]) {
 	return 0;
 }
 
+/**
+ * @brief Request the supported gaits and modes from the gait controller
+ * @note Waits up to 2 seconds for the service
+*/
 void KeyboardTeleop::fetchCapabilities() {
     if (!get_capabilities_client->wait_for_service(std::chrono::seconds(2))) {
         RCLCPP_WARN(this->get_logger(), "GetCapabilities service not available");
@@ -80,6 +93,10 @@ void KeyboardTeleop::fetchCapabilities() {
     }
 }
 
+/**
+ * @brief Read key presses and publish velocity commands, gait changes and mode changes
+ * @note Blocks until 'c' is pressed or ROS shuts down
+*/
 void KeyboardTeleop::userInputLoop() {
 	enableRawMode();
 	RCLCPP_INFO(this->get_logger(), "\nControls:\n Linear:	[w/s/a/d]\n Angular:	[e/q]\n stop:		[x]\n Gait:		[g]\n Mode:		[m]\n Exit:		[c]\n");
@@ -170,6 +187,9 @@ void KeyboardTeleop::userInputLoop() {
   	disableRawMode();
 }
 
+/**
+ * @brief Put the terminal in raw mode so key presses are read without pressing Enter
+*/
 void KeyboardTeleop::enableRawMode() {
 	if (termios_ready_) {
 		return;
@@ -189,12 +209,20 @@ void KeyboardTeleop::enableRawMode() {
 	termios_ready_ = true;
 }
 
+/**
+ * @brief Restore the original terminal settings
+*/
 void KeyboardTeleop::disableRawMode() {
 	if (!termios_ready_) {return;}
 	tcsetattr(STDIN_FILENO, TCSANOW, &orig_termios_);
 	termios_ready_ = false;
 }
 
+/**
+ * @brief Wait for a single key press
+ * @param[in] timeout_ms How long to wait in milliseconds
+ * @return The key code, or -1 if no key was pressed
+*/
 int KeyboardTeleop::readKeyWithTimeout(int timeout_ms) {
 	fd_set read_fds;
 	FD_ZERO(&read_fds);

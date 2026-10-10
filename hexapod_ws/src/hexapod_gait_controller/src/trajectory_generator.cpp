@@ -2,13 +2,12 @@
 
 namespace hexapod_gait_controller {
 
-/*
-@brief Generates a straight trajectory between start and end positions
-@param trajectory Pointer to an array to store the trajectory points
-@param outSize Reference to an integer to store the number of points generated
-@param start The starting position
-@param end The ending position
-@return void
+/**
+ * @brief Generates a straight trajectory between start and end positions
+ * @param[out] trajectory Pointer to an array to store the trajectory points
+ * @param[out] outSize Reference to an integer to store the number of points generated
+ * @param[in] start The starting position
+ * @param[in] end The ending position
 */
 void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end) {
     outSize = 0;
@@ -35,14 +34,12 @@ void TrajectoryGenerator::GenStraightTrajectory(Vector3d* trajectory, int& outSi
     outSize = MAX_RESOLUTION + 1;
 }
 
-/*
-@brief Generates a Bezier curve trajectory between start and end positions
-@param trajectory Pointer to an array to store the trajectory points
-@param outSize Reference to an integer to store the number of points generated
-@param start The starting position
-@param end The ending position
-@param invert Whether to invert the trajectory
-@return void
+/**
+ * @brief Generates a Bezier curve trajectory between start and end positions
+ * @param[out] trajectory Pointer to an array to store the trajectory points
+ * @param[out] outSize Reference to an integer to store the number of points generated
+ * @param[in] start The starting position
+ * @param[in] end The ending position
 */
 void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize, const Vector3d& start, const Vector3d& end) {
     outSize = 0;
@@ -87,14 +84,16 @@ void TrajectoryGenerator::GenBezierTrajectory(Vector3d* trajectory, int& outSize
     outSize = MAX_RESOLUTION + 1;
 }
 
-/*
-@brief Blend target positions from forward and rotation inputs
-@param currentPos The current position of the leg (used for reference)
-@param forwardPos The target position based on forward input (relative to neutral)
-@param rotationPos The target position based on rotation input (relative to neutral)
-@return The blended target position
-@note Both forwardPos and rotationPos are computed relative to the leg's neutral position.
-      We blend them by averaging their displacements from neutral.
+/**
+ * @brief Blend target positions from forward and rotation inputs
+ * @param[in] currentPos The current position of the leg (used for reference)
+ * @param[in] forwardPos The target position based on forward input (relative to neutral)
+ * @param[in] rotationPos The target position based on rotation input (relative to neutral)
+ * @param[in] legNum The leg number
+ * @param[in] strideMultiplier Multiplier for stride length
+ * @return The blended target position
+ * @note Both forwardPos and rotationPos are computed relative to the leg's neutral position.
+ *       We blend them by averaging their displacements from neutral.
 */
 Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, const Vector3d& forwardPos, const Vector3d& rotationPos, int legNum, double strideMultiplier) {
     auto it = gaitConfig.startPosition.find(legNum);
@@ -125,16 +124,16 @@ Vector3d TrajectoryGenerator::BlendTargetPosition(const Vector3d& currentPos, co
     };
 }
 
-/*
-@brief Calculate stride multiplier based on gait configuration
-@return The stride multiplier
+/**
+ * @brief Calculate stride multiplier based on gait configuration
+ * @return The stride multiplier
 */
 double TrajectoryGenerator::CalculateStrideMultiplier() {
     return (gaitState.config.size() > 1) ? 1.0 / (gaitState.config.size() - 1) : 1.0;
 }
 
-/*
-@brief Ensure the gait configuration is set up correctly
+/**
+ * @brief Ensure the gait configuration is set up correctly
 */
 void TrajectoryGenerator::EnsureGaitConfig() {
     if (gaitState.config.empty()) {
@@ -142,10 +141,12 @@ void TrajectoryGenerator::EnsureGaitConfig() {
     }
 }
 
-/*
-@brief Generate swing and stance trajectories for the legs
-@param swingTargetFunc A function to compute the swing target position for a leg
-@param stanceTargetFunc A function to compute the stance target position for a leg
+/**
+ * @brief Generate swing and stance trajectories for the legs
+ * @param[in] swingTargetFunc A function to compute the swing target position for a leg
+ * @param[in] stanceTargetFunc A function to compute the stance target position for a leg
+ * @param[in] currentPositions The current position of each leg
+ * @param[in] currentPhase The gait phase whose legs swing
 */
 void TrajectoryGenerator::GenerateTrajectories(
     std::function<Vector3d(int, const Vector3d&)> swingTargetFunc,
@@ -215,16 +216,14 @@ void TrajectoryGenerator::GenerateTrajectories(
     }
 }
 
-/*
-@brief Calculate linear target position based on input velocities
-@param linearX The forward linear velocity
-@param linearY The lateral linear velocity
-@param start The starting position (used for reference)
-@param legNum The leg number
-@param invert Whether to invert the direction (for stance phase)
-@param strideMultiplier Multiplier for stride length
-@return The calculated target position
-@note Linear offset is computed relative to the leg's neutral position to prevent drift.
+/**
+ * @brief Calculate linear target position based on input velocities
+ * @param[in] linearX The forward linear velocity
+ * @param[in] linearY The lateral linear velocity
+ * @param[in] legNum The leg number
+ * @param[in] invert Whether to invert the direction (for stance phase)
+ * @return The calculated target position
+ * @note Linear offset is computed relative to the leg's neutral position to prevent drift.
 */
 Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& linearY, int legNum, bool invert) {
     double lx = linearX;
@@ -258,16 +257,14 @@ Vector3d TrajectoryGenerator::linearTarget(const double& linearX, const double& 
     return {neutralPos.x() + dx_rot, neutralPos.y() + dy_rot, groundZ};
 }
 
-/*
-@brief Calculate rotational target position based on input angular velocity
-@param angularZ The angular velocity around the Z-axis
-@param start The starting position (used only for Z reference)
-@param legNum The leg number
-@param invert Whether to invert the direction (for stance phase)
-@param strideMultiplier Multiplier for stride length
-@return The calculated target position
-@note Rotation is computed relative to the leg's neutral position, not current position.
-      This prevents legs from drifting outside their workspace during sustained rotation.
+/**
+ * @brief Calculate rotational target position based on input angular velocity
+ * @param[in] angularZ The angular velocity around the Z-axis
+ * @param[in] legNum The leg number
+ * @param[in] invert Whether to invert the direction (for stance phase)
+ * @return The calculated target position
+ * @note Rotation is computed relative to the leg's neutral position, not current position.
+ *       This prevents legs from drifting outside their workspace during sustained rotation.
 */
 Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, int legNum, bool invert) {
     double az = angularZ;
@@ -302,6 +299,13 @@ Vector3d TrajectoryGenerator::rotationalTarget(const double& angularZ, int legNu
     return {newX, newY, groundZ};
 }
 
+/**
+ * @brief Set up the control points of a swing-phase Bezier spline
+ * @param[out] spline The spline to set up
+ * @param[in] start The starting position
+ * @param[in] end The ending position
+ * @note Resets the spline progress and marks the spline active
+*/
 void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end){
     Eigen::Vector3d dir = end - start;
 
@@ -321,6 +325,16 @@ void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& st
     spline.active = true;
 }
 
+/**
+ * @brief Evaluate a quartic Bezier curve with smoothstep easing
+ * @param[in] P0 The start point
+ * @param[in] P1 The first control point
+ * @param[in] P2 The second control point
+ * @param[in] P3 The third control point
+ * @param[in] P4 The end point
+ * @param[in] s Normalised progress along the curve [0, 1]
+ * @return The point on the curve
+*/
 Vector3d TrajectoryGenerator::evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, const Vector3d& P4, const double s) {
     double st = s * s * s * (s * (6.0 * s - 15.0) + 10.0);
     double u = 1.0 - st;

@@ -6,6 +6,9 @@ using namespace hexapod_hardware_interface;
 
 class HardwareInterfaceFake : public rclcpp::Node {
 public:
+    /**
+     * @brief Create the fake hardware node and start the main loop timer
+    */
     HardwareInterfaceFake() : Node("hardware_interface_fake") {
         // Declare parameters
         declare_parameter("publish_rate", 100.0);
@@ -23,6 +26,9 @@ public:
     }
 
 private:
+    /**
+     * @brief Simulate servo movement and publish fake joint states and sensor data
+    */
     void mainLoop() {
         auto timestamp = now();
         
@@ -40,6 +46,12 @@ private:
     rclcpp::TimerBase::SharedPtr timer;
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     rclcpp::spin(std::make_shared<HardwareInterfaceFake>());

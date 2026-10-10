@@ -53,7 +53,15 @@ private:
     };
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
+    /**
+     * @brief Get the supported gaits
+     * @return The list of supported gaits
+    */
     const std::vector<LocomotionOption>& getGaits() const { return gaits; }
+    /**
+     * @brief Get the supported modes
+     * @return The list of supported modes
+    */
     const std::vector<LocomotionOption>& getModes() const { return modes; }
     double currentHeight = -0.12;
     Vector3d homePos {0.15, 0, 0};

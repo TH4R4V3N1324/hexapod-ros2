@@ -13,6 +13,9 @@ using namespace hexapod_gait_controller;
 
 class LegAxisTestNode : public rclcpp::Node {
 public:
+    /**
+     * @brief Create the leg axis test node and start the test timer
+    */
     LegAxisTestNode() : Node("leg_axis_test_node") {
         RCLCPP_INFO(get_logger(), "Starting leg axis test node...");
 
@@ -47,6 +50,10 @@ private:
 
     std::vector<Vector3d> currentTrajectory;
 
+    /**
+     * @brief Step every leg along the current test trajectory, cycling through the X, Y and Z axes
+     * @note Called by the timer every 100 ms
+    */
     void runTest() {
         // If trajectory not initialized or finished, generate new one
         if (currentTrajectory.empty() || trajIndex >= currentTrajectory.size()) {
@@ -102,6 +109,12 @@ private:
     }
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char** argv) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<LegAxisTestNode>();
