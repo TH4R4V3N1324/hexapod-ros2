@@ -32,7 +32,6 @@ enum Mode : uint8_t {
     MODE_NORMAL,
     MODE_STRAFE,
     MODE_TILT,
-    MODE_CONFIG,
     NUM_MODES
 };
 
@@ -46,8 +45,7 @@ private:
     const std::vector<LocomotionOption> modes = {
         {"normal", MODE_NORMAL},
         {"strafe", MODE_STRAFE},
-        {"tilt", MODE_TILT},
-        {"config", MODE_CONFIG}
+        {"tilt", MODE_TILT}
     };
     Vector3d rotateZ(const Vector3d& v, double degrees);
 public:

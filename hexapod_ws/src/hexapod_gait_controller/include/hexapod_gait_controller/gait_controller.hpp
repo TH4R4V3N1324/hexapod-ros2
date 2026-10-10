@@ -90,7 +90,12 @@ public:
         // Off by default: the IMU yaw drifts without a magnetometer, and holding it uses up the stride
         tilt_lock_yaw = this->declare_parameter("tilt_lock_yaw", false);
         tilt_level_gain = this->declare_parameter("tilt_level_gain", 8.0);
-        // The tilt parameters can be tuned while running
+        // Leveling while walking (normal and strafe modes): the IMU keeps the body level on slopes
+        walk_leveling = this->declare_parameter("walk_leveling", true);
+        walk_level_gain = this->declare_parameter("walk_level_gain", 2.0);
+        walk_max_angle = this->declare_parameter("walk_max_angle", 0.15);
+
+        // The tilt and leveling parameters can be tuned while running
         param_callback = this->add_on_set_parameters_callback(
             std::bind(&GaitController::parametersCallback, this, _1));
 
@@ -178,6 +183,18 @@ private:
     double tilt_level_gain;        // 1/s, how fast the leveling correction responds
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback;
 
+    // Leveling while walking. Foot positions (current_leg_positions) stay in the level "ground"
+    // frame the gait works in; walk_level is applied on the way to IK.
+    bool walk_leveling;        // hold the body level with the IMU while walking
+    double walk_level_gain;    // 1/s, how fast the correction responds; slow, to follow slopes rather than steps
+    double walk_max_angle;     // rad, largest roll or pitch correction
+    double walk_level_roll = 0.0;   // rad, current correction
+    double walk_level_pitch = 0.0;  // rad
+    BodyPose walk_level;       // the correction as a pose, rotating about the ground under the body
+    double tilt_saved_roll = 0.0;   // walk leveling when tilt mode started, restored when it ends
+    double tilt_saved_pitch = 0.0;
+    std::array<Vector3d, MAX_LEGS + 1> tilt_saved_feet;  // ground-frame feet when tilt mode started
+
     // Leg odometry
     LegOdometry legOdometry;
     std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
@@ -200,6 +217,8 @@ public:
     void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
     rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);
     bool feetAtStart();
+    bool reachable(const Vector3d& target);
+    void updateWalkLeveling(double dt);
     bool tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets);
     void tilt(double dt, bool exiting);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);

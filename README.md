@@ -284,7 +284,7 @@ types; these cover only what has no standard equivalent.
 
 **Services**
 - `SetGait(uint8 gait) → (bool success, string message)` — `0=tripod, 1=ripple, 2=wave`.
-- `SetMode(uint8 mode) → (bool success, string message)` — `0=normal, 1=strafe, 2=tilt, 3=config`.
+- `SetMode(uint8 mode) → (bool success, string message)` — `0=normal, 1=strafe, 2=tilt`; other values are rejected.
 - `SetHeight(float64 height) → (bool success, string message)`.
 - `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait)`.
 - `IKSolver(uint8 leg_index, geometry_msgs/Point target) → sensor_msgs/JointState`.
@@ -350,7 +350,28 @@ the whole swing is too. Neighbouring legs can't collide inside those circles:
 the smallest gap between their segments is ~2.5 cm (`test_leg_clearance`).
 
 A gait change requested with `set_gait` applies at the start of the next step,
-when every foot is planted. Config mode isn't implemented and stands still.
+when every foot is planted.
+
+### Leveling while walking
+
+In normal and strafe mode the IMU keeps the body level on slopes
+(`walk_leveling`, on by default). A correction built up from the measured roll
+and pitch rotates the body about the ground point under it, which keeps the
+body above the middle of its feet and moves the feet less than 7 mm sideways
+(`test_leg_clearance` covers stride circles that much wider). The gait itself
+still works in the level frame, and leg odometry has the tilt taken out.
+
+| Parameter | Default | |
+|---|---|---|
+| `walk_leveling` | true | hold the body level while walking |
+| `walk_level_gain` | 2.0 /s | slow, to follow slopes rather than each step |
+| `walk_max_angle` | 0.15 rad | largest correction; it is also cut back if a foot would be out of reach |
+
+In simulation, on a deck tilted 5.7° (roll or pitch), the body stands at 0.0°
+and averages 0.0–0.1° while walking (5.7° with leveling off), and walks as
+straight and as far as on level ground. Tilt mode takes over the levelled pose
+when it starts and hands it back when it ends, so switching modes on a slope
+doesn't jolt the feet.
 
 ### Tilt mode
 
@@ -398,7 +419,7 @@ the body stays within 1.5° (gain 8). A deck held at 8.6° is levelled to 0.0°.
 The helper classes:
 
 - **`GaitConfig`** — holds the three supported gaits (tripod / ripple /
-  wave) and four modes (normal / strafe / tilt / config), per-leg home
+  wave) and three modes (normal / strafe / tilt), per-leg home
   stance positions (each leg's start position is the same base pose rotated
   ±15° per pair around Z), current body height (default `-0.12` m), and
   gait/mode change requests.

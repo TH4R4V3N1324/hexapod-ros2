@@ -68,6 +68,8 @@ public:
     Vector3d legToBody(int legNum, const Vector3d& position);
     Vector3d bodyToLeg(int legNum, const Vector3d& position);
     Vector3d posedFoot(int legNum, const Vector3d& groundFoot, const BodyPose& pose);
+    Vector3d unposedBodyPoint(const Vector3d& bodyPoint, const BodyPose& pose);
+    static BodyPose rotationAbout(double roll, double pitch, const Vector3d& pivot);
     Vector3d neutralFootInBody(int legNum);
     Vector3d footDisplacement(double forward, double left, double yaw, int legNum, double duration);
     Vector3d footDisplacementFrom(double forward, double left, double yaw, int legNum, const Vector3d& footPos, double duration);

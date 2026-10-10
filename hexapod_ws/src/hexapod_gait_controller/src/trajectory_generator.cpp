@@ -214,6 +214,36 @@ Vector3d TrajectoryGenerator::posedFoot(int legNum, const Vector3d& groundFoot, 
 }
 
 /**
+ * @brief Undo a body pose for a point in the body frame, the inverse of posedFoot
+ * @param[in] bodyPoint A point in the posed body's frame
+ * @param[in] pose The body pose
+ * @return The point in the neutral body frame
+*/
+Vector3d TrajectoryGenerator::unposedBodyPoint(const Vector3d& bodyPoint, const BodyPose& pose) {
+    Eigen::Matrix3d rotation = (Eigen::AngleAxisd(pose.yaw, Vector3d::UnitZ())
+        * Eigen::AngleAxisd(pose.pitch, Vector3d::UnitY())
+        * Eigen::AngleAxisd(pose.roll, Vector3d::UnitX())).toRotationMatrix();
+    return rotation * bodyPoint + pose.translation;
+}
+
+/**
+ * @brief Body pose that rolls and pitches the body about a fixed point rather than its origin
+ * @param[in] roll Roll (rad)
+ * @param[in] pitch Pitch (rad)
+ * @param[in] pivot The point that stays put (neutral body frame)
+ * @return The pose, with the translation that keeps the pivot in place
+*/
+BodyPose TrajectoryGenerator::rotationAbout(double roll, double pitch, const Vector3d& pivot) {
+    BodyPose pose;
+    pose.roll = roll;
+    pose.pitch = pitch;
+    Eigen::Matrix3d rotation = (Eigen::AngleAxisd(pitch, Vector3d::UnitY())
+        * Eigen::AngleAxisd(roll, Vector3d::UnitX())).toRotationMatrix();
+    pose.translation = pivot - rotation * pivot;
+    return pose;
+}
+
+/**
  * @brief Position of a leg's neutral foot in the body frame
  * @param[in] legNum The leg number
  * @return The foot position relative to the body centre (body frame, z = 0)

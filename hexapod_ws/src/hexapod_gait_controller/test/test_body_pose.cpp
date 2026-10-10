@@ -99,3 +99,34 @@ TEST(BodyPose, PositiveYawSweepsTheFeetClockwiseAroundTheBody) {
         EXPECT_NEAR(after.head<2>().norm(), before.head<2>().norm(), 1e-12) << "leg " << leg;
     }
 }
+
+TEST(BodyPose, RotationAboutAPointLeavesThatPointInPlace) {
+    TrajectoryGenerator gen;
+    const Vector3d pivot(0.0, 0.0, -0.12);
+    const BodyPose pose = TrajectoryGenerator::rotationAbout(0.1, -0.08, pivot);
+    EXPECT_NEAR((gen.unposedBodyPoint(pivot, pose) - pivot).norm(), 0.0, 1e-12);
+}
+
+TEST(BodyPose, UnposingUndoesPosing) {
+    TrajectoryGenerator gen;
+    GaitConfig config;
+    BodyPose pose = TrajectoryGenerator::rotationAbout(0.12, 0.07, Vector3d(0.0, 0.0, -0.12));
+    pose.yaw = 0.05;
+    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        const Vector3d foot = config.startPosition.at(leg);
+        const Vector3d posed = gen.legToBody(leg, gen.posedFoot(leg, foot, pose));
+        EXPECT_NEAR((gen.unposedBodyPoint(posed, pose) - gen.legToBody(leg, foot)).norm(), 0.0, 1e-12) << "leg " << leg;
+    }
+}
+
+TEST(BodyPose, LevelingAboutTheGroundBarelyMovesTheFeetSideways) {
+    // Walk leveling's largest correction, about the ground under the body: the feet change height
+    // but move less than 7 mm sideways (test_leg_clearance covers stride circles 7 mm wider)
+    TrajectoryGenerator gen;
+    GaitConfig config;
+    const BodyPose pose = TrajectoryGenerator::rotationAbout(0.15, 0.15, Vector3d(0.0, 0.0, config.currentHeight));
+    for (int leg = 1; leg <= MAX_LEGS; ++leg) {
+        const Vector3d offset = gen.posedFoot(leg, config.startPosition.at(leg), pose) - config.startPosition.at(leg);
+        EXPECT_LT(offset.head<2>().norm(), 0.007) << "leg " << leg;
+    }
+}
