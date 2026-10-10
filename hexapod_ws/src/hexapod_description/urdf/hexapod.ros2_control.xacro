@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+
+  <!--
+    ros2_control hardware for the 18 leg joints.
+
+    hardware:
+      gazebo  Gazebo Harmonic (gz_ros2_control)
+      mock    ros2_control mock hardware, commands are mirrored straight to the states
+      st3215  Waveshare ST3215 serial bus servos (hexapod_hardware_interface)
+  -->
+
+  <!-- servo_id, direction and offset are only used by the st3215 hardware -->
+  <xacro:macro name="hexapod_ros2_control_joint" params="name hardware servo_id direction:=1 offset:=0.0">
+    <joint name="${name}">
+      <xacro:if value="${hardware == 'st3215'}">
+        <param name="servo_id">${servo_id}</param>
+        <param name="direction">${direction}</param>
+        <param name="offset">${offset}</param>
+      </xacro:if>
+      <command_interface name="position"/>
+      <state_interface name="position"/>
+      <state_interface name="velocity"/>
+      <state_interface name="effort"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- Servo ID = leg * 10 + joint (1 coxa, 2 femur, 3 tibia), e.g. leg 1 is 11, 12, 13 and leg 2 is 21, 22, 23 -->
+  <xacro:macro name="hexapod_ros2_control_leg" params="leg hardware">
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_coxa_joint" hardware="${hardware}" servo_id="${leg * 10 + 1}"/>
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_femur_joint" hardware="${hardware}" servo_id="${leg * 10 + 2}"/>
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_tibia_joint" hardware="${hardware}" servo_id="${leg * 10 + 3}"/>
+  </xacro:macro>
+
+  <xacro:macro name="hexapod_ros2_control" params="hardware serial_port:=/dev/ttyAMA0 baud_rate:=1000000">
+    <ros2_control name="HexapodHardware" type="system">
+      <hardware>
+        <xacro:if value="${hardware == 'gazebo'}">
+          <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${hardware == 'mock'}">
+          <plugin>mock_components/GenericSystem</plugin>
+        </xacro:if>
+        <xacro:if value="${hardware == 'st3215'}">
+          <plugin>hexapod_hardware_interface/ST3215System</plugin>
+          <param name="serial_port">${serial_port}</param>
+          <param name="baud_rate">${baud_rate}</param>
+          <param name="echo">false</param>        <!-- true if the bus adapter echoes TX back to RX -->
+          <param name="max_torque">2.94</param>   <!-- N·m at 100% load, ST3215 stall torque at 12 V -->
+          <param name="acceleration">0</param>    <!-- 0 = no limit -->
+          <param name="speed">0</param>           <!-- steps/s, 0 = no limit -->
+        </xacro:if>
+      </hardware>
+      <xacro:hexapod_ros2_control_leg leg="1" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="2" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="3" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="4" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="5" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="6" hardware="${hardware}"/>
+    </ros2_control>
+  </xacro:macro>
+
+</robot>

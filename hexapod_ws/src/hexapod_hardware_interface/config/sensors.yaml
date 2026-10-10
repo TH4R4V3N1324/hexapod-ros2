@@ -1,0 +1,25 @@
+bmi088:
+  ros__parameters:
+    i2c_bus: /dev/i2c-1
+    accel_address: 25        # 0x19 (24 = 0x18 if SDO1 is pulled low)
+    gyro_address: 105        # 0x69 (104 = 0x68 if SDO2 is pulled low)
+    frame_id: imu_link
+    accel_range_g: 6         # 3, 6, 12 or 24
+    gyro_range_dps: 1000     # 125, 250, 500, 1000 or 2000
+    rate: 100.0
+
+imu_filter:
+  ros__parameters:
+    use_mag: false
+    publish_tf: false
+    world_frame: enu
+
+ina226:
+  ros__parameters:
+    i2c_bus: /dev/i2c-1
+    addresses: [64, 65]               # 0x40 (A0 jumper open), 0x41 (A0 jumper bridged)
+    locations: [left, right]
+    shunt_resistances: [0.002, 0.002] # ohms, R1 on each daughter board (2 mΩ)
+    battery_full_voltage: 12.6    # 3S LiPo, 4.2 V/cell
+    battery_empty_voltage: 9.0    # 3.0 V/cell
+    rate: 10.0

@@ -8,51 +8,49 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(rclcpp_lifecycle REQUIRED)
+find_package(hardware_interface REQUIRED)
+find_package(pluginlib REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(hexapod_interfaces REQUIRED)
 
 include_directories(include)
 
-add_library(hardware_handlers SHARED
-    src/sensor_handler.cpp
-    src/servo_handler.cpp
+# ros2_control plugin for the ST3215 bus servos
+add_library(${PROJECT_NAME} SHARED
+    src/st3215_bus.cpp
+    src/st3215_system.cpp
 )
-
-ament_target_dependencies(hardware_handlers
+ament_target_dependencies(${PROJECT_NAME}
     rclcpp
-    sensor_msgs
-    geometry_msgs
-    hexapod_interfaces
+    rclcpp_lifecycle
+    hardware_interface
+    pluginlib
 )
+pluginlib_export_plugin_description_file(hardware_interface hexapod_hardware_interface.xml)
 
-add_executable(hardware_interface_fake src/hardware_interface_fake.cpp)
-target_link_libraries(hardware_interface_fake hardware_handlers)
-ament_target_dependencies(hardware_interface_fake
-    rclcpp
-    sensor_msgs
-    geometry_msgs
-    hexapod_interfaces
-)
+# I2C sensor nodes
+add_library(i2c_device STATIC src/i2c_device.cpp)
+set_target_properties(i2c_device PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_executable(hardware_interface src/hardware_interface.cpp)
-target_link_libraries(hardware_interface hardware_handlers)
-ament_target_dependencies(hardware_interface
-    rclcpp
-    sensor_msgs
-    geometry_msgs
-    hexapod_interfaces
-)
+add_executable(bmi088_node src/bmi088_node.cpp)
+target_link_libraries(bmi088_node i2c_device)
+ament_target_dependencies(bmi088_node rclcpp sensor_msgs)
 
-install(TARGETS
-  hardware_handlers
+add_executable(ina226_node src/ina226_node.cpp)
+target_link_libraries(ina226_node i2c_device)
+ament_target_dependencies(ina226_node rclcpp sensor_msgs)
+
+install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-
-install(TARGETS hardware_interface_fake hardware_interface DESTINATION lib/${PROJECT_NAME}/)
+install(TARGETS bmi088_node ina226_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
-install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
+
+ament_export_include_directories(include)
+ament_export_libraries(${PROJECT_NAME})
+ament_export_dependencies(hardware_interface pluginlib rclcpp rclcpp_lifecycle)
 
 ament_package()

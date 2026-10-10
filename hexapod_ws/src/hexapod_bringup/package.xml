@@ -9,8 +9,16 @@
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
+  <exec_depend>hexapod_description</exec_depend>
   <exec_depend>hexapod_gait_controller</exec_depend>
+  <exec_depend>hexapod_hardware_interface</exec_depend>
   <exec_depend>hexapod_teleop</exec_depend>
+  <exec_depend>controller_manager</exec_depend>
+  <exec_depend>joint_state_broadcaster</exec_depend>
+  <exec_depend>position_controllers</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>imu_filter_madgwick</exec_depend>
+  <exec_depend>foxglove_bridge</exec_depend>
 
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>

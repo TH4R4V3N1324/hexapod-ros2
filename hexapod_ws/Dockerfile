@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-position-controllers \
     ros-jazzy-foxglove-bridge \
     ros-jazzy-foxglove-msgs \
+    ros-jazzy-imu-filter-madgwick \
     ros-jazzy-xacro \
     python3-colcon-common-extensions \
     python3-rosdep \
