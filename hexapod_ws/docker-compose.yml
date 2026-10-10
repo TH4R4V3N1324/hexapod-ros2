@@ -5,3 +5,6 @@ services:
     restart: unless-stopped
     network_mode: host
     privileged: true
+    volumes:
+      # Host /dev, so udev symlinks (/dev/rplidar) and devices plugged in after start are visible
+      - /dev:/dev

@@ -367,6 +367,23 @@ kinematics/trajectory libraries as `gait_controller`, publishing to
 `joint_commands` directly — useful for exercising a single leg's axes
 without the full gait state machine.
 
+## Lidar (RPLIDAR A2M12)
+
+- **Driver:** Slamtec's `rplidar_ros`, started by `hexapod_robot.launch.py`
+  with the other sensors (`rplidar` section of `sensors.yaml`). The A2M12 runs
+  at 256000 baud. Scans are published on `/lidar/scan` in `lidar_link`, the
+  same as the simulated lidar.
+- **Device name:** install `hexapod_ws/udev/99-rplidar.rules` on the Pi so the
+  lidar always appears as `/dev/rplidar`. The robot container bind-mounts the
+  Pi's `/dev` so it sees that name.
+- **Mount:** `urdf/hexapod.lidar.xacro` sets the lidar's position for both the
+  real and Gazebo models; change `lidar_z` when the body changes.
+- **Simulation:** the Gazebo lidar matches the A2M12: 10 Hz, 1600 points per
+  scan (0.225°), 0.2–12 m.
+- **On first use**, check the scan's orientation in RViz: an object in front of
+  the robot should appear at +x. If it's rotated, adjust the yaw in
+  `lidar_joint`.
+
 ## Odometry
 
 Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.launch.py`:

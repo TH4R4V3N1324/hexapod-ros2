@@ -13,7 +13,7 @@ def generate_launch_description():
     """
     @brief Bring up the hexapod on real servos (hardware:=st3215) or mock hardware (hardware:=mock)
     @return The launch description
-    @note The IMU and power monitor drivers only start with the st3215 hardware.
+    @note The IMU, power monitor and lidar drivers only start with the st3215 hardware.
     """
     hardware = LaunchConfiguration('hardware')
     serial_port = LaunchConfiguration('serial_port')
@@ -114,6 +114,15 @@ def generate_launch_description():
                 name='ina226',
                 output='screen',
                 parameters=[sensors_file]
+            ),
+            # RPLIDAR A2M12, published on /lidar/scan like the simulated lidar
+            Node(
+                package='rplidar_ros',
+                executable='rplidar_composition',
+                name='rplidar',
+                output='screen',
+                parameters=[sensors_file],
+                remappings=[('scan', '/lidar/scan')]
             ),
         ]
     )

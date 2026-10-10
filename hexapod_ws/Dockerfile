@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-foxglove-msgs \
     ros-jazzy-imu-filter-madgwick \
     ros-jazzy-robot-localization \
+    ros-jazzy-rplidar-ros \
     ros-jazzy-xacro \
     python3-colcon-common-extensions \
     python3-rosdep \
