@@ -155,9 +155,11 @@ void GaitController::publishOdometry(const rclcpp::Time& stamp) {
 
 /**
  * @brief Publish base_footprint, the point on the floor directly below base_link
- * @note base_footprint -> base_link is the body height. Odometry, SLAM and Nav2 use base_footprint,
- *       so z = 0 in odom is the floor and the costmap can tell the floor from low obstacles.
- *       Republished whenever the body height changes.
+ * @note base_footprint -> base_link is the body height plus the body's roll and pitch from the IMU.
+ *       Odometry, SLAM and Nav2 use base_footprint, so z = 0 in odom is the floor and the costmap
+ *       can tell the floor from low obstacles. Without the tilt, the ~0.8 deg the body rocks while
+ *       walking put distant floor seen by the depth camera 5 cm too high, marking phantom obstacles.
+ *       Called every gait tick.
 */
 void GaitController::publishFootprint() {
     geometry_msgs::msg::TransformStamped t;
@@ -165,8 +167,26 @@ void GaitController::publishFootprint() {
     t.header.frame_id = base_frame;
     t.child_frame_id = "base_link";
     t.transform.translation.z = -gaitConfig.currentHeight;  // feet are at currentHeight below the hips
-    t.transform.rotation.w = 1.0;
+    Eigen::Quaterniond q = Eigen::AngleAxisd(body_pitch, Vector3d::UnitY()) * Eigen::AngleAxisd(body_roll, Vector3d::UnitX());
+    t.transform.rotation.x = q.x();
+    t.transform.rotation.y = q.y();
+    t.transform.rotation.z = q.z();
+    t.transform.rotation.w = q.w();
     footprint_broadcaster->sendTransform(t);
+}
+
+/**
+ * @brief Store the body's roll and pitch from the IMU's orientation
+ * @param[in] msg The IMU message (orientation from imu_filter_madgwick on the robot, Gazebo in sim)
+ * @note Yaw is ignored: heading comes from odometry. Messages without orientation are skipped.
+*/
+void GaitController::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
+    if (msg->orientation_covariance[0] < 0.0) {
+        return;
+    }
+    const auto& o = msg->orientation;
+    body_roll = std::atan2(2.0 * (o.w * o.x + o.y * o.z), 1.0 - 2.0 * (o.x * o.x + o.y * o.y));
+    body_pitch = std::asin(std::clamp(2.0 * (o.w * o.y - o.z * o.x), -1.0, 1.0));
 }
 
 /**
@@ -210,7 +230,6 @@ void GaitController::setHeightCallback(
 ) {
     double height = static_cast<double>(request->height);
     gaitConfig.setHeight(height);
-    publishFootprint();
     response->success = true;
     RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
 }
@@ -270,6 +289,8 @@ void GaitController::gaitTimerCallback() {
     dt = std::clamp(dt, 0.0, MAX_TICK_DT);
     last_tick_time = now;
     has_last_tick = true;
+
+    publishFootprint();
 
     // Run the startup sequence until the legs reach their start positions
     if (!positions_initialized) {
