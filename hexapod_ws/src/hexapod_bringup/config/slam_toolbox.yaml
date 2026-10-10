@@ -34,7 +34,9 @@ slam_toolbox:
     min_laser_range: 0.2 # RPLIDAR A2M12
     max_laser_range: 12.0 # RPLIDAR A2M12
     minimum_time_interval: 0.5
-    transform_timeout: 0.2
+    # map -> odom is stamped this far ahead of the last processed scan. Scans are processed at most
+    # every minimum_time_interval (0.5 s), so this must exceed that or Nav2 sees a stale transform.
+    transform_timeout: 1.0
     tf_buffer_duration: 30.0
     stack_size_to_use: 40000000 #// program needs a larger stack size to serialize large maps
     enable_interactive_mode: true

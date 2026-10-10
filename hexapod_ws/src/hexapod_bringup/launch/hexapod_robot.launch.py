@@ -96,6 +96,19 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('slam'))
     )
 
+    # Nav2: plans and follows paths on the SLAM map, publishing /cmd_vel
+    nav = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('nav2_bringup'), 'launch', 'navigation_launch.py')),
+        launch_arguments={
+            'params_file': os.path.join(
+                get_package_share_directory('hexapod_bringup'), 'config', 'nav2_params.yaml'),
+            'use_sim_time': 'false',
+            'autostart': 'true',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('nav'))
+    )
+
     foxglove_bridge = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -152,6 +165,11 @@ def generate_launch_description():
             description='Serial device for the servo bus.'
         ),
         DeclareLaunchArgument(
+            'nav',
+            default_value='false',
+            description='Run Nav2 (use with slam:=true for a map).'
+        ),
+        DeclareLaunchArgument(
             'slam',
             default_value='false',
             description='Run slam_toolbox to build a map from the lidar.'
@@ -169,6 +187,7 @@ def generate_launch_description():
         controller_teleop,
         ekf,
         slam,
+        nav,
         foxglove_bridge,
         sensors,
     ])

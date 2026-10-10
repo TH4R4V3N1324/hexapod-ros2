@@ -306,8 +306,10 @@ land ahead of neutral by half the stroke the stance will sweep. Once that
 stroke would exceed `MAX_STRIDE_LENGTH`, the phases get shorter, down to
 `min_phase_duration`. Commands above the current gait's top speed are scaled
 down. `get_capabilities` reports the current gait's top linear and angular
-speeds. In normal mode, `linear.y` turns the robot, scaled so the full linear
-range maps to the full yaw range.
+speeds. Normal mode doesn't strafe: it turns from `angular.z` (as Nav2 sends
+it) plus `linear.y`, which is scaled so the gamepad's full linear range maps to
+the full yaw range. Strafe mode uses `linear.y` to strafe and `angular.z` to
+turn.
 
 Directions follow ROS conventions for `/cmd_vel`: positive `linear.x` is
 forward (towards the cameras), positive `linear.y` is left in strafe mode, and
@@ -418,6 +420,37 @@ robot is slow) and using the A2M12's 0.2–12 m range.
 
 In the house world, after driving a 0.6 m square, SLAM was 1.8 cm and 0.2°
 from the true pose; odometry alone was 15.5 cm off.
+
+## Navigation (Nav2)
+
+Nav2 plans and follows paths on the SLAM map, publishing `/cmd_vel`. Enable it
+with `nav:=true` alongside `slam:=true`:
+
+```bash
+ros2 launch hexapod_bringup hexapod_simulation.launch.py slam:=true nav:=true
+```
+
+Then send goals with RViz's "2D Goal Pose" or the `navigate_to_pose` action.
+Settings are in `hexapod_bringup/config/nav2_params.yaml`, based on
+nav2_bringup's defaults:
+
+- **Robot:** 0.32 m radius (the legs plus stride), 0.45 m inflation so 1 m
+  doorways stay passable.
+- **Speeds:** MPPI and the velocity smoother are capped just under the gait's
+  limits (0.15 m/s, 0.6 rad/s), as are recovery spins.
+- **MPPI acceleration limits** are left at Nav2's defaults. MPPI starts each
+  cycle from the measured speed, and the gait takes up to ~1 s to respond, so
+  low limits stop it ever speeding up; the velocity smoother ramps gently
+  instead.
+- **Timing:** the EKF stamps its output at the current time, and SLAM stamps
+  `map` → `odom` 1 s ahead (more than its 0.5 s scan interval), so Nav2 never
+  looks up a transform that hasn't arrived yet.
+
+In the house world, Nav2 reached a goal across the room (turning round first)
+13 cm from target in 22 s, and a goal through a doorway into the next room 6 cm
+from target, though that took 150 s. The gait only applies a new command at the
+start of each step phase, so fine corrections near obstacles turn into
+stop-start motion and occasional progress-check recoveries.
 
 ## Simulation (Gazebo Harmonic)
 
