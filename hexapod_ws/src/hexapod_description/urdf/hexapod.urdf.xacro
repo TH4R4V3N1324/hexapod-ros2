@@ -211,6 +211,10 @@
     <origin xyz="0.0 0.0 0.03" rpy="0 0 0"/>
   </joint>
 
+  <!-- ================= LIDAR ================= -->
+  <xacro:include filename="$(find hexapod_description)/urdf/hexapod.lidar.xacro"/>
+  <xacro:hexapod_lidar/>
+
   <!-- ================= ROS2 CONTROL ================= -->
   <xacro:include filename="$(find hexapod_description)/urdf/hexapod.ros2_control.xacro"/>
   <xacro:hexapod_ros2_control hardware="$(arg hardware)" serial_port="$(arg serial_port)"/>
