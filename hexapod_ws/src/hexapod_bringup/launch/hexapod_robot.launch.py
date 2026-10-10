@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, GroupAction
+from launch.actions import DeclareLaunchArgument, GroupAction, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node
@@ -83,6 +84,18 @@ def generate_launch_description():
         parameters=[ekf_file]
     )
 
+    # SLAM: builds a map from the lidar and publishes map -> odom
+    slam = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(
+            get_package_share_directory('slam_toolbox'), 'launch', 'online_async_launch.py')),
+        launch_arguments={
+            'slam_params_file': os.path.join(
+                get_package_share_directory('hexapod_bringup'), 'config', 'slam_toolbox.yaml'),
+            'use_sim_time': 'false',
+        }.items(),
+        condition=IfCondition(LaunchConfiguration('slam'))
+    )
+
     foxglove_bridge = Node(
         package='foxglove_bridge',
         executable='foxglove_bridge',
@@ -139,6 +152,11 @@ def generate_launch_description():
             description='Serial device for the servo bus.'
         ),
         DeclareLaunchArgument(
+            'slam',
+            default_value='false',
+            description='Run slam_toolbox to build a map from the lidar.'
+        ),
+        DeclareLaunchArgument(
             'update_rate',
             default_value='100',
             description='Controller manager update rate in Hz.'
@@ -150,6 +168,7 @@ def generate_launch_description():
         gait_controller,
         controller_teleop,
         ekf,
+        slam,
         foxglove_bridge,
         sensors,
     ])

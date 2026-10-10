@@ -377,7 +377,11 @@ without the full gait state machine.
   lidar always appears as `/dev/rplidar`. The robot container bind-mounts the
   Pi's `/dev` so it sees that name.
 - **Mount:** `urdf/hexapod.lidar.xacro` sets the lidar's position for both the
-  real and Gazebo models; change `lidar_z` when the body changes.
+  real and Gazebo models; change `lidar_z` when the body changes. `lidar_z` is
+  the height of the scan plane above the hip joints, and it must clear the
+  legs: the knees reach about 9 cm above the hips at the end of a stride
+  (~12 cm with the leg's thickness). It's set to 15 cm. At 5 cm, 20% of each
+  scan hit the robot's own legs and SLAM was off by 25 cm.
 - **Simulation:** the Gazebo lidar matches the A2M12: 10 Hz, 1600 points per
   scan (0.225°), 0.2–12 m.
 - **On first use**, check the scan's orientation in RViz: an object in front of
@@ -402,6 +406,18 @@ Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.la
 In Gazebo, after driving forward, turning 143° and driving forward again,
 leg odometry alone was 5.7 cm and 12° off; the fused odometry was 2.4 cm and
 0° off.
+
+## SLAM
+
+`slam_toolbox` (online async) builds a 2D map from `/lidar/scan` and publishes
+the `map` → `odom` correction, leaving `odom` → `base_link` to the EKF. Enable
+it with `slam:=true` on `hexapod_simulation.launch.py` or
+`hexapod_robot.launch.py`. Settings are in `hexapod_bringup/config/slam_toolbox.yaml`,
+based on the package defaults but adding scans every 0.2 m or 0.2 rad (the
+robot is slow) and using the A2M12's 0.2–12 m range.
+
+In the house world, after driving a 0.6 m square, SLAM was 1.8 cm and 0.2°
+from the true pose; odometry alone was 15.5 cm off.
 
 ## Simulation (Gazebo Harmonic)
 
