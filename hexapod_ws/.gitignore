@@ -4,3 +4,5 @@ install/
 devel/
 log/
 .vscode
+# Machine-specific compose settings
+.env
