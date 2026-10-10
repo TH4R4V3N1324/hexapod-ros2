@@ -215,6 +215,10 @@
   <xacro:include filename="$(find hexapod_description)/urdf/hexapod.lidar.xacro"/>
   <xacro:hexapod_lidar/>
 
+  <!-- ================= CAMERAS ================= -->
+  <xacro:include filename="$(find hexapod_description)/urdf/hexapod.cameras.xacro"/>
+  <xacro:hexapod_cameras/>
+
   <!-- ================= ROS2 CONTROL ================= -->
   <xacro:include filename="$(find hexapod_description)/urdf/hexapod.ros2_control.xacro"/>
   <xacro:hexapod_ros2_control hardware="$(arg hardware)" serial_port="$(arg serial_port)"/>

@@ -399,7 +399,25 @@ without the full gait state machine.
   the robot should appear at +x. If it's rotated, adjust the yaw in
   `lidar_joint`.
 
+## Cameras
+
+Two front-facing cameras, the Arducam ToF below the Pi camera, both mounted in
+`urdf/hexapod.cameras.xacro` (shared by the real and Gazebo models):
+
+- **Arducam ToF camera (B0410)** → `front_depth_camera_link`, point cloud on
+  `/front_depth/points`. 240×180 depth, 70° diagonal FOV (58.5° horizontal),
+  4 m in far mode, tilted 10° down to see low obstacles closer to the feet.
+  The simulated camera matches it (15 Hz in sim to keep Gazebo's load down;
+  the real camera runs at 30 fps). No ROS 2 driver is packaged for it yet; a
+  node publishing `PointCloud2` on the same topic is needed on the real robot.
+- **Raspberry Pi Camera Module 3** (standard lens, 66° horizontal FOV) →
+  `camera_link`, image on `/camera/image`. Simulated at 640×360.
+
+The front legs stay outside the ToF camera's view (they're ~58° off-axis, the
+camera sees ±29°).
+
 ## Odometry
+
 
 Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.launch.py`:
 
@@ -410,9 +428,15 @@ Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.la
    the body (`LegOdometry`, unit-tested in `test_leg_odometry`).
 2. **EKF** (`robot_localization`, `hexapod_bringup/config/ekf.yaml`). Fuses the
    leg velocities with the IMU's yaw rate and publishes `/odometry/filtered`
-   and the `odom` → `base_link` transform. The feet slip most when turning,
+   and the `odom` → `base_footprint` transform. The feet slip most when turning,
    and the gyro corrects that. IMU orientation isn't fused: without a
    magnetometer its yaw drifts.
+
+**`base_footprint`** is the point on the floor directly below `base_link`.
+The gait controller publishes `base_footprint` → `base_link` (the body height,
+republished whenever `set_height` changes it), and odometry, SLAM and Nav2 all
+use `base_footprint` as the robot's base. So z = 0 in `odom` is the floor,
+which lets the costmaps tell the floor from low obstacles.
 
 In Gazebo, after driving forward, turning 143° and driving forward again,
 leg odometry alone was 5.7 cm and 12° off; the fused odometry was 2.4 cm and
@@ -445,19 +469,35 @@ nav2_bringup's defaults:
 
 - **Robot:** 0.32 m radius (the legs plus stride), 0.45 m inflation so 1 m
   doorways stay passable.
-- **Omnidirectional:** with `nav:=true` the gait starts in strafe mode
-  (`initial_mode` parameter), where `/cmd_vel` follows the standard holonomic
-  convention, and MPPI uses its `Omni` motion model. The robot walks sideways
-  or diagonally instead of turning first, and only turns for the goal heading.
+- **Omnidirectional, preferring forwards:** with `nav:=true` the gait starts
+  in strafe mode (`initial_mode` parameter), where `/cmd_vel` follows the
+  standard holonomic convention, and MPPI uses its `Omni` motion model.
+  `PathAngleCritic` (forward mode, 30°) and `PreferForwardCritic` make it face
+  along the path, so the forward-facing depth camera sees where it's going;
+  sideways steps remain for corrections. Walking backwards past low obstacles
+  the camera couldn't see is what once got the robot stuck.
+- **Global costmap** is a 20 × 20 m rolling window rather than sized to the
+  SLAM map. The SLAM map grows as the robot explores, and every resize wiped
+  the obstacle layer, so low obstacles vanished once the camera looked away.
 - **Speeds:** MPPI and the velocity smoother are capped just under the gait's
   limits (0.15 m/s forward and sideways, 0.6 rad/s), as are recovery spins.
 - **MPPI acceleration limits** are left at Nav2's defaults. MPPI starts each
   cycle from the measured speed, and the gait takes up to ~1 s to respond, so
   low limits stop it ever speeding up; the velocity smoother ramps gently
   instead.
+- **Low obstacles:** both costmaps take the ToF point cloud as well as the
+  lidar, marking anything from 3 cm above the floor to 35 cm (just above the
+  lidar's scan plane), and ignoring points within 0.3 m of the camera. Both are
+  3D voxel layers, so the lidar, which passes over low obstacles, only clears
+  at its own height and doesn't erase what the camera marked below it.
 - **Timing:** the EKF stamps its output at the current time, and SLAM stamps
   `map` → `odom` 1 s ahead (more than its 0.5 s scan interval), so Nav2 never
   looks up a transform that hasn't arrived yet.
+
+In the `low_obstacles` world (a walled room with 6, 10, 12 and 20 cm objects,
+all below the lidar), Nav2 went through the objects and back, staying at least
+0.51 m from each, facing its direction of travel 63–70% of the time, and ending
+1–9 cm from the goals.
 
 In the house world, Nav2 reached a goal across the room (ending turned round)
 0 cm from target in 21 s, and a goal through a doorway into the next room 4 cm
@@ -594,6 +634,11 @@ this out of the box:
   targets Humble. This works today because they only interact over
   DDS/network, but it's worth keeping in mind if message definitions ever
   need to cross that boundary directly.
+- **Leg odometry drifts when the robot is physically blocked.** It assumes
+  planted feet don't slip, so if the body is pushed against something while
+  the legs keep walking, it counts that as movement. Once the error passes
+  SLAM's ~0.5 m scan-matching search, SLAM can't recover. Servo load (joint
+  effort) could detect this.
 - **Package descriptions/licenses are all `TODO`** in every `package.xml`.
 - All `package.xml` maintainer emails are real personal addresses — worth
   reviewing before making the repo public.

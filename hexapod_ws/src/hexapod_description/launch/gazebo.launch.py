@@ -144,7 +144,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value='hexapod_world',
-            description='World file in hexapod_description/worlds, without .sdf (hexapod_world or empty_world).'
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world or low_obstacles).'
         ),
         DeclareLaunchArgument(
             'bridge_vision',
@@ -153,18 +153,18 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             'front_depth_width',
-            default_value='640',
-            description='Front depth camera width in pixels.'
+            default_value='240',
+            description='Front depth camera width in pixels (Arducam ToF: 240).'
         ),
         DeclareLaunchArgument(
             'front_depth_height',
-            default_value='480',
-            description='Front depth camera height in pixels.'
+            default_value='180',
+            description='Front depth camera height in pixels (Arducam ToF: 180).'
         ),
         DeclareLaunchArgument(
             'front_depth_rate',
-            default_value='8',
-            description='Front depth camera update rate in Hz.'
+            default_value='15',
+            description='Front depth camera update rate in Hz (the real ToF runs at 30).'
         ),
         gz_plugin_path,
         gz_resource_path,

@@ -1,13 +1,13 @@
-# robot_localization EKF: fuses leg odometry with the IMU gyro into odom -> base_link
+# robot_localization EKF: fuses leg odometry with the IMU gyro into odom -> base_footprint
 ekf_filter_node:
   ros__parameters:
     frequency: 50.0
     two_d_mode: true          # a walking robot on flat ground: x, y and yaw only
-    publish_tf: true          # publishes odom -> base_link
+    publish_tf: true          # publishes odom -> base_footprint
     predict_to_current_time: true  # stamp the transform at the current time, not the last measurement
     map_frame: map
     odom_frame: odom
-    base_link_frame: base_link
+    base_link_frame: base_footprint   # on the floor below base_link, so odom z = 0 is the floor
     world_frame: odom
 
     # Leg odometry from the gait controller: forward, sideways and yaw velocity.

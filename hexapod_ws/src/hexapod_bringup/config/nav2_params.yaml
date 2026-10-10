@@ -6,7 +6,7 @@ amcl:
     alpha3: 0.2
     alpha4: 0.2
     alpha5: 0.2
-    base_frame_id: "base_link"
+    base_frame_id: "base_footprint"
     beam_skip_distance: 0.5
     beam_skip_error_threshold: 0.9
     beam_skip_threshold: 0.3
@@ -42,7 +42,7 @@ amcl:
 bt_navigator:
   ros__parameters:
     global_frame: map
-    robot_base_frame: base_link
+    robot_base_frame: base_footprint
     odom_topic: /odometry/filtered
     bt_loop_duration: 10
     default_server_timeout: 20
@@ -130,7 +130,7 @@ controller_server:
       critics: [
         "ConstraintCritic", "CostCritic", "GoalCritic",
         "GoalAngleCritic", "PathAlignCritic", "PathFollowCritic",
-        "PathAngleCritic", "TwirlingCritic"]   # omnidirectional: no PreferForwardCritic
+        "PathAngleCritic", "PreferForwardCritic"]
       ConstraintCritic:
         enabled: true
         cost_power: 1
@@ -145,8 +145,8 @@ controller_server:
         cost_power: 1
         cost_weight: 3.0
         threshold_to_consider: 0.5
-      PreferForwardCritic:   # not in the critics list: the hexapod is omnidirectional
-        enabled: false
+      PreferForwardCritic:   # walking backwards is allowed but discouraged (the depth camera faces forward)
+        enabled: true
         cost_power: 1
         cost_weight: 5.0
         threshold_to_consider: 0.5
@@ -181,10 +181,11 @@ controller_server:
         cost_weight: 2.0
         offset_from_furthest: 4
         threshold_to_consider: 0.5
-        max_angle_to_furthest: 1.0
-        mode: 2   # no direction preference: don't turn to face along the path
-      TwirlingCritic:   # discourage turning that isn't needed
-        enabled: true
+        max_angle_to_furthest: 0.5   # turn to face the path once it's more than ~30 deg off
+        mode: 0   # prefer facing forwards, so the depth camera sees where the robot is going.
+                  # The Omni model still allows sideways steps for corrections.
+      TwirlingCritic:   # not in the critics list: it would fight turning to face the path
+        enabled: false
         twirling_cost_power: 1
         twirling_cost_weight: 10.0
 
@@ -194,7 +195,7 @@ local_costmap:
       update_frequency: 5.0
       publish_frequency: 2.0
       global_frame: odom
-      robot_base_frame: base_link
+      robot_base_frame: base_footprint
       transform_tolerance: 0.5
       rolling_window: true
       width: 3
@@ -215,7 +216,7 @@ local_costmap:
         z_voxels: 16
         max_obstacle_height: 2.0
         mark_threshold: 0
-        observation_sources: scan
+        observation_sources: scan depth
         scan:
           topic: /lidar/scan
           max_obstacle_height: 2.0
@@ -226,6 +227,17 @@ local_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
+        depth:   # front ToF camera: sees low obstacles the lidar passes over
+          topic: /front_depth/points
+          data_type: "PointCloud2"
+          min_obstacle_height: 0.03    # above the floor (z = 0 in odom, via base_footprint)
+          max_obstacle_height: 0.35    # just above the lidar's scan plane
+          marking: True
+          clearing: True
+          obstacle_min_range: 0.3      # ignore anything this close to the camera (front legs)
+          obstacle_max_range: 3.5
+          raytrace_min_range: 0.3
+          raytrace_max_range: 4.0      # ToF far mode
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -237,16 +249,28 @@ global_costmap:
       update_frequency: 1.0
       publish_frequency: 1.0
       global_frame: map
-      robot_base_frame: base_link
+      robot_base_frame: base_footprint
       transform_tolerance: 0.5
       robot_radius: 0.32   # legs reach ~0.26 m from the centre, plus stride
       resolution: 0.05
       track_unknown_space: true
+      # A fixed-size window around the robot instead of sizing to the SLAM map. The SLAM map grows
+      # as the robot explores, and every resize wiped the obstacle layer, so low obstacles the depth
+      # camera had marked vanished once it looked away.
+      rolling_window: true
+      width: 20
+      height: 20
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
       obstacle_layer:
-        plugin: "nav2_costmap_2d::ObstacleLayer"
+        # 3D, so the lidar (passing over low obstacles) only clears at its own height and
+        # doesn't erase what the depth camera marked below it
+        plugin: "nav2_costmap_2d::VoxelLayer"
         enabled: True
-        observation_sources: scan
+        origin_z: 0.0
+        z_resolution: 0.05
+        z_voxels: 8          # 0.4 m: floor to just above the lidar
+        mark_threshold: 0
+        observation_sources: scan depth
         scan:
           topic: /lidar/scan
           max_obstacle_height: 2.0
@@ -257,6 +281,17 @@ global_costmap:
           raytrace_min_range: 0.0
           obstacle_max_range: 2.5
           obstacle_min_range: 0.0
+        depth:   # front ToF camera: sees low obstacles the lidar passes over
+          topic: /front_depth/points
+          data_type: "PointCloud2"
+          min_obstacle_height: 0.03    # above the floor (z = 0 in odom, via base_footprint)
+          max_obstacle_height: 0.35    # just above the lidar's scan plane
+          marking: True
+          clearing: True
+          obstacle_min_range: 0.3      # ignore anything this close to the camera (front legs)
+          obstacle_max_range: 3.5
+          raytrace_min_range: 0.3
+          raytrace_max_range: 4.0      # ToF far mode
       static_layer:
         plugin: "nav2_costmap_2d::StaticLayer"
         map_subscribe_transient_local: True
@@ -320,7 +355,7 @@ behavior_server:
       plugin: "nav2_behaviors::AssistedTeleop"
     local_frame: odom
     global_frame: map
-    robot_base_frame: base_link
+    robot_base_frame: base_footprint
     transform_tolerance: 0.5
     simulate_ahead_time: 2.0
     # Recovery spins within what the gait can do (0.665 rad/s)
@@ -379,7 +414,7 @@ velocity_smoother:
 
 collision_monitor:
   ros__parameters:
-    base_frame_id: "base_link"
+    base_frame_id: "base_footprint"
     odom_frame_id: "odom"
     cmd_vel_in_topic: "cmd_vel_smoothed"
     cmd_vel_out_topic: "cmd_vel"
@@ -417,7 +452,7 @@ docking_server:
     undock_linear_tolerance: 0.05
     undock_angular_tolerance: 0.1
     max_retries: 3
-    base_frame: "base_link"
+    base_frame: "base_footprint"
     fixed_frame: "odom"
     dock_backwards: false
     dock_prestaging_tolerance: 0.5
@@ -463,7 +498,7 @@ docking_server:
 
 loopback_simulator:
   ros__parameters:
-    base_frame_id: "base_link"
+    base_frame_id: "base_footprint"
     odom_frame_id: "odom"
     map_frame_id: "map"
     scan_frame_id: "base_scan"  # tb4_loopback_simulator.launch.py remaps to 'rplidar_link'
