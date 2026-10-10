@@ -44,7 +44,7 @@ public:
         set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
         get_capabilities_service = this->create_service<GetCapabilities>("get_capabilities", std::bind(&GaitController::getCapabilitiesCallback, this, _1, _2));
         
-        double loop_rate_hz = this->declare_parameter("loop_rate", 50.0);
+        double loop_rate_hz = this->declare_parameter("loop_rate", 100.0);
         phase_duration = this->declare_parameter("phase_duration", 1.0);
         min_phase_duration = this->declare_parameter("min_phase_duration", 0.7);
         max_foot_speed = this->declare_parameter("max_foot_speed", 1.5);
