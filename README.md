@@ -202,12 +202,22 @@ See [Gait controller internals](#gait-controller-internals) below.
   | `c` | Exit |
 
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
-  `joy_node`, published by the operator side) and maps axis 1 → `linear.x`,
-  axis 0 → `linear.y`, axis 3 → `angular.z`. Full stick is the gait
-  controller's top speed from `get_capabilities`, which it requests in the
-  background until the gait controller answers; joystick input is ignored
-  until then. The gait/mode lists aren't used to switch gaits from the gamepad
-  yet — see [Known gaps](#known-gaps--todo).
+  `joy_node`, published by the operator side) and publishes both `/cmd_vel`
+  and `/body_pose`; the gait controller uses whichever suits its mode. Full
+  stick is the gait controller's limit from `get_capabilities`, which it
+  requests in the background until the gait controller answers; joystick
+  input is ignored until then. Axis and button numbers are parameters,
+  defaulting to an Xbox controller on `joy_node`:
+
+  | Input | Walking (normal / strafe) | Tilt mode |
+  |---|---|---|
+  | Left stick | forward/back (axis 1), left/right (axis 0) | shift the body forward/back, left/right |
+  | Right stick X (axis 3) | turn | roll |
+  | Right stick Y (axis 4) | — | pitch (forward lowers the nose) |
+  | Triggers (axes 2, 5) | — | yaw left / right |
+  | D-pad up/down (axis 7) | — | raise / lower the body |
+  | Start (button 7) | next mode | next mode |
+  | Back (button 6) | next gait | next gait |
 
 ### `hexapod_bringup`
 
@@ -247,14 +257,15 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/power/left`, `/power/right` | `sensor_msgs/BatteryState` | `ina226_node` | — |
 | `/odometry/legs` | `nav_msgs/Odometry` | `gait_controller` | `ekf_filter_node` |
 | `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_filter_node` (also publishes TF `odom` → `base_link`) | — |
+| `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `joy_node` (operator side) | `controller_teleop` |
 
 **Services**
 
 | Service | Type | Server | Client(s) |
 |---|---|---|---|
-| `/set_gait` | `hexapod_interfaces/SetGait` | `gait_controller` | `keyboard_teleop` |
-| `/set_mode` | `hexapod_interfaces/SetMode` | `gait_controller` | `keyboard_teleop` |
+| `/set_gait` | `hexapod_interfaces/SetGait` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
+| `/set_mode` | `hexapod_interfaces/SetMode` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/set_height` | `hexapod_interfaces/SetHeight` | `gait_controller` | — |
 | `/get_capabilities` | `hexapod_interfaces/GetCapabilities` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/ik_solver` | `hexapod_interfaces/IKSolver` | `kinematic_solver` (standalone service, not wired into `gait_controller`'s own launch) | — |
@@ -275,7 +286,7 @@ types; these cover only what has no standard equivalent.
 - `SetGait(uint8 gait) → (bool success, string message)` — `0=tripod, 1=ripple, 2=wave`.
 - `SetMode(uint8 mode) → (bool success, string message)` — `0=normal, 1=strafe, 2=tilt, 3=config`.
 - `SetHeight(float64 height) → (bool success, string message)`.
-- `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel)`.
+- `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait)`.
 - `IKSolver(uint8 leg_index, geometry_msgs/Point target) → sensor_msgs/JointState`.
 - `FKSolver(sensor_msgs/JointState) → geometry_msgs/Point foot_position`.
 
@@ -337,6 +348,52 @@ speed. A forward-to-backward reversal shows up in the body's motion within
 of its neutral position, and both ends of a swing are inside that circle, so
 the whole swing is too. Neighbouring legs can't collide inside those circles:
 the smallest gap between their segments is ~2.5 cm (`test_leg_clearance`).
+
+A gait change requested with `set_gait` applies at the start of the next step,
+when every foot is planted. Config mode isn't implemented and stands still.
+
+### Tilt mode
+
+Tilt mode (mode 2) stands still with the feet planted and moves the body
+instead: `/body_pose` (`geometry_msgs/Pose`) sets the body's shift and its
+roll, pitch and yaw. On entry the legs step back to their start positions;
+on leaving, the body eases back to neutral before walking resumes.
+
+With `tilt_leveling` on (the default), the IMU holds the body's roll and pitch
+in space: a correction built up from the difference between the requested and
+measured angles is added to the pose, so the body stays level (or at the
+requested angle) while whatever it stands on tilts underneath it. The IMU
+can't measure position, so the shift is always relative to the feet.
+
+Each tick the pose moves at most a small step from the last one, so the feet
+never jump. A pose the legs can't reach safely is cut back: yaw eases off
+first, then the whole step only goes as far as is safe. Every foot stays
+inside its stride circle and within reach (`test_leg_clearance` covers feet
+10 cm above and below standing height).
+
+| Parameter | Default | |
+|---|---|---|
+| `tilt_max_angle` | 0.3 rad | largest roll, pitch or yaw |
+| `tilt_max_translation` | 0.04 m | largest shift along each axis |
+| `tilt_angle_rate`, `tilt_translation_rate` | 1.0 rad/s, 0.1 m/s | how fast the requested pose is followed |
+| `tilt_leveling` | true | hold roll and pitch with the IMU |
+| `tilt_level_gain` | 8.0 /s | how fast the leveling responds |
+| `tilt_lock_yaw` | false | also hold the heading; off because the IMU's yaw drifts without a magnetometer and holding it uses up the stride |
+
+The tilt parameters can be changed while running (`ros2 param set`).
+
+To try it on a moving platform:
+
+```bash
+ros2 launch hexapod_bringup hexapod_simulation.launch.py world:=tilt_platform
+# then switch to tilt mode and move the deck (radians)
+ros2 service call /set_mode hexapod_interfaces/srv/SetMode "{mode: 2}"
+gz topic -t /platform/roll -m gz.msgs.Double -p 'data: 0.15'   # also /platform/pitch, /platform/yaw
+```
+
+In simulation the commanded poses are reached accurately (0.15 rad roll or
+pitch gives 8.6°, a 3 cm raise gives 3.0 cm), and with the deck rolling ±6.9°
+the body stays within 1.5° (gain 8). A deck held at 8.6° is levelled to 0.0°.
 
 The helper classes:
 
@@ -641,6 +698,11 @@ this out of the box:
   the legs keep walking, it counts that as movement. Once the error passes
   SLAM's ~0.5 m scan-matching search, SLAM can't recover. Servo load (joint
   effort) could detect this.
+- **The robot creeps on a tilting platform in simulation.** With the deck
+  rolling and pitching ±6.9° together, the levelled robot slides several cm
+  and turns in 20 s (worse when the deck moves slowly, so it is the angle,
+  not the speed). At ±3.4° it barely moves. The sim's feet are rigid point
+  contacts; the real robot's rubber tips and sprung tibias should grip better.
 - **Package descriptions/licenses are all `TODO`** in every `package.xml`.
 - All `package.xml` maintainer emails are real personal addresses — worth
   reviewing before making the repo public.
