@@ -1,5 +1,7 @@
 #include "hexapod_gait_controller/gait_controller.hpp"
 
+#include <unordered_map>
+
 /**
  * @brief Entry point, initialises ROS and spins the node
  * @param[in] argc Number of command line arguments
@@ -40,28 +42,32 @@ void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
 }
 
 /**
- * @brief Store the latest joint states reported by the hardware interface
+ * @brief Store the latest joint states and compute each foot's measured position with FK
  * @param[in] msg The incoming joint states
- * @note The FK update of current_leg_positions is currently disabled
+ * @note Joints are matched by name, since joint_state_broadcaster does not guarantee their order.
+ *       has_joint_states is only set once all 18 joints have been received.
 */
 void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
     latest_joint_states = *msg;
-    
-    // Compute current leg positions from joint angles using FK
-    if (msg->position.size() >= 18) {
-        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-            int base_idx = (legNum - 1) * 3;
-            
-            hexapod_gait_controller::JointAngles angles{
-                msg->position[base_idx + 0],  // coxa
-                msg->position[base_idx + 1],  // femur
-                msg->position[base_idx + 2]   // tibia
-            };
-            
-            //current_leg_positions[legNum] = ikSolver.solveFK(angles);
-        }
-        has_joint_states = true;
+
+    std::unordered_map<std::string, double> positions;
+    for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i) {
+        positions[msg->name[i]] = msg->position[i];
     }
+
+    bool all_found = true;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        const std::string prefix = "leg" + std::to_string(legNum) + "_";
+        auto coxa = positions.find(prefix + "coxa_joint");
+        auto femur = positions.find(prefix + "femur_joint");
+        auto tibia = positions.find(prefix + "tibia_joint");
+        if (coxa == positions.end() || femur == positions.end() || tibia == positions.end()) {
+            all_found = false;
+            continue;
+        }
+        measured_leg_positions[legNum] = ikSolver.solveFK({coxa->second, femur->second, tibia->second});
+    }
+    has_joint_states = all_found;
 }
 
 /**
@@ -144,16 +150,10 @@ void GaitController::getCapabilitiesCallback(
  * @note This replaces your embedded while(true) loop
 */
 void GaitController::gaitTimerCallback() {
-    // Run startup sequence once on first timer callback
+    // Run the startup sequence until the legs reach their start positions
     if (!positions_initialized) {
-        startup();
-        
-        // Check if startup is complete by checking if we've progressed through all steps
-        int max_startup_size = *std::max_element(startup_sizes.begin() + 1, startup_sizes.end());
-        if (startup_step >= max_startup_size) {
-            positions_initialized = true;
-        }
-        return;  // Continue startup in next callback
+        positions_initialized = startup();
+        return;
     }
 
     switch (gaitConfig.currentMode) {
@@ -232,27 +232,33 @@ void GaitController::home() {
 }
 
 /**
- * @brief Startup sequence to move legs to start position
+ * @brief Startup sequence to move legs from where they are to their start positions
+ * @return true once the sequence is complete, false while it is still running
+ * @note Waits for joint states first, so the trajectories start from the measured
+ *       leg positions instead of assuming a pose
 */
-void GaitController::startup() {
+bool GaitController::startup() {
     auto joint_state_msg = JointState();
-    static bool initialized = false;
 
-    if(!initialized){
-        home();
-        initialized = true;
-        
+    if (!startup_planned) {
+        if (!has_joint_states) {
+            RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for joint states from all 18 joints");
+            return false;
+        }
+        RCLCPP_INFO(this->get_logger(), "Moving legs from their measured positions to the start positions");
+        current_leg_positions = measured_leg_positions;
+
         // Pre-generate all trajectories for the startup sequence
         for (int leg = 1; leg <= MAX_LEGS; ++leg) {
             trajectoryGen.GenStraightTrajectory(
-                startup_trajectory[leg].data(), 
-                startup_sizes[leg], 
-                gaitConfig.homePos,
+                startup_trajectory[leg].data(),
+                startup_sizes[leg],
+                current_leg_positions[leg],
                 gaitConfig.startPosition.at(leg)
             );
         }
         startup_step = 0;
-        return;  // Exit first call and wait for next timer callback
+        startup_planned = true;
     }
 
     // Reset phase to 0 when starting up
@@ -275,7 +281,9 @@ void GaitController::startup() {
     int max_startup_size = *std::max_element(startup_sizes.begin() + 1, startup_sizes.end());
     if (startup_step >= max_startup_size) {
         RCLCPP_INFO(this->get_logger(), "Startup sequence complete");
+        return true;
     }
+    return false;
 }
 
 /**

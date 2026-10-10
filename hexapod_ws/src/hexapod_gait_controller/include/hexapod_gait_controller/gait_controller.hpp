@@ -80,7 +80,9 @@ private:
     static constexpr double CMD_VEL_CHANGE_THRESHOLD = 0.05;
 
     std::array<std::array<Vector3d, MAX_RESOLUTION + 1>, MAX_LEGS + 1> startup_trajectory;
-    std::array<Vector3d, MAX_LEGS + 1> current_leg_positions;
+    std::array<Vector3d, MAX_LEGS + 1> current_leg_positions;   // commanded foot positions (leg frame)
+    std::array<Vector3d, MAX_LEGS + 1> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
+    bool startup_planned = false;
     std::array<int, MAX_LEGS + 1> startup_sizes{};
     
 public:
@@ -94,7 +96,7 @@ public:
     void appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum);
     void sendJointcommands(JointState& msg);
     void home();
-    void startup();
+    bool startup();
     void PerformLegStep(bool idle, bool handlePhaseTransition = true);
     void returnToStart();
     bool HandleIdleReturn();

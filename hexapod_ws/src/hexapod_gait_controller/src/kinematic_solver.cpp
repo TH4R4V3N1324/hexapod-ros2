@@ -99,7 +99,7 @@ JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
 /**
  * @brief Forward kinematics, calculates the position based on the joint angles
  * @param[in] angles The joint angles
- * @return The calculated position in 3D space
+ * @return The foot position (leg frame, X outward, Z negative below the hip)
 */
 Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     // sensor_msgs/JointState joint_state --> geometry_msgs/Point foot_position
@@ -108,19 +108,14 @@ Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     double a3 = tibiaLength;
 
     double coxaAngle  = angles.coxa;
-    double femurAngle = angles.femur;
-    double tibiaAngle = angles.tibia;
 
-    double tibiaAbsoluteAngle = femurAngle - tibiaAngle - M_PI/2.0;
+    // Elevation of each link above horizontal, matching solveIK:
+    // a negative femur angle raises the femur, and tibia = 0 puts the knee at 90°
+    double femurElevation = -angles.femur;
+    double tibiaElevation = femurElevation - angles.tibia - M_PI / 2.0;
 
-    double femurVertical = a2 * sin(femurAngle);
-    double femurHorizontal = a2 * cos(femurAngle);
-    double tibiaVertical = a3 * sin(tibiaAbsoluteAngle);
-    double tibiaHorizontal = a3 * cos(tibiaAbsoluteAngle);
-    
-    // Negate Z to match IK convention: positive Z = downward in leg frame
-    double z = -(femurVertical + tibiaVertical);
-    double horizontalReach = a1 + femurHorizontal + tibiaHorizontal;
+    double horizontalReach = a1 + a2 * cos(femurElevation) + a3 * cos(tibiaElevation);
+    double z = a2 * sin(femurElevation) + a3 * sin(tibiaElevation);  // negative = below the hip
     double x = horizontalReach * cos(coxaAngle);
     double y = horizontalReach * sin(coxaAngle);
 
