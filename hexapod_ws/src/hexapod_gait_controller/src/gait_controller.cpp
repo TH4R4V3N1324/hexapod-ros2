@@ -166,7 +166,8 @@ void GaitController::publishFootprint() {
     t.header.stamp = this->now();
     t.header.frame_id = base_frame;
     t.child_frame_id = "base_link";
-    t.transform.translation.z = -gaitConfig.currentHeight;  // feet are at currentHeight below the hips
+    // Feet are at currentHeight below the hips, plus any lift from tilt mode
+    t.transform.translation.z = -gaitConfig.currentHeight + tilt_applied.translation.z();
     Eigen::Quaterniond q = Eigen::AngleAxisd(body_pitch, Vector3d::UnitY()) * Eigen::AngleAxisd(body_roll, Vector3d::UnitX());
     t.transform.rotation.x = q.x();
     t.transform.rotation.y = q.y();
@@ -178,7 +179,8 @@ void GaitController::publishFootprint() {
 /**
  * @brief Store the body's roll and pitch from the IMU's orientation
  * @param[in] msg The IMU message (orientation from imu_filter_madgwick on the robot, Gazebo in sim)
- * @note Yaw is ignored: heading comes from odometry. Messages without orientation are skipped.
+ * @note Yaw is only used by tilt mode to hold the heading; odometry provides it otherwise.
+ *       Messages without orientation are skipped.
 */
 void GaitController::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
     if (msg->orientation_covariance[0] < 0.0) {
@@ -187,6 +189,48 @@ void GaitController::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
     const auto& o = msg->orientation;
     body_roll = std::atan2(2.0 * (o.w * o.x + o.y * o.z), 1.0 - 2.0 * (o.x * o.x + o.y * o.y));
     body_pitch = std::asin(std::clamp(2.0 * (o.w * o.y - o.z * o.x), -1.0, 1.0));
+    body_yaw = std::atan2(2.0 * (o.w * o.z + o.x * o.y), 1.0 - 2.0 * (o.y * o.y + o.z * o.z));
+    last_imu_time = this->now();
+    has_imu = true;
+}
+
+/**
+ * @brief Apply changes to the tilt parameters made while running
+ * @param[in] parameters The parameters being set
+ * @return Always successful; parameters other than the tilt ones only take effect at startup
+*/
+rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(const std::vector<rclcpp::Parameter>& parameters) {
+    for (const auto& parameter : parameters) {
+        const auto& name = parameter.get_name();
+        if (name == "tilt_leveling") tilt_leveling = parameter.as_bool();
+        else if (name == "tilt_lock_yaw") tilt_lock_yaw = parameter.as_bool();
+        else if (name == "tilt_level_gain") tilt_level_gain = parameter.as_double();
+        else if (name == "tilt_max_angle") tilt_max_angle = parameter.as_double();
+        else if (name == "tilt_max_translation") tilt_max_translation = parameter.as_double();
+        else if (name == "tilt_angle_rate") tilt_angle_rate = parameter.as_double();
+        else if (name == "tilt_translation_rate") tilt_translation_rate = parameter.as_double();
+    }
+    rcl_interfaces::msg::SetParametersResult result;
+    result.successful = true;
+    return result;
+}
+
+/**
+ * @brief Store the body pose requested for tilt mode
+ * @param[in] msg The pose: position is the body shift (m) and orientation its roll, pitch and yaw,
+ *                relative to level and the heading when tilt mode started
+ * @note Each axis is clamped to tilt_max_translation or tilt_max_angle. Ignored outside tilt mode.
+*/
+void GaitController::bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg) {
+    const auto& o = msg->orientation;
+    const double roll = std::atan2(2.0 * (o.w * o.x + o.y * o.z), 1.0 - 2.0 * (o.x * o.x + o.y * o.y));
+    const double pitch = std::asin(std::clamp(2.0 * (o.w * o.y - o.z * o.x), -1.0, 1.0));
+    const double yaw = std::atan2(2.0 * (o.w * o.z + o.x * o.y), 1.0 - 2.0 * (o.y * o.y + o.z * o.z));
+    body_pose_request.roll = std::clamp(roll, -tilt_max_angle, tilt_max_angle);
+    body_pose_request.pitch = std::clamp(pitch, -tilt_max_angle, tilt_max_angle);
+    body_pose_request.yaw = std::clamp(yaw, -tilt_max_angle, tilt_max_angle);
+    body_pose_request.translation = Vector3d(msg->position.x, msg->position.y, msg->position.z)
+        .cwiseMax(-tilt_max_translation).cwiseMin(tilt_max_translation);
 }
 
 /**
@@ -262,6 +306,10 @@ void GaitController::getCapabilitiesCallback(
 
     response->max_linear_vel = maxFootSpeed();
     response->max_angular_vel = maxFootSpeed() / trajectoryGen.maxBodyRadius();
+    response->max_tilt_angle = tilt_max_angle;
+    response->max_tilt_translation = tilt_max_translation;
+    response->current_mode = gaitConfig.currentMode;
+    response->current_gait = gaitConfig.gaitChangeRequested ? gaitConfig.pendingGait : gaitConfig.currentGait;
 }
 
 /**
@@ -298,6 +346,12 @@ void GaitController::gaitTimerCallback() {
         return;
     }
 
+    // Tilt mode, or easing the body back to neutral after leaving it
+    if (gaitConfig.currentMode == Mode::MODE_TILT || tilt_active) {
+        tilt(dt, gaitConfig.currentMode != Mode::MODE_TILT);
+        return;
+    }
+
     switch (gaitConfig.currentMode) {
         case Mode::MODE_STRAFE:
             current_motion_intent.forward = filtered_cmd_vel.linear.x;
@@ -313,8 +367,8 @@ void GaitController::gaitTimerCallback() {
             break;
         case Mode::MODE_CONFIG:
         case Mode::MODE_TILT:
-            // TODO: configuration mode and BodyTilt(). Until then, stand still: leaving the intent
-            // unchanged kept the robot walking with whatever it was last told, ignoring stop commands
+            // TODO: configuration mode. Until then, stand still: leaving the intent unchanged
+            // kept the robot walking with whatever it was last told, ignoring stop commands
             current_motion_intent = MotionIntent{};
             break;
         case Mode::NUM_MODES:
@@ -579,6 +633,20 @@ bool GaitController::isSwinging(int legNum) const {
 }
 
 /**
+ * @brief Whether every foot is at its start position
+ * @return true if every commanded foot is within 5 mm of its start position
+*/
+bool GaitController::feetAtStart() {
+    constexpr double POSITION_TOLERANCE = 0.005;  // m
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if ((current_leg_positions[legNum] - gaitConfig.startPosition.at(legNum)).norm() > POSITION_TOLERANCE) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
  * @brief Returns the hexapod to its start position
  * @param[in] dt The time since the last tick (s)
 */
@@ -593,21 +661,7 @@ void GaitController::returnToStart(double dt) {
         return;
     }
 
-    // Check if all legs are already at start position (within tolerance)
-    constexpr double POSITION_TOLERANCE = 0.005;  // 5mm tolerance
-    bool allAtStart = true;
-    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        auto it = gaitConfig.startPosition.find(legNum);
-        if (it != gaitConfig.startPosition.end()) {
-            Vector3d delta = current_leg_positions[legNum] - it->second;
-            if (delta.norm() > POSITION_TOLERANCE) {
-                allAtStart = false;
-                break;
-            }
-        }
-    }
-
-    if (allAtStart) {
+    if (feetAtStart()) {
         // Already at start, finish immediately
         idleReturning = false;
         counter = 0;
@@ -824,5 +878,168 @@ void GaitController::walk(double dt) {
         leg_swinging.fill(false);
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         phase_progress = 0.0;
+    }
+}
+
+/**
+ * @brief Foot positions for a body pose in tilt mode, and whether the legs can take it up safely
+ * @param[in] pose The body pose relative to the planted feet
+ * @param[out] targets The foot position of each leg (leg frame)
+ * @return true if every foot stays within MAX_STRIDE_LENGTH of its neutral position, which keeps
+ *         neighbouring legs apart (see test_leg_clearance), and every joint is within reach
+*/
+bool GaitController::tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets) {
+    constexpr double MAX_JOINT_ANGLE = 1.4;   // rad, inside the servos' +-1.57 range
+    constexpr double REACH_TOLERANCE = 1e-3;  // m, IK has to land the foot this close to the target
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        targets[legNum] = trajectoryGen.posedFoot(legNum, tilt_ground_feet[legNum], pose);
+        const Vector3d offset = targets[legNum] - gaitConfig.startPosition.at(legNum);
+        if (std::hypot(offset.x(), offset.y()) > MAX_STRIDE_LENGTH) {
+            return false;
+        }
+        const JointAngles angles = ikSolver.solveIK(targets[legNum]);
+        if (std::abs(angles.coxa) > MAX_JOINT_ANGLE || std::abs(angles.femur) > MAX_JOINT_ANGLE ||
+            std::abs(angles.tibia) > MAX_JOINT_ANGLE ||
+            (ikSolver.solveFK(angles) - targets[legNum]).norm() > REACH_TOLERANCE) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * @brief Tilt mode: hold the feet where they are and move the body to the pose from body_pose
+ * @param[in] dt The time since the last tick (s)
+ * @param[in] exiting true once another mode is selected, to ease the body back to neutral
+ * @note On entry the legs step back to their start positions first. The requested pose is rate
+ *       limited, then the IMU leveling correction is added: it builds up the difference between
+ *       the requested angles and the body's measured angles, so the body holds its angles in space
+ *       when the ground beneath it tilts or turns. Translation can't be held this way, since the
+ *       IMU can't measure position, so it is relative to the feet. A pose the legs can't reach is
+ *       cut back to the furthest safe pose towards it.
+*/
+void GaitController::tilt(double dt, bool exiting) {
+    current_motion_intent = MotionIntent{};
+
+    if (!tilt_active) {
+        // Plant every foot at its start position, so the body has the full range to move in
+        if (!idleReturning && !feetAtStart()) {
+            idleReturning = true;
+            phase_progress = 0.0;
+            leg_swinging.fill(false);
+        }
+        if (idleReturning) {
+            returnToStart(dt);
+            return;
+        }
+        tilt_ground_feet = current_leg_positions;
+        body_pose_request = BodyPose{};
+        tilt_command = BodyPose{};
+        tilt_correction = BodyPose{};
+        tilt_applied = BodyPose{};
+        tilt_yaw_reference = body_yaw;
+        tilt_active = true;
+        RCLCPP_INFO(this->get_logger(), "Tilt mode: feet planted, body follows body_pose%s",
+            tilt_leveling ? ", held in place by the IMU" : "");
+    }
+
+    // Move the command towards the request (or neutral when leaving) at a limited rate
+    auto approach = [](double& value, double goal, double maxStep) {
+        value += std::clamp(goal - value, -maxStep, maxStep);
+    };
+    const BodyPose& goal = exiting ? BodyPose{} : body_pose_request;
+    const double angleStep = tilt_angle_rate * dt;
+    approach(tilt_command.roll, goal.roll, angleStep);
+    approach(tilt_command.pitch, goal.pitch, angleStep);
+    approach(tilt_command.yaw, goal.yaw, angleStep);
+    for (int i = 0; i < 3; ++i) {
+        approach(tilt_command.translation[i], goal.translation[i], tilt_translation_rate * dt);
+    }
+
+    // Leveling: integrate the error between the commanded and measured angles. Without fresh IMU
+    // data the correction holds, and when leaving or with leveling off it unwinds.
+    const BodyPose previousCorrection = tilt_correction;
+    const bool imuFresh = has_imu && (this->now() - last_imu_time).seconds() < 0.2;
+    if (exiting || !tilt_leveling) {
+        approach(tilt_correction.roll, 0.0, angleStep);
+        approach(tilt_correction.pitch, 0.0, angleStep);
+        approach(tilt_correction.yaw, 0.0, angleStep);
+    } else if (imuFresh) {
+        const double gain = tilt_level_gain * dt;
+        tilt_correction.roll += gain * (tilt_command.roll - body_roll);
+        tilt_correction.pitch += gain * (tilt_command.pitch - body_pitch);
+        if (tilt_lock_yaw) {
+            tilt_correction.yaw += gain * std::remainder(tilt_command.yaw - (body_yaw - tilt_yaw_reference), 2.0 * M_PI);
+        }
+    }
+    // The command plus correction stays within tilt_max_angle
+    tilt_correction.roll = std::clamp(tilt_correction.roll, -tilt_max_angle - tilt_command.roll, tilt_max_angle - tilt_command.roll);
+    tilt_correction.pitch = std::clamp(tilt_correction.pitch, -tilt_max_angle - tilt_command.pitch, tilt_max_angle - tilt_command.pitch);
+    tilt_correction.yaw = std::clamp(tilt_correction.yaw, -tilt_max_angle - tilt_command.yaw, tilt_max_angle - tilt_command.yaw);
+
+    BodyPose desired;
+    desired.roll = tilt_command.roll + tilt_correction.roll;
+    desired.pitch = tilt_command.pitch + tilt_correction.pitch;
+    desired.yaw = tilt_command.yaw + tilt_correction.yaw;
+    desired.translation = tilt_command.translation;
+
+    // Step from the last pose (always safe) towards the desired one, never jumping: a pose change
+    // of more than a small step per tick snaps the feet across the ground, which spins the robot
+    constexpr double MAX_POSE_ANGLE_SPEED = 2.0;   // rad/s
+    constexpr double MAX_POSE_SHIFT_SPEED = 0.2;   // m/s
+    const double maxAngle = MAX_POSE_ANGLE_SPEED * dt;
+    const double maxShift = MAX_POSE_SHIFT_SPEED * dt;
+    BodyPose step = tilt_applied;
+    approach(step.roll, desired.roll, maxAngle);
+    approach(step.pitch, desired.pitch, maxAngle);
+    approach(step.yaw, desired.yaw, maxAngle);
+    for (int i = 0; i < 3; ++i) {
+        approach(step.translation[i], desired.translation[i], maxShift);
+    }
+
+    std::array<Vector3d, MAX_LEGS + 1> targets;
+    BodyPose pose = step;
+    if (!tiltFeasible(pose, targets)) {
+        // Out of reach: ease yaw back towards zero instead, since turning swings the feet furthest
+        // and keeping the body level matters more. Easing back also stops yaw pinning the pose.
+        BodyPose yawEased = step;
+        yawEased.yaw = tilt_applied.yaw;
+        approach(yawEased.yaw, 0.0, maxAngle);
+        if (tiltFeasible(yawEased, targets)) {
+            pose = yawEased;
+            tilt_correction.yaw = previousCorrection.yaw;  // stop it winding up against the limit
+        } else {
+            // Go as far along the step as is safe, possibly nowhere
+            double low = 0.0, high = 1.0;
+            for (int i = 0; i < 10; ++i) {
+                const double mid = 0.5 * (low + high);
+                BodyPose p;
+                p.roll = tilt_applied.roll + mid * (step.roll - tilt_applied.roll);
+                p.pitch = tilt_applied.pitch + mid * (step.pitch - tilt_applied.pitch);
+                p.yaw = tilt_applied.yaw + mid * (step.yaw - tilt_applied.yaw);
+                p.translation = tilt_applied.translation + mid * (step.translation - tilt_applied.translation);
+                (tiltFeasible(p, targets) ? low : high) = mid;
+            }
+            pose.roll = tilt_applied.roll + low * (step.roll - tilt_applied.roll);
+            pose.pitch = tilt_applied.pitch + low * (step.pitch - tilt_applied.pitch);
+            pose.yaw = tilt_applied.yaw + low * (step.yaw - tilt_applied.yaw);
+            pose.translation = tilt_applied.translation + low * (step.translation - tilt_applied.translation);
+            tilt_correction = previousCorrection;
+        }
+        tiltFeasible(pose, targets);
+        RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Tilt pose limited by the legs' reach");
+    }
+    tilt_applied = pose;
+    sendFootTargets(targets, dt);
+
+    // Back at neutral after leaving tilt mode: hand over to walking
+    const bool neutral = std::abs(pose.roll) < 1e-4 && std::abs(pose.pitch) < 1e-4 &&
+        std::abs(pose.yaw) < 1e-4 && pose.translation.norm() < 1e-4;
+    if (exiting && neutral) {
+        tilt_active = false;
+        tilt_applied = BodyPose{};
+        phase = 0;
+        phase_progress = 0.0;
+        RCLCPP_INFO(this->get_logger(), "Tilt mode finished, body back to neutral");
     }
 }

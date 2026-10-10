@@ -2,6 +2,7 @@
 
 #include <array>
 #include <cmath>
+#include <optional>
 #include <vector>
 
 #include "hexapod_gait_controller/kinematic_solver.hpp"
@@ -71,19 +72,25 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
     KinematicSolver solver;
     const double radii[3] = {COXA_RADIUS, FEMUR_RADIUS, TIBIA_RADIUS};
 
-    // Foot offsets across the stride circle, at standing and mid-swing heights
+    // Foot offsets across the stride circle, at heights from walking (standing and mid-swing) and
+    // from tilt mode, where a tilted or shifted body puts feet higher or lower than standing
     std::vector<Vector3d> offsets = {Vector3d::Zero()};
     for (int k = 0; k < 16; ++k) {
         double a = 2.0 * M_PI * k / 16.0;
         offsets.emplace_back(MAX_STRIDE_LENGTH * std::cos(a), MAX_STRIDE_LENGTH * std::sin(a), 0.0);
     }
-    const double heights[2] = {0.0, 0.05};
+    const std::vector<double> heights = {-0.10, -0.05, 0.0, 0.05, 0.10};
 
-    // Body-frame joint positions of a leg with its foot at neutral + offset (leg frame), lifted by lift
-    auto segmentsFor = [&](int leg, const Vector3d& offset, double lift) {
+    // Body-frame joint positions of a leg with its foot at neutral + offset (leg frame), lifted by
+    // lift. Empty if the foot is out of reach, since the gait controller never sends it there.
+    auto segmentsFor = [&](int leg, const Vector3d& offset, double lift) -> std::optional<std::array<Vector3d, 4>> {
         Vector3d foot = gen.swingTarget(leg, offset);   // neutral + offset, on the ground
         foot.z() += lift;
-        auto chain = legChain(solver.solveIK(foot));
+        JointAngles angles = solver.solveIK(foot);
+        if ((solver.solveFK(angles) - foot).norm() > 1e-3) {
+            return std::nullopt;
+        }
+        auto chain = legChain(angles);
         std::array<Vector3d, 4> body;
         for (int i = 0; i < 4; ++i) {
             body[i] = gen.legToBody(leg, chain[i]);
@@ -96,12 +103,14 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
         for (const auto& offsetA : offsets) {
             for (double liftA : heights) {
                 auto legA = segmentsFor(a, offsetA, liftA);
+                if (!legA) continue;
                 for (const auto& offsetB : offsets) {
                     for (double liftB : heights) {
                         auto legB = segmentsFor(b, offsetB, liftB);
+                        if (!legB) continue;
                         for (int i = 0; i < 3; ++i) {
                             for (int j = 0; j < 3; ++j) {
-                                double gap = segmentDistance(legA[i], legA[i + 1], legB[j], legB[j + 1]) - radii[i] - radii[j];
+                                double gap = segmentDistance((*legA)[i], (*legA)[i + 1], (*legB)[j], (*legB)[j + 1]) - radii[i] - radii[j];
                                 worst = std::min(worst, gap);
                             }
                         }

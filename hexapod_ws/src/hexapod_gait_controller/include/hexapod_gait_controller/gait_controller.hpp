@@ -10,6 +10,7 @@
 #include "tf2_ros/transform_broadcaster.h"
 #include "sensor_msgs/msg/imu.hpp"
 #include "geometry_msgs/msg/twist.hpp"
+#include "geometry_msgs/msg/pose.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
@@ -77,6 +78,22 @@ public:
             std::bind(&GaitController::imuCallback, this, _1));
         nominal_dt = 1.0 / loop_rate_hz;
 
+        // Tilt mode: the feet stay planted while body_pose moves the body, and the IMU holds it
+        // level (or at the commanded angle) when whatever it stands on tilts
+        body_pose_sub = this->create_subscription<geometry_msgs::msg::Pose>("body_pose", 10,
+            std::bind(&GaitController::bodyPoseCallback, this, _1));
+        tilt_max_angle = this->declare_parameter("tilt_max_angle", 0.3);
+        tilt_max_translation = this->declare_parameter("tilt_max_translation", 0.04);
+        tilt_angle_rate = this->declare_parameter("tilt_angle_rate", 1.0);
+        tilt_translation_rate = this->declare_parameter("tilt_translation_rate", 0.1);
+        tilt_leveling = this->declare_parameter("tilt_leveling", true);
+        // Off by default: the IMU yaw drifts without a magnetometer, and holding it uses up the stride
+        tilt_lock_yaw = this->declare_parameter("tilt_lock_yaw", false);
+        tilt_level_gain = this->declare_parameter("tilt_level_gain", 8.0);
+        // The tilt parameters can be tuned while running
+        param_callback = this->add_on_set_parameters_callback(
+            std::bind(&GaitController::parametersCallback, this, _1));
+
         // ROS timer, so the gait follows simulation time when use_sim_time is set
         gait_timer = this->create_timer(std::chrono::duration<double>(nominal_dt), std::bind(&GaitController::gaitTimerCallback, this));
 
@@ -90,6 +107,9 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
     double body_roll = 0.0;   // rad, from the IMU
     double body_pitch = 0.0;  // rad, from the IMU
+    double body_yaw = 0.0;    // rad, from the IMU (drifts slowly on the robot, which has no magnetometer)
+    rclcpp::Time last_imu_time;
+    bool has_imu = false;
     rclcpp::Subscription<JointState>::SharedPtr joint_state_sub;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
@@ -140,6 +160,24 @@ private:
     std::array<bool, MAX_LEGS + 1> leg_swinging{};
     double max_target_speed;  // m/s, how fast a landing target can move when the command changes
 
+    // Tilt mode
+    rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr body_pose_sub;
+    BodyPose body_pose_request;  // pose asked for on body_pose, relative to level and the starting heading
+    BodyPose tilt_command;       // body_pose_request after rate limiting
+    BodyPose tilt_correction;    // leveling correction, built up from the IMU error
+    BodyPose tilt_applied;       // pose the feet were last placed for, relative to the ground they stand on
+    std::array<Vector3d, MAX_LEGS + 1> tilt_ground_feet;  // feet (leg frame) in the neutral pose
+    bool tilt_active = false;    // feet are placed for tilt_applied rather than walking
+    double tilt_yaw_reference = 0.0;  // rad, IMU yaw when tilt mode started
+    double tilt_max_angle;         // rad, largest roll, pitch or yaw in total
+    double tilt_max_translation;   // m, largest body shift along each axis
+    double tilt_angle_rate;        // rad/s, how fast the commanded angles can change
+    double tilt_translation_rate;  // m/s, how fast the commanded shift can change
+    bool tilt_leveling;            // hold the body's angles in space using the IMU
+    bool tilt_lock_yaw;            // also hold the heading
+    double tilt_level_gain;        // 1/s, how fast the leveling correction responds
+    rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback;
+
     // Leg odometry
     LegOdometry legOdometry;
     std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
@@ -159,6 +197,11 @@ public:
     void publishOdometry(const rclcpp::Time& stamp);
     void publishFootprint();
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
+    void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
+    rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);
+    bool feetAtStart();
+    bool tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets);
+    void tilt(double dt, bool exiting);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);

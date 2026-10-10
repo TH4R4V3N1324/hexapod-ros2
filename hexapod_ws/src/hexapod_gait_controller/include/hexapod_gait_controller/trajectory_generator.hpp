@@ -24,6 +24,16 @@ struct LineSpline {
     bool active = false;
 };
 
+/**
+ * @brief Pose of the body relative to its planted feet, used in tilt mode
+*/
+struct BodyPose {
+    Vector3d translation = Vector3d::Zero();  // m, body shift (+x forward, +y left, +z up)
+    double roll = 0.0;   // rad, positive lowers the right side
+    double pitch = 0.0;  // rad, positive lowers the nose
+    double yaw = 0.0;    // rad, positive turns anticlockwise
+};
+
 struct GaitState {
     std::vector<std::vector<int>> config;
     std::array<SwingSpline, MAX_LEGS + 1> swingSplines;
@@ -56,6 +66,8 @@ public:
     );
     double legYaw(int legNum);
     Vector3d legToBody(int legNum, const Vector3d& position);
+    Vector3d bodyToLeg(int legNum, const Vector3d& position);
+    Vector3d posedFoot(int legNum, const Vector3d& groundFoot, const BodyPose& pose);
     Vector3d neutralFootInBody(int legNum);
     Vector3d footDisplacement(double forward, double left, double yaw, int legNum, double duration);
     Vector3d footDisplacementFrom(double forward, double left, double yaw, int legNum, const Vector3d& footPos, double duration);

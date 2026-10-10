@@ -188,6 +188,32 @@ Vector3d TrajectoryGenerator::legToBody(int legNum, const Vector3d& position) {
 }
 
 /**
+ * @brief Convert a position from the body frame to a leg's frame
+ * @param[in] legNum The leg number
+ * @param[in] position The position (body frame)
+ * @return The position (leg frame)
+*/
+Vector3d TrajectoryGenerator::bodyToLeg(int legNum, const Vector3d& position) {
+    return converter.bodyToLegFrame(position, legNum);
+}
+
+/**
+ * @brief Where a planted foot sits relative to its leg once the body takes up a pose
+ * @param[in] legNum The leg number
+ * @param[in] groundFoot The foot's position with the body in its neutral pose (leg frame)
+ * @param[in] pose The body pose relative to the neutral pose, rotating about the body origin
+ * @return The foot's position (leg frame)
+ * @note The foot stays where it is on the ground, so it moves by the inverse of the body's pose
+*/
+Vector3d TrajectoryGenerator::posedFoot(int legNum, const Vector3d& groundFoot, const BodyPose& pose) {
+    Eigen::Matrix3d rotation = (Eigen::AngleAxisd(pose.yaw, Vector3d::UnitZ())
+        * Eigen::AngleAxisd(pose.pitch, Vector3d::UnitY())
+        * Eigen::AngleAxisd(pose.roll, Vector3d::UnitX())).toRotationMatrix();
+    Vector3d foot = legToBody(legNum, groundFoot);
+    return bodyToLeg(legNum, rotation.transpose() * (foot - pose.translation));
+}
+
+/**
  * @brief Position of a leg's neutral foot in the body frame
  * @param[in] legNum The leg number
  * @return The foot position relative to the body centre (body frame, z = 0)
