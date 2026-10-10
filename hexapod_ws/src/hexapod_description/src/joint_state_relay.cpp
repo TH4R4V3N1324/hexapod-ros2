@@ -15,6 +15,9 @@ static const std::vector<std::string> JOINT_ORDER = {
 class JointStateRelay : public rclcpp::Node
 {
 public:
+    /**
+     * @brief Create the relay's publisher and subscription
+    */
     JointStateRelay() : Node("joint_state_relay")
     {
         // Keep only newest command to avoid backlog-induced lag under load.
@@ -28,6 +31,11 @@ public:
     }
 
 private:
+    /**
+     * @brief Reorder joint commands into the controller's joint order and republish them
+     * @param[in] msg The joint commands from the gait controller
+     * @note Joints missing from msg are skipped
+    */
     void cb(const sensor_msgs::msg::JointState::SharedPtr msg)
     {
         std::unordered_map<std::string, double> index;
@@ -47,6 +55,12 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::JointState>::SharedPtr sub_;
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char * argv[])
 {
     rclcpp::init(argc, argv);

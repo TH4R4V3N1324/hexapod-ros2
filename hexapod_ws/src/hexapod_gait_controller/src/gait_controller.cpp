@@ -1,5 +1,11 @@
 #include "hexapod_gait_controller/gait_controller.hpp"
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char **argv){    
     rclcpp::init(argc, argv);    
     auto node = std::make_shared<GaitController>();    
@@ -8,6 +14,11 @@ int main(int argc, char **argv){
     return 0;
 }
 
+/**
+ * @brief Store the latest velocity command and apply exponential smoothing
+ * @param[in] msg The incoming velocity command
+ * @note A zero command bypasses smoothing so the robot stops immediately
+*/
 void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
     last_cmd_vel = *msg;
 
@@ -28,6 +39,11 @@ void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
     filtered_cmd_vel.angular.z = (1.0 - alpha) * filtered_cmd_vel.angular.z + alpha * msg->angular.z;
 }
 
+/**
+ * @brief Store the latest joint states reported by the hardware interface
+ * @param[in] msg The incoming joint states
+ * @note The FK update of current_leg_positions is currently disabled
+*/
 void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
     latest_joint_states = *msg;
     
@@ -48,8 +64,10 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
     }
 }
 
-/*
-@brief Service callback to change gait
+/**
+ * @brief Service callback to change gait
+ * @param[in] request The service request
+ * @param[out] response The service response
 */
 void GaitController::setGaitCallback(
     const std::shared_ptr<SetGait::Request> request,
@@ -61,8 +79,10 @@ void GaitController::setGaitCallback(
     RCLCPP_INFO(this->get_logger(), "Gait changed to %d", request->gait);
 }
 
-/* 
-@brief Service callback to change mode
+/**
+ * @brief Service callback to change mode
+ * @param[in] request The service request
+ * @param[out] response The service response
 */
 void GaitController::setModeCallback(
     const std::shared_ptr<SetMode::Request> request,
@@ -74,8 +94,10 @@ void GaitController::setModeCallback(
     RCLCPP_INFO(this->get_logger(), "Mode changed to %d", request->mode);
 }
 
-/*
-@brief Service callback to change height
+/**
+ * @brief Service callback to change height
+ * @param[in] request The service request
+ * @param[out] response The service response
 */
 void GaitController::setHeightCallback(
     const std::shared_ptr<SetHeight::Request> request,
@@ -88,8 +110,10 @@ void GaitController::setHeightCallback(
 }
 
 
-/*
-@brief Service callback to report supported gaits and modes
+/**
+ * @brief Service callback to report supported gaits and modes
+ * @param[in] request The service request
+ * @param[out] response The service response
 */
 void GaitController::getCapabilitiesCallback(
     const std::shared_ptr<GetCapabilities::Request> request,
@@ -115,9 +139,9 @@ void GaitController::getCapabilitiesCallback(
     response->max_angular_vel = MAX_ANGULAR_VELOCITY;
 }
 
-/*
-@brief Main gait loop - called by timer at fixed rate
-@note This replaces your embedded while(true) loop
+/**
+ * @brief Main gait loop - called by timer at fixed rate
+ * @note This replaces your embedded while(true) loop
 */
 void GaitController::gaitTimerCallback() {
     // Run startup sequence once on first timer callback
@@ -157,6 +181,13 @@ void GaitController::gaitTimerCallback() {
     walk();
 }
 
+/**
+ * @brief Solve IK for a leg target and append the joint angles to a joint command message
+ * @param[in,out] joint_state_msg The joint command message to append to
+ * @param[in] target The foot target position (leg frame)
+ * @param[in] legNum The leg number (1-6)
+ * @note Also records target as the leg's current position
+*/
 void GaitController::appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum) {
     // Compute IK to get joint angles (pass mirrored flag for legs 4-6)
     auto angles = ikSolver.solveIK(target);
@@ -174,6 +205,10 @@ void GaitController::appendJointCommand(JointState& joint_state_msg, const Vecto
     current_leg_positions[legNum] = target;
 }
 
+/**
+ * @brief Stamp and publish a joint command message, then clear it for reuse
+ * @param[in,out] msg The joint command message to publish
+*/
 void GaitController::sendJointcommands(JointState& msg) {
     msg.header.stamp = this->now();
     joint_cmd_pub->publish(msg);
@@ -181,8 +216,8 @@ void GaitController::sendJointcommands(JointState& msg) {
     msg.position.clear();
 }
 
-/*
-@brief Move all legs to the home position and deactivate servos
+/**
+ * @brief Move all legs to the home position and deactivate servos
 */
 void GaitController::home() {
     auto joint_state_msg = JointState();
@@ -196,8 +231,8 @@ void GaitController::home() {
     RCLCPP_INFO(this->get_logger(), "Moved to home position");
 }
 
-/*
-@brief Startup sequence to move legs to start position
+/**
+ * @brief Startup sequence to move legs to start position
 */
 void GaitController::startup() {
     auto joint_state_msg = JointState();
@@ -243,12 +278,12 @@ void GaitController::startup() {
     }
 }
 
-/*
-@brief Perform a leg step based on the current trajectories
-@param idle Whether the joystick is idle
-@param handlePhaseTransition Whether to handle phase transitions
-@note If idle is true, the step will not advance
-@note If handlePhaseTransition is false, phase transitions will be skipped and must be handled externally
+/**
+ * @brief Perform a leg step based on the current trajectories
+ * @param[in] idle Whether the joystick is idle
+ * @param[in] handlePhaseTransition Whether to handle phase transitions
+ * @note If idle is true, the step will not advance
+ * @note If handlePhaseTransition is false, phase transitions will be skipped and must be handled externally
 */
 void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
     auto joint_state_msg = JointState();
@@ -319,8 +354,8 @@ void GaitController::PerformLegStep(bool idle, bool handlePhaseTransition) {
     }    
 }
 
-/*
-@brief Returns the hexapod to its start position
+/**
+ * @brief Returns the hexapod to its start position
 */
 void GaitController::returnToStart() {
     static int counter = 0;
@@ -398,9 +433,9 @@ void GaitController::returnToStart() {
     }
 }
 
-/*
-@brief Handle idle/return-to-start logic
-@return true if the stick is idle, false otherwise
+/**
+ * @brief Handle idle/return-to-start logic
+ * @return true if the stick is idle, false otherwise
 */
 bool GaitController::HandleIdleReturn() {
     static int idleCount = 0;
@@ -447,11 +482,12 @@ bool GaitController::HandleIdleReturn() {
     return idle; // Return whether stick is idle
 }
 
-/*
-@brief Handles walking motion of the hexapod
-@note The direction of movement is determined by the current_motion_intent, 
-@note which is updated from cmd_vel in the timer callback based on the current mode. 
-@note This allows for dynamic switching between different control schemes (e.g. strafing vs normal) while maintaining a consistent gait generation logic.
+/**
+ * @brief Handles walking motion of the hexapod
+ * @note The direction of movement is determined by the current_motion_intent,
+ *       which is updated from cmd_vel in the timer callback based on the current mode.
+ *       This allows for dynamic switching between different control schemes (e.g. strafing vs normal)
+ *       while maintaining a consistent gait generation logic.
 */
 void GaitController::walk() {
     // Check if velocity is idle

@@ -2,17 +2,22 @@
 
 namespace hexapod_gait_controller {
 
-// Helper function to rotate a Vector3d around Z axis by degrees
+/**
+ * @brief Rotate a vector around the Z axis
+ * @param[in] v The vector to rotate
+ * @param[in] degrees The rotation angle in degrees
+ * @return The rotated vector
+*/
 Vector3d GaitConfig::rotateZ(const Vector3d& v, double degrees) {
     double radians = degrees * M_PI / 180.0;
     AngleAxisd rotation(radians, Vector3d::UnitZ());
     return rotation * v;
 }
 
-/*
-@brief Get the leg configuration based on the specified gait
-@param gait The gait type
-@return A vector of vectors representing the leg configuration
+/**
+ * @brief Get the leg configuration based on the specified gait
+ * @param[in] gait The gait type
+ * @return A vector of vectors representing the leg configuration
 */
 std::vector<std::vector<int>> GaitConfig::getGaitConfig(Gait gait){
     switch (gait){
@@ -31,39 +36,41 @@ std::vector<std::vector<int>> GaitConfig::getGaitConfig(Gait gait){
     }
 }
 
-/*
-@brief Changes to the next gait when called
+/**
+ * @brief Changes to the next gait when called
 */
 void GaitConfig::cycleGait(){
     pendingGait = static_cast<Gait>((currentGait + 1) % NUM_GAITS);
     gaitChangeRequested = true;
 }
 
-/*
-@brief Sets the current gait to the specified gait
+/**
+ * @brief Sets the current gait to the specified gait
+ * @param[in] gait The gait to switch to
 */
 void GaitConfig::setGait(Gait gait) {
     pendingGait = gait;
     gaitChangeRequested = true;
 }
 
-/*
-@brief Changes to the next mode when called
+/**
+ * @brief Changes to the next mode when called
 */
 void GaitConfig::cycleMode() {
     currentMode = static_cast<Mode>((currentMode + 1) % NUM_MODES);
 }
 
-/*
-@brief Sets the current mode to the specified mode
+/**
+ * @brief Sets the current mode to the specified mode
+ * @param[in] mode The mode to switch to
 */
 void GaitConfig::setMode(Mode mode) {
     currentMode = mode;
 }
 
-/*
-@brief Set the height of the hexapod and update start positions accordingly
-@param height The new height to set
+/**
+ * @brief Set the height of the hexapod and update start positions accordingly
+ * @param[in] height The new height to set
 */
 void GaitConfig::setHeight(double height) {
     currentHeight = height;

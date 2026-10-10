@@ -8,6 +8,10 @@ using FKSolver = hexapod_interfaces::srv::FKSolver;
 
 namespace hexapod_gait_controller {
 
+/**
+ * @brief Create the IK and FK solver services
+ * @param[in] node The node that owns the services
+*/
 KinematicSolverService::KinematicSolverService(rclcpp::Node* node) : node(node) {
     ik_service = node->create_service<IKSolver>("ik_solver", std::bind(&KinematicSolverService::handle_ik_request, this, _1, _2));
     fk_service = node->create_service<FKSolver>("fk_solver", std::bind(&KinematicSolverService::handle_fk_request, this, _1, _2));
@@ -15,6 +19,12 @@ KinematicSolverService::KinematicSolverService(rclcpp::Node* node) : node(node) 
     RCLCPP_INFO(node->get_logger(), "KinematicSolver services initialized");
 }
 
+/**
+ * @brief Service callback that solves IK for a requested foot position
+ * @param[in] request The service request
+ * @param[out] response The service response
+ * @note leg_index in the request is zero-based
+*/
 void KinematicSolverService::handle_ik_request(const std::shared_ptr<IKSolver::Request> request, std::shared_ptr<IKSolver::Response> response){
     Vector3d target(request->target.x, request->target.y, request->target.z);
     JointAngles angles = solver.solveIK(target);
@@ -33,6 +43,11 @@ void KinematicSolverService::handle_ik_request(const std::shared_ptr<IKSolver::R
 
 }
 
+/**
+ * @brief Service callback that solves FK for requested joint angles
+ * @param[in] request The service request
+ * @param[out] response The service response
+*/
 void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::Request> request, std::shared_ptr<FKSolver::Response> response){
     JointAngles angles{
         request->joint_state.position[0],
@@ -46,12 +61,12 @@ void KinematicSolverService::handle_fk_request(const std::shared_ptr<FKSolver::R
     response->foot_position.z = position.z();
 }
 
-/*
-@brief Inverse kinematics, calculates the joint angles based on the desired position
-@param target The desired position in 3D space (leg frame, X outward)
-@param mirrored Whether this is a mirrored leg (legs 4, 5, 6)
-@return The calculated joint angles
-@note If the target is outside the workspace, angles are clamped to the nearest valid solution
+/**
+ * @brief Inverse kinematics, calculates the joint angles based on the desired position
+ * @param[in] target The desired position in 3D space (leg frame, X outward)
+ * @param[in] mirrored Whether this is a mirrored leg (legs 4, 5, 6)
+ * @return The calculated joint angles
+ * @note If the target is outside the workspace, angles are clamped to the nearest valid solution
 */
 JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     auto clamp = [](double v) {return std::max(-1.0, std::min(1.0, v));};
@@ -81,11 +96,10 @@ JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     return JointAngles{coxaAngle, femurAngle, tibiaAngle};
 }
 
-/*
-@brief Forward kinematics, calculates the position based on the joint angles
-@param angles The joint angles
-@param legNum The leg number (1-6)
-@return The calculated position in 3D space
+/**
+ * @brief Forward kinematics, calculates the position based on the joint angles
+ * @param[in] angles The joint angles
+ * @return The calculated position in 3D space
 */
 Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     // sensor_msgs/JointState joint_state --> geometry_msgs/Point foot_position

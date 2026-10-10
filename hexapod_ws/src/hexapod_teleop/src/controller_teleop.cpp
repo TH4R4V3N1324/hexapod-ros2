@@ -9,6 +9,9 @@ using sensor_msgs::msg::Joy;
 using hexapod_interfaces::srv::GetCapabilities;
 using std::placeholders::_1;
 
+/**
+ * @brief Gamepad teleop node, converts /joy input into /cmd_vel commands
+*/
 class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node("controller_teleop") {
   	RCLCPP_INFO(this->get_logger(), "Controller Teleop Node has been started.");
     cmd_vel_pub = this->create_publisher<Twist>("cmd_vel", 10);
@@ -28,6 +31,12 @@ public:
     void fetchCapabilities();
 };
 
+/**
+ * @brief Entry point, initialises ROS and spins the node
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return Process exit code
+*/
 int main(int argc, char * argv[]) {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<ControllerTeleop>();
@@ -36,6 +45,11 @@ int main(int argc, char * argv[]) {
     return 0;
 }
 
+/**
+ * @brief Convert joystick axes into a velocity command and publish it
+ * @param[in] msg The incoming joystick message
+ * @note Left stick drives linear X/Y, right stick X drives angular Z
+*/
 void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     constexpr std::size_t kAxisLinearY = 0;   // Left/right
     constexpr std::size_t kAxisLinearX = 1;   // Forward/backward
@@ -71,6 +85,10 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     cmd_vel_pub->publish(cmd_vel_msg);
 }
 
+/**
+ * @brief Request the supported gaits, modes and velocity limits from the gait controller
+ * @note Waits up to 2 seconds for the service
+*/
 void ControllerTeleop::fetchCapabilities() {
     if (!get_capabilities_client->wait_for_service(std::chrono::seconds(2))) {
         RCLCPP_WARN(this->get_logger(), "GetCapabilities service not available");

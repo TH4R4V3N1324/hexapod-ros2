@@ -14,9 +14,17 @@ namespace hexapod_hardware_interface {
 class ServoHandler {
 public:
     explicit ServoHandler(rclcpp::Node* node);
+    /**
+     * @brief Check whether new joint commands have arrived since the last packet was built
+     * @return true if there are unsent commands, false otherwise
+    */
     bool hasNewCommands() const { return has_new_commands; }
     std::vector<uint8_t> buildPacket();
     void publishJointStates(const rclcpp::Time& timestamp);
+    /**
+     * @brief Get the current servo positions
+     * @return The 18 current joint positions
+    */
     const std::array<float, 18>& getCurrentPositions() const { return current_positions; }
     void simulateMovement(double alpha = 0.3);
 private:

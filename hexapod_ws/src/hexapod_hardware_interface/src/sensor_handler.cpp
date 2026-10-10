@@ -4,6 +4,10 @@
 
 namespace hexapod_hardware_interface {
 
+/**
+ * @brief Create the IMU, power and leg contact publishers
+ * @param[in] node The node that owns the publishers
+*/
 SensorHandler::SensorHandler(rclcpp::Node* node) : node(node) {
     imu_pub = node->create_publisher<Imu>("imu_data", 10);
     power_pub = node->create_publisher<PowerStatus>("power_status_data", 10);
@@ -12,6 +16,12 @@ SensorHandler::SensorHandler(rclcpp::Node* node) : node(node) {
     RCLCPP_INFO(node->get_logger(), "SensorHandler initialized");
 }
 
+/**
+ * @brief Parse a sensor packet from the ESP32 and publish its contents
+ * @param[in] data The raw packet bytes
+ * @param[in] timestamp The timestamp for the message headers
+ * @note Packets shorter than 19 bytes are ignored
+*/
 void SensorHandler::parseAndPublish(const std::vector<uint8_t>& data, const rclcpp::Time& timestamp) {
     // Protocol from ESP32:
     // [0-1]: header (0xBB + length)
@@ -31,6 +41,12 @@ void SensorHandler::parseAndPublish(const std::vector<uint8_t>& data, const rclc
     parseContacts(&data[18], timestamp);
 }
 
+/**
+ * @brief Parse pitch and roll and publish them as an IMU orientation
+ * @param[in] data Pointer to the IMU section of the packet
+ * @param[in] timestamp The timestamp for the message header
+ * @note Yaw is fixed at 0
+*/
 void SensorHandler::parseIMU(const uint8_t* data, const rclcpp::Time& timestamp) {
     sensor_msgs::msg::Imu msg;
     msg.header.stamp = timestamp;
@@ -55,6 +71,12 @@ void SensorHandler::parseIMU(const uint8_t* data, const rclcpp::Time& timestamp)
     imu_pub->publish(msg);
 }
 
+/**
+ * @brief Parse current and voltage and publish the power status
+ * @param[in] data Pointer to the power section of the packet
+ * @param[in] timestamp The timestamp for the message header
+ * @note Battery percentage assumes a 2S LiPo (8.4V full, 6.0V empty)
+*/
 void SensorHandler::parsePower(const uint8_t* data, const rclcpp::Time& timestamp) {
     hexapod_interfaces::msg::PowerStatus msg;
     
@@ -69,6 +91,11 @@ void SensorHandler::parsePower(const uint8_t* data, const rclcpp::Time& timestam
     power_pub->publish(msg);
 }
 
+/**
+ * @brief Parse the leg contact bits and publish them
+ * @param[in] data Pointer to the contact byte of the packet
+ * @param[in] timestamp The timestamp for the message header
+*/
 void SensorHandler::parseContacts(const uint8_t* data, const rclcpp::Time& timestamp) {
     hexapod_interfaces::msg::LegContact msg;
     msg.header.stamp = timestamp;
@@ -81,12 +108,22 @@ void SensorHandler::parseContacts(const uint8_t* data, const rclcpp::Time& times
     contact_pub->publish(msg);
 }
 
+/**
+ * @brief Read a float from raw bytes
+ * @param[in] bytes Pointer to the 4 bytes of the float
+ * @return The unpacked value
+*/
 float SensorHandler::unpackFloat(const uint8_t* bytes) {
     float value;
     std::memcpy(&value, bytes, sizeof(float));
     return value;
 }
 
+/**
+ * @brief Publish fake IMU, power and leg contact data
+ * @param[in] timestamp The timestamp for the message headers
+ * @note The fake battery slowly drains and resets to full when empty
+*/
 void SensorHandler::publishFakeData(const rclcpp::Time& timestamp) {
     // Fake IMU
     sensor_msgs::msg::Imu imu_msg;
