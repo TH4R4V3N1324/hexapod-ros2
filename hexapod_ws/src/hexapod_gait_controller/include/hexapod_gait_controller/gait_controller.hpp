@@ -172,6 +172,7 @@ public:
     std::array<Vector3d, MAX_LEGS + 1> legTargets(double ds);
     std::array<Vector3d, MAX_LEGS + 1> walkTargets(double forward, double left, double yaw, double ds, double moveDt);
     void sendFootTargets(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
+    void applyPendingGait();
     bool isSwinging(int legNum) const;
     double jointSpeedScale(const std::array<Vector3d, MAX_LEGS + 1>& targets, double dt);
     void PerformLegStep(double dt, bool idle, bool handlePhaseTransition = true);

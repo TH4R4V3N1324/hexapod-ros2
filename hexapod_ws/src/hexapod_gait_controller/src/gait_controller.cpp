@@ -200,8 +200,8 @@ void GaitController::setGaitCallback(
 ) {
     gaitConfig.setGait(static_cast<Gait>(request->gait));
     response->success = true;
-    response->message = "Gait changed to " + std::to_string(request->gait);
-    RCLCPP_INFO(this->get_logger(), "Gait changed to %d", request->gait);
+    response->message = "Gait " + std::to_string(request->gait) + " requested, applies at the next step";
+    RCLCPP_INFO(this->get_logger(), "Gait %d requested", request->gait);
 }
 
 /**
@@ -312,10 +312,10 @@ void GaitController::gaitTimerCallback() {
             current_motion_intent.yaw = filtered_cmd_vel.angular.z + filtered_cmd_vel.linear.y / trajectoryGen.maxBodyRadius();
             break;
         case Mode::MODE_CONFIG:
-            // TODO: Configuration mode handling
-            break;
         case Mode::MODE_TILT:
-            // TODO: BodyTilt();
+            // TODO: configuration mode and BodyTilt(). Until then, stand still: leaving the intent
+            // unchanged kept the robot walking with whatever it was last told, ignoring stop commands
+            current_motion_intent = MotionIntent{};
             break;
         case Mode::NUM_MODES:
         default:
@@ -524,6 +524,30 @@ void GaitController::PerformLegStep(double dt, bool idle, bool handlePhaseTransi
 }
 
 /**
+ * @brief Switch to a requested gait, if there is one
+ * @note Only call between phases, when no leg is mid-swing. Restarts at the new gait's first phase.
+*/
+void GaitController::applyPendingGait() {
+    if (!gaitConfig.gaitChangeRequested) {
+        return;
+    }
+    gaitConfig.gaitChangeRequested = false;
+    if (gaitConfig.pendingGait == gaitConfig.currentGait) {
+        return;
+    }
+    gaitConfig.currentGait = gaitConfig.pendingGait;
+    trajectoryGen.gaitState.config = gaitConfig.getGaitConfig(gaitConfig.currentGait);
+    phase = 0;
+    phase_progress = 0.0;
+    leg_swinging.fill(false);
+    for (const auto& option : gaitConfig.getGaits()) {
+        if (option.id == gaitConfig.currentGait) {
+            RCLCPP_INFO(this->get_logger(), "Gait changed to %s", option.name.c_str());
+        }
+    }
+}
+
+/**
  * @brief Command every foot towards its target, limited to max_foot_speed
  * @param[in] targets The foot target of each leg (leg frame)
  * @param[in] dt The time since the last tick (s)
@@ -624,13 +648,7 @@ void GaitController::returnToStart(double dt) {
             counter = 0;
             idleReturning = false;
 
-            if (gaitConfig.gaitChangeRequested) {
-                gaitConfig.currentGait = gaitConfig.pendingGait;
-                trajectoryGen.gaitState.config = gaitConfig.getGaitConfig(gaitConfig.currentGait);
-                phase = 0;
-                phase_progress = 0.0;
-                gaitConfig.gaitChangeRequested = false;
-            }
+            applyPendingGait();
         }
     }
 }
@@ -733,6 +751,12 @@ void GaitController::walk(double dt) {
 
     // Ensure gait config is set
     trajectoryGen.EnsureGaitConfig();
+
+    // Switch gait between phases, when every foot is planted. The per-tick planning carries on from
+    // wherever the feet are, and every foot stays in its stride circle, so the change is safe.
+    if (phase_progress == 0.0) {
+        applyPendingGait();
+    }
 
     // Current command, capped at what this gait can do
     double forward = current_motion_intent.forward;
