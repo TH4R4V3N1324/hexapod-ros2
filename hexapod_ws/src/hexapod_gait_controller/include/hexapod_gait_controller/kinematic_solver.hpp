@@ -28,6 +28,8 @@ private:
 public:
     JointAngles solveIK(const Vector3d& target, bool mirrored = false);
     Vector3d solveFK(const JointAngles& angles);
+    Eigen::Matrix3d jacobian(const JointAngles& angles);
+    bool groundForce(const JointAngles& angles, const Vector3d& torques, Vector3d& force);
 };
 
 class KinematicSolverService {

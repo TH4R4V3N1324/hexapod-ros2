@@ -51,8 +51,13 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
     latest_joint_states = *msg;
 
     std::unordered_map<std::string, double> positions;
+    std::unordered_map<std::string, std::pair<double, double>> joints;  // position, effort
+    const bool has_effort = msg->effort.size() == msg->name.size();
     for (size_t i = 0; i < msg->name.size() && i < msg->position.size(); ++i) {
         positions[msg->name[i]] = msg->position[i];
+        if (has_effort) {
+            joints[msg->name[i]] = {msg->position[i], msg->effort[i]};
+        }
     }
 
     bool all_found = true;
@@ -68,18 +73,107 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
         measured_leg_positions[legNum] = ikSolver.solveFK({coxa->second, femur->second, tibia->second});
     }
     has_joint_states = all_found;
+    const rclcpp::Time stamp(msg->header.stamp, this->get_clock()->get_clock_type());
+    if (all_found && has_effort) {
+        updateFootForces(joints, stamp);
+    }
 
     if (has_joint_states && positions_initialized) {
-        updateLegOdometry(rclcpp::Time(msg->header.stamp, this->get_clock()->get_clock_type()));
+        updateLegOdometry(stamp);
+    }
+}
+
+/**
+ * @brief Estimate the force on each foot from its joint efforts, decide which feet are in contact
+ *        and publish the forces
+ * @param[in] joints Each joint's position (rad) and effort (N m), by joint name
+ * @param[in] stamp The joint state timestamp
+ * @note Forces are in the body frame and low-pass filtered (foot_force_filter). Contact switches
+ *       on above contact_force_on of upward force and off below contact_force_off.
+*/
+void GaitController::updateFootForces(
+    const std::unordered_map<std::string, std::pair<double, double>>& joints, const rclcpp::Time& stamp
+) {
+    double alpha = 1.0;
+    if (has_foot_forces) {
+        const double dt = std::max(0.0, (stamp - last_foot_force_stamp).seconds());
+        alpha = foot_force_filter > 0.0 ? std::min(1.0, dt / foot_force_filter) : 1.0;
+    }
+    last_foot_force_stamp = stamp;
+
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        const std::string prefix = "leg" + std::to_string(legNum) + "_";
+        const auto& coxa = joints.at(prefix + "coxa_joint");
+        const auto& femur = joints.at(prefix + "femur_joint");
+        const auto& tibia = joints.at(prefix + "tibia_joint");
+        Vector3d legForce;
+        if (!ikSolver.groundForce({coxa.first, femur.first, tibia.first},
+                Vector3d(coxa.second, femur.second, tibia.second), legForce)) {
+            continue;  // leg nearly straight: keep the last estimate
+        }
+        // Rotate into the body frame (a direction, so without the coxa offset)
+        Vector3d bodyForce = trajectoryGen.legToBody(legNum, legForce) - trajectoryGen.legToBody(legNum, Vector3d::Zero());
+        // Mid-swing the foot is certainly in the air, so whatever it reads is the leg's own weight
+        if (leg_swinging[legNum] && phase_progress > 0.3 && phase_progress < 0.7) {
+            foot_force_offset[legNum] += 0.02 * (-bodyForce.z() - foot_force_offset[legNum]);
+        }
+        bodyForce.z() += foot_force_offset[legNum];
+        foot_forces[legNum] = has_foot_forces ? foot_forces[legNum] + alpha * (bodyForce - foot_forces[legNum]) : bodyForce;
+
+        if (foot_forces[legNum].z() > contact_force_on) {
+            foot_contact[legNum] = true;
+        } else if (foot_forces[legNum].z() < contact_force_off) {
+            foot_contact[legNum] = false;
+        }
+
+        geometry_msgs::msg::WrenchStamped wrench;
+        wrench.header.stamp = stamp;
+        wrench.header.frame_id = "base_link";
+        wrench.wrench.force.x = foot_forces[legNum].x();
+        wrench.wrench.force.y = foot_forces[legNum].y();
+        wrench.wrench.force.z = foot_forces[legNum].z();
+        foot_force_pubs[legNum]->publish(wrench);
+    }
+    has_foot_forces = true;
+
+    // Blocked: the ground's net horizontal push on the feet in contact is a large share of the
+    // weight, so something else is pushing back (walking freely it's ~0.07, against a wall ~0.5).
+    // Filtered over ~0.3 s, with hysteresis.
+    Eigen::Vector2d horizontal = Eigen::Vector2d::Zero();
+    double vertical = 0.0;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        if (foot_contact[legNum]) {
+            horizontal += foot_forces[legNum].head<2>();
+            vertical += foot_forces[legNum].z();
+        }
+    }
+    const double blockedAlpha = std::min(1.0, alpha * foot_force_filter / 0.3);
+    push_ratio += blockedAlpha * ((vertical > 3.0 * contact_force_on ? horizontal.norm() / vertical : 0.0) - push_ratio);
+    const bool wasBlocked = blocked;
+    if (push_ratio > blocked_force_ratio) {
+        blocked = true;
+    } else if (push_ratio < 0.67 * blocked_force_ratio) {
+        blocked = false;
+    }
+    if (blocked != wasBlocked) {
+        RCLCPP_INFO(this->get_logger(), blocked ? "Pushing against something: odometry ignores the legs' movement"
+                                                : "No longer pushing against anything");
     }
 }
 
 /**
  * @brief Estimate the body's motion from the planted feet and add it to the leg odometry
  * @param[in] stamp The joint state timestamp
- * @note Feet that are not swinging are treated as planted. Called for every joint state message.
+ * @note Feet that are not swinging and are bearing weight are treated as planted. Called for every
+ *       joint state message.
 */
 void GaitController::updateLegOdometry(const rclcpp::Time& stamp) {
+    // In simulation the joint states come faster than the clock ticks, so ~30% share a timestamp
+    // with the previous one. Skip those entirely, keeping the last feet, so their motion is
+    // counted with the next new timestamp; replacing the feet threw it away (odometry read 20% short).
+    if (has_previous_feet && stamp <= previous_feet_stamp) {
+        return;
+    }
     std::array<Eigen::Vector2d, MAX_LEGS + 1> feet;
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         // In the level frame, so tilting the body to level it doesn't count as movement
@@ -87,20 +181,32 @@ void GaitController::updateLegOdometry(const rclcpp::Time& stamp) {
             trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]), walk_level).head<2>();
     }
 
-    if (has_previous_feet && stamp > previous_feet_stamp) {
+    if (has_previous_feet) {
+        // Only feet bearing weight, when the joint efforts say so, since a foot only stays put once
+        // it's loaded. Without effort data (mock hardware) every non-swinging foot counts.
+        double totalLoad = 0.0;
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            totalLoad += std::max(0.0, foot_forces[legNum].z());
+        }
+        const bool useContact = has_foot_forces && totalLoad > 3.0 * contact_force_on;
         std::vector<Eigen::Vector2d> before, after;
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-            if (!isSwinging(legNum)) {
+            if (!isSwinging(legNum) && (!useContact || (foot_contact[legNum] && previous_contact[legNum]))) {
                 before.push_back(previous_feet[legNum]);
                 after.push_back(feet[legNum]);
             }
         }
         BodyMotion motion;
         if (LegOdometry::estimateMotion(before, after, motion)) {
-            legOdometry.integrate(motion);
+            // Pushing against something, the feet scrub along the ground, so they say the body is
+            // moving when it isn't: keep only the turn (which the EKF checks against the gyro).
+            // Removing just the motion towards the obstacle still let a third through, because
+            // the push direction swings about as the tripods swap.
+            legOdometry.integrate(blocked ? BodyMotion{0.0, 0.0, motion.dyaw} : motion);
         }
     }
     previous_feet = feet;
+    previous_contact = foot_contact;
     previous_feet_stamp = stamp;
     has_previous_feet = true;
 
@@ -212,6 +318,13 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "tilt_angle_rate") tilt_angle_rate = parameter.as_double();
         else if (name == "tilt_translation_rate") tilt_translation_rate = parameter.as_double();
         else if (name == "walk_leveling") walk_leveling = parameter.as_bool();
+        else if (name == "contact_force_on") contact_force_on = parameter.as_double();
+        else if (name == "contact_force_off") contact_force_off = parameter.as_double();
+        else if (name == "foot_force_filter") foot_force_filter = parameter.as_double();
+        else if (name == "load_balancing") load_balancing = parameter.as_bool();
+        else if (name == "blocked_force_ratio") blocked_force_ratio = parameter.as_double();
+        else if (name == "load_balance_gain") load_balance_gain = parameter.as_double();
+        else if (name == "load_balance_max") load_balance_max = parameter.as_double();
         else if (name == "walk_level_gain") walk_level_gain = parameter.as_double();
         else if (name == "walk_max_angle") walk_max_angle = parameter.as_double();
     }
@@ -357,6 +470,8 @@ void GaitController::gaitTimerCallback() {
         return;
     }
 
+    updateLoadBalance(dt);
+
     // Tilt mode, or easing the body back to neutral after leaving it
     if (gaitConfig.currentMode == Mode::MODE_TILT || tilt_active) {
         tilt(dt, gaitConfig.currentMode != Mode::MODE_TILT);
@@ -395,7 +510,9 @@ void GaitController::gaitTimerCallback() {
 */
 void GaitController::appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum) {
     // Compute IK to get joint angles, with the body leveled while walking
-    auto angles = ikSolver.solveIK(trajectoryGen.posedFoot(legNum, target, walk_level));
+    // and each foot raised or lowered by load balancing
+    auto angles = ikSolver.solveIK(trajectoryGen.posedFoot(legNum, target, walk_level)
+        + Vector3d(0.0, 0.0, foot_height_offset[legNum]));
     
     // Add joint names and positions
     joint_state_msg.name.push_back("leg" + std::to_string(legNum) + "_coxa_joint");
@@ -641,10 +758,12 @@ bool GaitController::isSwinging(int legNum) const {
 
 /**
  * @brief Whether every foot is at its start position
- * @return true if every commanded foot is within 5 mm of its start position
+ * @return true if every commanded foot is within 1 mm of its start position
 */
 bool GaitController::feetAtStart() {
-    constexpr double POSITION_TOLERANCE = 0.005;  // m
+    // 1 mm: stopping can leave a foot a few mm up, frozen near the end of its swing, and a
+    // looser tolerance counted it as down, so it was never planted
+    constexpr double POSITION_TOLERANCE = 0.001;  // m
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         if ((current_leg_positions[legNum] - gaitConfig.startPosition.at(legNum)).norm() > POSITION_TOLERANCE) {
             return false;
@@ -907,6 +1026,60 @@ bool GaitController::tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX
         }
     }
     return true;
+}
+
+/**
+ * @brief Spread the robot's weight evenly between its planted feet
+ * @param[in] dt The time since the last tick (s)
+ * @note With stiff legs on hard ground, sub-millimetre differences decide which feet carry the
+ *       weight, so a robot can stand on three legs with the others just touching. Each planted
+ *       foot carrying more than its share is raised, and each carrying less lowered, at
+ *       load_balance_gain per newton. Only with four or more feet down, since three feet carry
+ *       whatever the centre of mass puts on them. Each change is stripped of any part that
+ *       would raise or tilt the body (a plane fitted through the planted feet), leaving only
+ *       the twist that moves weight between feet, so body height and leveling are untouched.
+ *       With load_balancing off, the offsets unwind.
+*/
+void GaitController::updateLoadBalance(double dt) {
+    constexpr double MAX_RATE = 0.02;  // m/s, fastest a foot is raised or lowered
+    const double maxStep = MAX_RATE * dt;
+
+    std::array<double, MAX_LEGS + 1> change{};
+    if (!load_balancing) {
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            change[legNum] = -foot_height_offset[legNum];
+        }
+    } else {
+        std::vector<int> planted;
+        double total = 0.0;
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            if (!isSwinging(legNum)) {
+                planted.push_back(legNum);
+                total += foot_forces[legNum].z();
+            }
+        }
+        if (!has_foot_forces || planted.size() < 4 || total <= 0.0) {
+            return;
+        }
+        const double share = total / planted.size();
+        Eigen::VectorXd raise(planted.size());
+        Eigen::MatrixXd plane(planted.size(), 3);
+        for (size_t i = 0; i < planted.size(); ++i) {
+            raise(i) = load_balance_gain * dt * (foot_forces[planted[i]].z() - share);
+            const Vector3d foot = trajectoryGen.neutralFootInBody(planted[i]);
+            plane.row(i) << 1.0, foot.x(), foot.y();
+        }
+        // Remove the best-fit plane through the planted feet
+        raise -= plane * plane.colPivHouseholderQr().solve(raise);
+        for (size_t i = 0; i < planted.size(); ++i) {
+            change[planted[i]] = raise(i);
+        }
+    }
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        foot_height_offset[legNum] = std::clamp(
+            foot_height_offset[legNum] + std::clamp(change[legNum], -maxStep, maxStep),
+            -load_balance_max, load_balance_max);
+    }
 }
 
 /**

@@ -257,6 +257,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/power/left`, `/power/right` | `sensor_msgs/BatteryState` | `ina226_node` | — |
 | `/odometry/legs` | `nav_msgs/Odometry` | `gait_controller` | `ekf_filter_node` |
 | `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_filter_node` (also publishes TF `odom` → `base_link`) | — |
+| `/foot_force/leg1` … `/foot_force/leg6` | `geometry_msgs/WrenchStamped` (ground force on each foot, body frame) | `gait_controller` | — |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `joy_node` (operator side) | `controller_teleop` |
 
@@ -351,6 +352,33 @@ the smallest gap between their segments is ~2.5 cm (`test_leg_clearance`).
 
 A gait change requested with `set_gait` applies at the start of the next step,
 when every foot is planted.
+
+### Foot forces, contact and load balancing
+
+On every joint state, each leg's three joint efforts are turned into the force
+the ground puts on its foot, through the leg's Jacobian (`KinematicSolver::groundForce`,
+`test_foot_force`). Each leg learns its own zero reading mid-swing, when the
+foot is certainly in the air, so the leg's weight doesn't count as load. The
+forces are published in the body frame on `foot_force/leg1` … `foot_force/leg6`
+(`geometry_msgs/WrenchStamped`), and a foot is in contact above
+`contact_force_on` (2 N) until it drops below `contact_force_off` (1 N).
+
+With stiff legs on hard ground, sub-millimetre differences decide which feet
+carry the weight. In simulation the robot often stood on one tripod after
+stopping, with the other three legs carrying nothing. Load balancing
+(`load_balancing`, on by default) raises each planted foot carrying more than
+its share and lowers each carrying less, by up to `load_balance_max` (2 cm).
+It only acts with four or more feet down, since three feet carry whatever the
+centre of mass puts on them. Each adjustment has any part that would raise or
+tilt the body removed, so it doesn't fight leveling. After stopping, the
+spread between the most and least loaded foot dropped from 7–8 N to 1–4 N
+(each foot's even share is ~3.2 N).
+
+`load_balance_gain` (m per newton-second) depends on how stiff the legs and
+ground are: 0.0001 suits the sim's rigid contacts, and the real robot's sprung
+tibias will want more. The contact thresholds come from the sim too and will
+need checking against the ST3215's load readings, which are a current estimate
+rather than a torque sensor.
 
 ### Leveling while walking
 
@@ -501,9 +529,20 @@ Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.la
 
 1. **Leg odometry** (`gait_controller`, published on `/odometry/legs` at 50 Hz).
    On every joint state, each foot's measured position comes from FK, and feet
-   that aren't swinging are treated as planted. The body motion is the rigid
+   that aren't swinging and are bearing weight are treated as planted (without
+   effort data, as with mock hardware, every non-swinging foot counts). The body motion is the rigid
    2D transform that best explains how those planted feet moved relative to
    the body (`LegOdometry`, unit-tested in `test_leg_odometry`).
+   When the net horizontal force on the feet passes `blocked_force_ratio` (0.3)
+   of their vertical force, the robot is pushing against something and its feet
+   are scrubbing, so only the turn is counted. In simulation, walking into a
+   wall for 6 s used to add ~50 cm of travel that never happened; now it adds
+   ~2 cm (the time it takes to notice). Sliding along a wall isn't counted
+   while blocked.
+   Joint states that share a timestamp with the previous one are skipped and
+   their motion counted with the next: in simulation ~30% of them did, and
+   dropping their motion had made odometry read ~20% short. Walking 50 cm in
+   simulation, odometry is now within 4–6%.
 2. **EKF** (`robot_localization`, `hexapod_bringup/config/ekf.yaml`). Fuses the
    leg velocities with the IMU's yaw rate and publishes `/odometry/filtered`
    and the `odom` → `base_footprint` transform. The feet slip most when turning,
@@ -706,24 +745,25 @@ this out of the box:
   only been run without devices attached.
 - **Servo calibration isn't done.** Each joint's `direction` and `offset`
   in `hexapod.ros2_control.xacro` default to 1 and 0.
-- **Leg contact detection isn't implemented.** The servo load is published
-  as joint effort, but nothing uses it yet.
+- **Contact sensing is tuned on the simulation only.** The contact
+  thresholds and load balancing gain need checking against the real servos'
+  load readings. A swinging foot doesn't yet use contact to stop early on
+  higher ground or reach down into a dip.
 - **`hexapod_control` is an empty stub.** `behaviour_manager.cpp` and
   `config_manager.cpp` are 0-byte files with no build targets.
 - **ROS distro mismatch.** `hexapod_ws` targets Jazzy; `operator_ws`
   targets Humble. This works today because they only interact over
   DDS/network, but it's worth keeping in mind if message definitions ever
   need to cross that boundary directly.
-- **Leg odometry drifts when the robot is physically blocked.** It assumes
-  planted feet don't slip, so if the body is pushed against something while
-  the legs keep walking, it counts that as movement. Once the error passes
-  SLAM's ~0.5 m scan-matching search, SLAM can't recover. Servo load (joint
-  effort) could detect this.
+- **Leg odometry can still drift when feet slip without the robot pushing
+  against anything** (e.g. on a slippery or moving surface), since it assumes
+  planted feet stay put.
 - **The robot creeps on a tilting platform in simulation.** With the deck
   rolling and pitching ±6.9° together, the levelled robot slides several cm
   and turns in 20 s (worse when the deck moves slowly, so it is the angle,
-  not the speed). At ±3.4° it barely moves. The sim's feet are rigid point
-  contacts; the real robot's rubber tips and sprung tibias should grip better.
+  not the speed). At ±3.4° it barely moves. Neither multi-point feet nor load
+  balancing changed it. The sim's legs and contacts are rigid; the real
+  robot's rubber tips and sprung tibias should grip better.
 - **Package descriptions/licenses are all `TODO`** in every `package.xml`.
 - All `package.xml` maintainer emails are real personal addresses — worth
   reviewing before making the repo public.

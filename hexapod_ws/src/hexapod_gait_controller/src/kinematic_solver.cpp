@@ -122,4 +122,41 @@ Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     return Vector3d(x, y, z);
 }
 
+/**
+ * @brief Jacobian of the foot position with respect to the joint angles
+ * @param[in] angles The joint angles
+ * @return d(foot position) / d(coxa, femur, tibia), leg frame, by central differences of solveFK
+*/
+Eigen::Matrix3d KinematicSolver::jacobian(const JointAngles& angles) {
+    constexpr double h = 1e-6;  // rad
+    Eigen::Matrix3d J;
+    for (int i = 0; i < 3; ++i) {
+        JointAngles plus = angles, minus = angles;
+        double* p = (i == 0) ? &plus.coxa : (i == 1) ? &plus.femur : &plus.tibia;
+        double* m = (i == 0) ? &minus.coxa : (i == 1) ? &minus.femur : &minus.tibia;
+        *p += h;
+        *m -= h;
+        J.col(i) = (solveFK(plus) - solveFK(minus)) / (2.0 * h);
+    }
+    return J;
+}
+
+/**
+ * @brief Force the ground pushes on the foot with, from the joint torques holding the leg still
+ * @param[in] angles The joint angles
+ * @param[in] torques The torque each joint's servo applies (coxa, femur, tibia; N m)
+ * @param[out] force The force on the foot (leg frame, N); +z means the ground is pushing up
+ * @return false if the leg is too close to straight for the force to be found
+ * @note In balance the servo torques cancel the ground force's torque: torques = -J^T force.
+ *       The leg's own weight is ignored (about 0.1 N m on the femur).
+*/
+bool KinematicSolver::groundForce(const JointAngles& angles, const Vector3d& torques, Vector3d& force) {
+    const Eigen::Matrix3d Jt = jacobian(angles).transpose();
+    if (std::abs(Jt.determinant()) < 1e-6) {
+        return false;
+    }
+    force = -Jt.inverse() * torques;
+    return true;
+}
+
 }  // namespace hexapod_gait_controller

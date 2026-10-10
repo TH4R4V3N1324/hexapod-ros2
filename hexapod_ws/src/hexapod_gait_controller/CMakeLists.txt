@@ -82,6 +82,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_leg_clearance trajectory_generator kinematic_solver)
   ament_target_dependencies(test_leg_clearance rclcpp hexapod_interfaces geometry_msgs Eigen3)
 
+  ament_add_gtest(test_foot_force test/test_foot_force.cpp)
+  target_link_libraries(test_foot_force kinematic_solver)
+  ament_target_dependencies(test_foot_force rclcpp hexapod_interfaces Eigen3)
+
   ament_add_gtest(test_body_pose test/test_body_pose.cpp)
   target_link_libraries(test_body_pose trajectory_generator)
   ament_target_dependencies(test_body_pose rclcpp hexapod_interfaces geometry_msgs Eigen3)
