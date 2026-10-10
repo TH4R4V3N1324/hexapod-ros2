@@ -19,6 +19,11 @@
             name="gz::sim::systems::Contact"/>
     <plugin filename="gz-sim-sensors-system"
             name="gz::sim::systems::Sensors"/>
+    <!-- IMU and magnetometer sensors only publish when their systems are loaded -->
+    <plugin filename="gz-sim-imu-system"
+            name="gz::sim::systems::Imu"/>
+    <plugin filename="gz-sim-magnetometer-system"
+            name="gz::sim::systems::Magnetometer"/>
 
     <!-- Lighting -->
     <light type="directional" name="sun">

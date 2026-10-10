@@ -10,6 +10,7 @@ from pathlib import Path
 def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
     rviz_config = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
+    ekf_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'ekf.yaml')
     bridge_vision = LaunchConfiguration('bridge_vision')
     world = LaunchConfiguration('world')
     front_depth_width = LaunchConfiguration('front_depth_width')
@@ -43,6 +44,15 @@ def generate_launch_description():
         executable='controller_teleop',
         name='controller_teleop',
         output='screen',
+    )
+
+    # Fuses leg odometry and the simulated IMU gyro, publishes odom -> base_link
+    ekf_node = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[ekf_file, {'use_sim_time': True}]
     )
 
     foxglove_bridge_node = Node(
@@ -90,6 +100,7 @@ def generate_launch_description():
         gazebo_launch,
         hexapod_gait_controller,
         controller_teleop_node,
+        ekf_node,
         foxglove_bridge_node,
         rviz2_node,
     ])

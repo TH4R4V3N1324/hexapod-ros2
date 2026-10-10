@@ -5,6 +5,8 @@
 #include "hexapod_gait_controller/trajectory_generator.hpp"
 #include "hexapod_gait_controller/kinematic_solver.hpp"
 #include "hexapod_gait_controller/gait_config.hpp"
+#include "hexapod_gait_controller/leg_odometry.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
@@ -22,6 +24,7 @@ using hexapod_interfaces::srv::SetMode;
 using hexapod_interfaces::srv::SetHeight;
 using hexapod_interfaces::srv::GetCapabilities;
 using Eigen::Vector3d;
+using nav_msgs::msg::Odometry;
 using std::placeholders::_1;
 using std::placeholders::_2;
 
@@ -38,6 +41,7 @@ public:
         joint_state_sub = this->create_subscription<JointState>("joint_states", 10, std::bind(&GaitController::jointStateCallback, this, _1));
 
         joint_cmd_pub = this->create_publisher<JointState>("joint_commands", 10);
+        odom_pub = this->create_publisher<Odometry>("odometry/legs", 10);
 
         set_gait_service = this->create_service<SetGait>("set_gait", std::bind(&GaitController::setGaitCallback, this, _1, _2));
         set_mode_service = this->create_service<SetMode>("set_mode", std::bind(&GaitController::setModeCallback, this, _1, _2));
@@ -51,6 +55,9 @@ public:
         max_joint_speed = this->declare_parameter("max_joint_speed", 4.0);
         idle_return_delay = this->declare_parameter("idle_return_delay", 2.0);
         startup_duration = this->declare_parameter("startup_duration", 1.0);
+        odom_frame = this->declare_parameter("odom_frame", "odom");
+        base_frame = this->declare_parameter("base_frame", "base_link");
+        odom_publish_period = 1.0 / this->declare_parameter("odom_rate", 50.0);
         nominal_dt = 1.0 / loop_rate_hz;
 
         // ROS timer, so the gait follows simulation time when use_sim_time is set
@@ -61,6 +68,7 @@ public:
 private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
+    rclcpp::Publisher<Odometry>::SharedPtr odom_pub;
     rclcpp::Subscription<JointState>::SharedPtr joint_state_sub;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
@@ -104,10 +112,24 @@ private:
     std::array<Vector3d, MAX_LEGS + 1> measured_leg_positions;  // foot positions from joint state feedback (leg frame)
     std::array<Vector3d, MAX_LEGS + 1> startup_start_positions;
     bool startup_planned = false;
+
+    // Leg odometry
+    LegOdometry legOdometry;
+    std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
+    rclcpp::Time previous_feet_stamp;
+    bool has_previous_feet = false;
+    rclcpp::Time last_odom_publish;
+    double last_odom_x = 0.0, last_odom_y = 0.0, last_odom_yaw = 0.0;
+    bool has_odom_publish = false;
+    std::string odom_frame;
+    std::string base_frame;
+    double odom_publish_period;  // s
     
 public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void jointStateCallback(const JointState::SharedPtr msg);
+    void updateLegOdometry(const rclcpp::Time& stamp);
+    void publishOdometry(const rclcpp::Time& stamp);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
