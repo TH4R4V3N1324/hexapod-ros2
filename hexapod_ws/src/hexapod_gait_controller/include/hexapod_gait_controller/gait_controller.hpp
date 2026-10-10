@@ -2,6 +2,7 @@
 #define HEXAPOD_GAIT_CONTROLLER_GAIT_CONTROLLER_HPP
 
 #include "rclcpp/rclcpp.hpp"
+#include <unordered_map>
 #include "hexapod_gait_controller/trajectory_generator.hpp"
 #include "hexapod_gait_controller/kinematic_solver.hpp"
 #include "hexapod_gait_controller/gait_config.hpp"
@@ -11,6 +12,7 @@
 #include "sensor_msgs/msg/imu.hpp"
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose.hpp"
+#include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
@@ -90,6 +92,21 @@ public:
         // Off by default: the IMU yaw drifts without a magnetometer, and holding it uses up the stride
         tilt_lock_yaw = this->declare_parameter("tilt_lock_yaw", false);
         tilt_level_gain = this->declare_parameter("tilt_level_gain", 8.0);
+        // Foot forces from the joint efforts, and which feet are touching the ground
+        contact_force_on = this->declare_parameter("contact_force_on", 2.0);
+        contact_force_off = this->declare_parameter("contact_force_off", 1.0);
+        foot_force_filter = this->declare_parameter("foot_force_filter", 0.05);
+        // Pushing against something: the feet's net horizontal force is a large share of the weight
+        blocked_force_ratio = this->declare_parameter("blocked_force_ratio", 0.3);
+        // Spreading the weight between planted feet by raising or lowering each a little
+        load_balancing = this->declare_parameter("load_balancing", true);
+        load_balance_gain = this->declare_parameter("load_balance_gain", 0.0001);
+        load_balance_max = this->declare_parameter("load_balance_max", 0.02);
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            foot_force_pubs[legNum] = this->create_publisher<geometry_msgs::msg::WrenchStamped>(
+                "foot_force/leg" + std::to_string(legNum), 10);
+        }
+
         // Leveling while walking (normal and strafe modes): the IMU keeps the body level on slopes
         walk_leveling = this->declare_parameter("walk_leveling", true);
         walk_level_gain = this->declare_parameter("walk_level_gain", 2.0);
@@ -183,6 +200,30 @@ private:
     double tilt_level_gain;        // 1/s, how fast the leveling correction responds
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback;
 
+    // Foot forces and contact
+    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, MAX_LEGS + 1> foot_force_pubs;
+    std::array<Vector3d, MAX_LEGS + 1> foot_forces{};   // N, ground on foot (body frame), filtered
+    std::array<bool, MAX_LEGS + 1> foot_contact{};      // foot is bearing weight
+    bool has_foot_forces = false;
+    rclcpp::Time last_foot_force_stamp;
+    double contact_force_on;   // N, vertical force above which a foot is in contact
+    double contact_force_off;  // N, below which it no longer is
+    double foot_force_filter;  // s, time constant of the force low-pass filter
+    std::array<double, MAX_LEGS + 1> foot_force_offset{};  // N, added to the vertical force so a lifted
+                                                           // foot reads 0 (the leg's own weight), learnt mid-swing
+
+    // Blocked detection, for odometry
+    double blocked_force_ratio;   // net horizontal / vertical foot force above which the robot is blocked
+    double push_ratio = 0.0;      // net horizontal / total vertical force on the feet in contact, filtered
+    bool blocked = false;
+
+    // Load balancing
+    bool load_balancing;       // adjust foot heights to spread the weight evenly
+    double load_balance_gain;  // m/(N s), how fast a foot moves per newton of extra load; depends on how
+                               // stiff the legs and ground are (the sim's are very stiff)
+    double load_balance_max;   // m, largest height adjustment of a foot
+    std::array<double, MAX_LEGS + 1> foot_height_offset{};  // m, added to each foot's height, + raises it
+
     // Leveling while walking. Foot positions (current_leg_positions) stay in the level "ground"
     // frame the gait works in; walk_level is applied on the way to IK.
     bool walk_leveling;        // hold the body level with the IMU while walking
@@ -198,6 +239,7 @@ private:
     // Leg odometry
     LegOdometry legOdometry;
     std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
+    std::array<bool, MAX_LEGS + 1> previous_contact{};       // foot_contact at the last joint state
     rclcpp::Time previous_feet_stamp;
     bool has_previous_feet = false;
     rclcpp::Time last_odom_publish;
@@ -211,12 +253,14 @@ public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void jointStateCallback(const JointState::SharedPtr msg);
     void updateLegOdometry(const rclcpp::Time& stamp);
+    void updateFootForces(const std::unordered_map<std::string, std::pair<double, double>>& joints, const rclcpp::Time& stamp);
     void publishOdometry(const rclcpp::Time& stamp);
     void publishFootprint();
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
     void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
     rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);
     bool feetAtStart();
+    void updateLoadBalance(double dt);
     bool reachable(const Vector3d& target);
     void updateWalkLeveling(double dt);
     bool tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets);
