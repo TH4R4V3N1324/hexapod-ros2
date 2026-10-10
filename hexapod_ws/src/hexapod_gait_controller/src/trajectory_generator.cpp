@@ -178,6 +178,16 @@ double TrajectoryGenerator::legYaw(int legNum) {
 }
 
 /**
+ * @brief Convert a position in a leg's frame to the body frame
+ * @param[in] legNum The leg number
+ * @param[in] position The position in the leg frame
+ * @return The position in the body frame
+*/
+Vector3d TrajectoryGenerator::legToBody(int legNum, const Vector3d& position) {
+    return converter.legToBodyFrame(position, legNum);
+}
+
+/**
  * @brief Position of a leg's neutral foot in the body frame
  * @param[in] legNum The leg number
  * @return The foot position relative to the body centre (body frame, z = 0)

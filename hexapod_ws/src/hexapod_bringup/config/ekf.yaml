@@ -1,0 +1,30 @@
+# robot_localization EKF: fuses leg odometry with the IMU gyro into odom -> base_link
+ekf_filter_node:
+  ros__parameters:
+    frequency: 50.0
+    two_d_mode: true          # a walking robot on flat ground: x, y and yaw only
+    publish_tf: true          # publishes odom -> base_link
+    map_frame: map
+    odom_frame: odom
+    base_link_frame: base_link
+    world_frame: odom
+
+    # Leg odometry from the gait controller: forward, sideways and yaw velocity.
+    # Order: x y z, roll pitch yaw, vx vy vz, vroll vpitch vyaw, ax ay az
+    odom0: odometry/legs
+    odom0_config: [false, false, false,
+                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
+                   false, false, false]
+    odom0_queue_size: 10
+
+    # IMU gyro yaw rate. The feet slip most when turning, so this keeps heading honest.
+    # Orientation is left out: without a magnetometer the IMU's yaw drifts.
+    imu0: imu/data
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
+    imu0_queue_size: 10

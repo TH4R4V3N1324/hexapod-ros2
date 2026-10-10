@@ -245,6 +245,8 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/imu/data_raw` | `sensor_msgs/Imu` (no orientation) | `bmi088_node` | `imu_filter_madgwick` |
 | `/imu/data` | `sensor_msgs/Imu` | `imu_filter_madgwick` (robot), Gazebo bridge (sim) | — |
 | `/power/left`, `/power/right` | `sensor_msgs/BatteryState` | `ina226_node` | — |
+| `/odometry/legs` | `nav_msgs/Odometry` | `gait_controller` | `ekf_filter_node` |
+| `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_filter_node` (also publishes TF `odom` → `base_link`) | — |
 | `/joy` | `sensor_msgs/Joy` | `joy_node` (operator side) | `controller_teleop` |
 
 **Services**
@@ -364,6 +366,25 @@ Top speeds follow from that and `min_phase_duration`, and are what
 kinematics/trajectory libraries as `gait_controller`, publishing to
 `joint_commands` directly — useful for exercising a single leg's axes
 without the full gait state machine.
+
+## Odometry
+
+Two stages, both started by `hexapod_robot.launch.py` and `hexapod_simulation.launch.py`:
+
+1. **Leg odometry** (`gait_controller`, published on `/odometry/legs` at 50 Hz).
+   On every joint state, each foot's measured position comes from FK, and feet
+   that aren't swinging are treated as planted. The body motion is the rigid
+   2D transform that best explains how those planted feet moved relative to
+   the body (`LegOdometry`, unit-tested in `test_leg_odometry`).
+2. **EKF** (`robot_localization`, `hexapod_bringup/config/ekf.yaml`). Fuses the
+   leg velocities with the IMU's yaw rate and publishes `/odometry/filtered`
+   and the `odom` → `base_link` transform. The feet slip most when turning,
+   and the gyro corrects that. IMU orientation isn't fused: without a
+   magnetometer its yaw drifts.
+
+In Gazebo, after driving forward, turning 143° and driving forward again,
+leg odometry alone was 5.7 cm and 12° off; the fused odometry was 2.4 cm and
+0° off.
 
 ## Simulation (Gazebo Harmonic)
 

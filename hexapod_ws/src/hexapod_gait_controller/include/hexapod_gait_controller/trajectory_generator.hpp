@@ -55,6 +55,7 @@ public:
         uint8_t currentPhase
     );
     double legYaw(int legNum);
+    Vector3d legToBody(int legNum, const Vector3d& position);
     Vector3d neutralFootInBody(int legNum);
     Vector3d footDisplacement(double forward, double left, double yaw, int legNum, double duration);
     double bodyRadius(int legNum);

@@ -68,6 +68,89 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
         measured_leg_positions[legNum] = ikSolver.solveFK({coxa->second, femur->second, tibia->second});
     }
     has_joint_states = all_found;
+
+    if (has_joint_states && positions_initialized) {
+        updateLegOdometry(rclcpp::Time(msg->header.stamp, this->get_clock()->get_clock_type()));
+    }
+}
+
+/**
+ * @brief Estimate the body's motion from the planted feet and add it to the leg odometry
+ * @param[in] stamp The joint state timestamp
+ * @note Feet that are not swinging are treated as planted. Called for every joint state message.
+*/
+void GaitController::updateLegOdometry(const rclcpp::Time& stamp) {
+    std::array<Eigen::Vector2d, MAX_LEGS + 1> feet;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        feet[legNum] = trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]).head<2>();
+    }
+
+    if (has_previous_feet && stamp > previous_feet_stamp) {
+        std::vector<Eigen::Vector2d> before, after;
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            if (!trajectoryGen.gaitState.swingSplines[legNum].active) {
+                before.push_back(previous_feet[legNum]);
+                after.push_back(feet[legNum]);
+            }
+        }
+        BodyMotion motion;
+        if (LegOdometry::estimateMotion(before, after, motion)) {
+            legOdometry.integrate(motion);
+        }
+    }
+    previous_feet = feet;
+    previous_feet_stamp = stamp;
+    has_previous_feet = true;
+
+    if (!has_odom_publish) {
+        last_odom_publish = stamp;
+        has_odom_publish = true;
+    } else if ((stamp - last_odom_publish).seconds() >= odom_publish_period) {
+        publishOdometry(stamp);
+    }
+}
+
+/**
+ * @brief Publish the leg odometry pose, and the velocity since the last publish
+ * @param[in] stamp The timestamp for the message
+ * @note Twist is in the body frame. Covariances are rough: the feet can slip, and slip most when turning.
+*/
+void GaitController::publishOdometry(const rclcpp::Time& stamp) {
+    double dt = (stamp - last_odom_publish).seconds();
+    double dx = legOdometry.x() - last_odom_x;
+    double dy = legOdometry.y() - last_odom_y;
+    double dyaw = std::remainder(legOdometry.yaw() - last_odom_yaw, 2.0 * M_PI);
+
+    Odometry msg;
+    msg.header.stamp = stamp;
+    msg.header.frame_id = odom_frame;
+    msg.child_frame_id = base_frame;
+    msg.pose.pose.position.x = legOdometry.x();
+    msg.pose.pose.position.y = legOdometry.y();
+    msg.pose.pose.orientation.z = std::sin(legOdometry.yaw() / 2.0);
+    msg.pose.pose.orientation.w = std::cos(legOdometry.yaw() / 2.0);
+
+    // Velocity in the body frame, using the heading at the start of the interval
+    double c = std::cos(last_odom_yaw), s = std::sin(last_odom_yaw);
+    msg.twist.twist.linear.x = (c * dx + s * dy) / dt;
+    msg.twist.twist.linear.y = (-s * dx + c * dy) / dt;
+    msg.twist.twist.angular.z = dyaw / dt;
+
+    for (int i : {0, 7, 14, 21, 28, 35}) {
+        msg.pose.covariance[i] = 1.0;  // the integrated pose drifts, prefer the EKF's
+    }
+    msg.twist.covariance[0] = 0.0025;   // vx, ~0.05 m/s
+    msg.twist.covariance[7] = 0.0025;   // vy
+    msg.twist.covariance[14] = 1e-6;    // vz, not moving vertically
+    msg.twist.covariance[21] = 1e-6;    // roll rate
+    msg.twist.covariance[28] = 1e-6;    // pitch rate
+    msg.twist.covariance[35] = 0.04;    // yaw rate, ~0.2 rad/s
+    odom_pub->publish(msg);
+
+    last_odom_publish = stamp;
+    last_odom_x = legOdometry.x();
+    last_odom_y = legOdometry.y();
+    last_odom_yaw = legOdometry.yaw();
 }
 
 /**

@@ -24,6 +24,7 @@ def generate_launch_description():
     xacro_file = os.path.join(description_path, 'urdf', 'hexapod.urdf.xacro')
     controllers_file = os.path.join(description_path, 'config', 'controllers.yaml')
     sensors_file = os.path.join(hardware_path, 'config', 'sensors.yaml')
+    ekf_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'ekf.yaml')
 
     robot_description = ParameterValue(
         Command(['xacro ', xacro_file, ' hardware:=', hardware, ' serial_port:=', serial_port]),
@@ -71,6 +72,15 @@ def generate_launch_description():
         executable='controller_teleop',
         name='controller_teleop',
         output='screen'
+    )
+
+    # Fuses leg odometry and the IMU gyro, publishes odom -> base_link
+    ekf = Node(
+        package='robot_localization',
+        executable='ekf_node',
+        name='ekf_filter_node',
+        output='screen',
+        parameters=[ekf_file]
     )
 
     foxglove_bridge = Node(
@@ -130,6 +140,7 @@ def generate_launch_description():
         joint_state_relay,
         gait_controller,
         controller_teleop,
+        ekf,
         foxglove_bridge,
         sensors,
     ])
