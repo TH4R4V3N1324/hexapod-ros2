@@ -107,6 +107,9 @@ public:
         load_balancing = this->declare_parameter("load_balancing", true);
         load_balance_gain = this->declare_parameter("load_balance_gain", 0.0001);
         load_balance_max = this->declare_parameter("load_balance_max", 0.02);
+        // foot_force/legN are for display only (the controller uses every update itself). At the joint
+        // state rate they were 600 messages a second, enough to make Foxglove on the Deck lag.
+        foot_force_period = 1.0 / this->declare_parameter("foot_force_rate", 20.0);
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
             foot_force_pubs[legNum] = this->create_publisher<geometry_msgs::msg::WrenchStamped>(
                 "foot_force/leg" + std::to_string(legNum), 10);
@@ -256,6 +259,8 @@ private:
 
     // Foot forces and contact
     std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, MAX_LEGS + 1> foot_force_pubs;
+    double foot_force_period;            // s, shortest time between foot_force/legN messages
+    rclcpp::Time last_foot_force_publish{0, 0, RCL_ROS_TIME};
     std::array<Vector3d, MAX_LEGS + 1> foot_forces{};   // N, ground on foot (body frame), filtered
     std::array<bool, MAX_LEGS + 1> foot_contact{};      // foot is bearing weight
     bool has_foot_forces = false;

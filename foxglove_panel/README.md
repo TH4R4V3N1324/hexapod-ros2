@@ -4,7 +4,9 @@ A Foxglove panel for the hexapod, through `foxglove_bridge`:
 
 - **Body**: roll and pitch from `/imu/data`, with an attitude indicator.
 - **Feet**: the six feet in their layout, filled when the foot's upward force on
-  `/foot_force/legN` is above gait_controller's `contact_force_on`.
+  `/foot_force/legN` is above gait_controller's `contact_force_on`. gait_controller
+  publishes these at `foot_force_rate` (20 Hz): at the joint state rate the six
+  topics were 600 messages a second, which made Foxglove on the Steam Deck lag.
 - **Power**: voltage, current and charge from `/power/left` and `/power/right`.
 - **Mode and gait**: from `get_capabilities`, changed with `set_mode` and `set_gait`.
   Height is sent with `set_height` when the slider is let go (8–15 cm).
