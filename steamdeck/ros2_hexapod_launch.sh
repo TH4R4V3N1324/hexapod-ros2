@@ -49,8 +49,11 @@ export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 
 # game_controller_node reports the standard layout controller_teleop expects; plain joy_node
-# gives the Deck's controls in their raw order (triggers on axes 2 and 5)
-ros2 run joy game_controller_node &
+# gives the Deck's controls in their raw order (triggers on axes 2 and 5).
+# The Deck's sticks jitter just off centre, and by default every change is published (up to
+# 1 kHz): ~400 messages a second queued up over Wi-Fi and made the robot lag by about a second.
+# Coalescing to 20 ms caps /joy at 50 Hz.
+ros2 run joy game_controller_node --ros-args -p coalesce_interval_ms:=20 &
 JOY_PID=$!
 echo "ros2 joy node PID: $JOY_PID"
 
