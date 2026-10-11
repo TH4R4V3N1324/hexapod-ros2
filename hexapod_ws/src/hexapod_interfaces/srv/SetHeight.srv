@@ -1,5 +1,6 @@
 # Request
-float64 height  # Desired height in meters, e.g., 0.1 for 10 cm, -0.1 for 10 cm lower
+float64 height  # Body height as the feet's z below the hips, in meters (negative): -0.12 for 12 cm.
+                # The body glides there at height_rate; outside min_height..max_height is refused.
 ---
 # Response
 bool success

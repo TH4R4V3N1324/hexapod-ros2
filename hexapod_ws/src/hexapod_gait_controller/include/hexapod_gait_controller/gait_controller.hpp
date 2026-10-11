@@ -119,6 +119,11 @@ public:
         seek_speed = this->declare_parameter("seek_speed", 0.05);
         body_height_rate = this->declare_parameter("body_height_rate", 0.02);
         trajectoryGen.swingLift = this->declare_parameter("step_height", 0.06);
+        // set_height glides the body to the new height rather than snapping the legs there
+        height_rate = this->declare_parameter("height_rate", 0.03);
+        min_height = this->declare_parameter("min_height", 0.06);
+        max_height = this->declare_parameter("max_height", 0.16);
+        target_height = gaitConfig.currentHeight;
         touchdown_ratio = this->declare_parameter("touchdown_ratio", 1.5);
         stumble_force = this->declare_parameter("stumble_force", 3.0);
         stumble_lift = this->declare_parameter("stumble_lift", 0.03);
@@ -269,6 +274,10 @@ private:
     // Uneven ground
     bool terrain_adaptation;    // stop swings on early contact and reach down for missing ground
     double touchdown_force;     // N, vertical force that ends a swing in its second half
+    double height_rate;         // m/s, how fast the body moves to a new set_height
+    double min_height;          // m, lowest body height set_height accepts
+    double max_height;          // m, highest body height set_height accepts
+    double target_height;       // m, feet z below the hips that set_height asked for (negative)
     double max_step_height;     // m, furthest a foot's ground can be above or below nominal
     double seek_speed;          // m/s, how fast a foot that didn't find the ground reaches down
     double body_height_rate;    // m/s, how fast the body follows the feet's average ground height
