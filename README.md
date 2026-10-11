@@ -203,7 +203,10 @@ See [Gait controller internals](#gait-controller-internals) below.
 
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
   `joy_node`, published by the operator side) and publishes both `/cmd_vel`
-  and `/body_pose`; the gait controller uses whichever suits its mode. Full
+  and `/body_pose`; the gait controller uses whichever suits its mode. The
+  face buttons read a feature's current state from the gait controller and
+  call its `set_<feature>` service with the opposite, so they never undo a
+  change made another way. Full
   stick is the gait controller's limit from `get_capabilities`, which it
   requests in the background until the gait controller answers; joystick
   input is ignored until then. Axis and button numbers are parameters,
@@ -218,6 +221,10 @@ See [Gait controller internals](#gait-controller-internals) below.
   | D-pad up/down (axis 7) | — | raise / lower the body |
   | Start (button 7) | next mode | next mode |
   | Back (button 6) | next gait | next gait |
+  | A (button 0) | terrain adaptation on/off | terrain adaptation on/off |
+  | B (button 1) | walk leveling on/off | walk leveling on/off |
+  | X (button 2) | load balancing on/off | load balancing on/off |
+  | Y (button 3) | tilt leveling on/off | tilt leveling on/off |
 
 ### `hexapod_bringup`
 
