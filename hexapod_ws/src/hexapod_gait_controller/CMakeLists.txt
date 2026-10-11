@@ -13,6 +13,7 @@ find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(tf2_ros REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
 include_directories(include ${EIGEN3_INCLUDE_DIR})
 
@@ -43,13 +44,19 @@ add_library(leg_odometry SHARED
 )
 ament_target_dependencies(leg_odometry Eigen3)
 
+add_library(height_map SHARED
+    src/height_map.cpp
+)
+ament_target_dependencies(height_map Eigen3)
+
 add_executable(gait_controller src/gait_controller.cpp)
-target_link_libraries(gait_controller kinematic_solver trajectory_generator leg_odometry)
+target_link_libraries(gait_controller kinematic_solver trajectory_generator leg_odometry height_map)
 ament_target_dependencies(gait_controller
   rclcpp
   hexapod_interfaces
   geometry_msgs
   nav_msgs
+  sensor_msgs
   tf2_ros
 )
 
@@ -65,6 +72,7 @@ install(TARGETS
   kinematic_solver
   trajectory_generator
   leg_odometry
+  height_map
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
@@ -81,6 +89,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_leg_clearance test/test_leg_clearance.cpp)
   target_link_libraries(test_leg_clearance trajectory_generator kinematic_solver)
   ament_target_dependencies(test_leg_clearance rclcpp hexapod_interfaces geometry_msgs Eigen3)
+
+  ament_add_gtest(test_height_map test/test_height_map.cpp)
+  target_link_libraries(test_height_map height_map)
+  ament_target_dependencies(test_height_map Eigen3)
 
   ament_add_gtest(test_foot_force test/test_foot_force.cpp)
   target_link_libraries(test_foot_force kinematic_solver)

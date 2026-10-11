@@ -258,6 +258,8 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/odometry/legs` | `nav_msgs/Odometry` | `gait_controller` | `ekf_filter_node` |
 | `/odometry/filtered` | `nav_msgs/Odometry` | `ekf_filter_node` (also publishes TF `odom` → `base_link`) | — |
 | `/foot_force/leg1` … `/foot_force/leg6` | `geometry_msgs/WrenchStamped` (ground force on each foot, body frame) | `gait_controller` | — |
+| `/terrain_map` | `sensor_msgs/PointCloud2` (height map cells, odom frame) | `gait_controller` | — |
+| `/front_depth/points` | `sensor_msgs/PointCloud2` | Gazebo bridge (sim) | `gait_controller`, Nav2 costmaps |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `joy_node` (operator side) | `controller_teleop` |
 
@@ -379,6 +381,72 @@ ground are: 0.0001 suits the sim's rigid contacts, and the real robot's sprung
 tibias will want more. The contact thresholds come from the sim too and will
 need checking against the ST3215's load readings, which are a current estimate
 rather than a torque sensor.
+
+### Uneven ground
+
+With `terrain_adaptation` on (the default), each foot remembers how far its
+ground is above or below nominal, stays there in stance and aims for it on its
+next swing. Where it puts its foot comes from two sources:
+
+- **The front depth camera.** Its points (`depth_topic`, every
+  `depth_stride`-th pixel, at most `map_update_rate` frames a second) build a
+  height map of 2 cm cells in `map_frame` (odom), kept within `map_radius` of
+  the robot and published on `terrain_map` (`sensor_msgs/PointCloud2`) for
+  RViz. Points within 6 cm of the robot's own feet are dropped, since the
+  front feet come into view at the end of their stride. The camera can't see the
+  ground under the front feet, so the map remembers what it saw on the way.
+  Each swing:
+  - takes its landing height from the map;
+  - moves its landing spot up to `foothold_search` (3 cm) to keep
+    `foothold_edge` (2.5 cm) of flat ground around it, so feet don't come down
+    on an edge;
+  - lifts high enough to clear the highest ground on the way by
+    `step_clearance`.
+
+  The map only changes a landing height by more than `map_height_deadband`
+  (1 cm): smaller differences are mostly the body's pitch skewing the points,
+  and following them rocked the body. Nothing is mapped until the startup
+  sequence is done: before that TF has the body at the wrong height. Depth
+  frames are processed on the gait loop's thread, so each one is kept cheap.
+  Processing every frame in full delayed gait ticks by up to 37 ms and made
+  the legs stutter.
+- **Foot forces**, for ground the camera hasn't seen, such as walking
+  sideways or backwards:
+  - A swinging foot that lands more than 1 cm above where it was aiming,
+    pushing up rather than back for 3 ticks in a row, stops there.
+  - One that finishes its swing with no force and is still unloaded 0.15 s
+    later reaches down at `seek_speed` until it finds the ground. Without
+    the wait, feet that had just landed (before the weight came onto them)
+    were pushed down a few mm every step, which slowly tipped the body.
+  - One that is hit from the side mid-swing (above `stumble_force`) is lifted
+    a further `stumble_lift` and carries on over the edge.
+
+Ground heights are limited to `max_step_height` (4 cm) either way. The body
+rises or falls at `body_height_rate` so the feet's average ground is back at
+nominal; slopes are left to leveling. Load balancing only runs while standing
+still; once walking starts its adjustments become part of each foot's ground
+height. Without effort data (mock hardware) all of this is off.
+
+The swing now lifts first, moves across high, and comes down nearly
+vertically. Its three middle control points are all `step_height` (0.06 m)
+above the path, so the foot peaks at ~5 cm. The old profile dipped mid-swing
+and clipped slab edges. A higher step clears more but walks slower: at full
+command the robot made 0.127 m/s with a ~4 cm peak, 0.124 m/s at 0.06 and
+0.109 m/s at 0.075.
+
+On the `rough_terrain` world (a 2.5 cm slab under the left feet, a 3 cm slab
+under the right, then a 2 cm step), walking 1.4–1.5 m:
+
+| | Adaptation off | On |
+|---|---|---|
+| Distance walked | 136 cm | 151 cm |
+| Sideways drift / turn | +9.1 cm / +7.2° | +0.2 cm / −0.9° |
+| Body roll, mean / peak | 0.7° / 5.7° | 0.3° / 2.3° |
+| Body pitch, mean / peak | 1.3° / 7.4° | 0.4° / 2.7° |
+| Heaviest foot load | 23 N | 16 N |
+
+On flat ground it walks as steadily as with adaptation off (body roll and
+pitch varying by ~0.1°).
 
 ### Leveling while walking
 
@@ -745,10 +813,10 @@ this out of the box:
   only been run without devices attached.
 - **Servo calibration isn't done.** Each joint's `direction` and `offset`
   in `hexapod.ros2_control.xacro` default to 1 and 0.
-- **Contact sensing is tuned on the simulation only.** The contact
-  thresholds and load balancing gain need checking against the real servos'
-  load readings. A swinging foot doesn't yet use contact to stop early on
-  higher ground or reach down into a dip.
+- **Contact sensing and terrain adaptation are tuned on the simulation
+  only.** The contact, touchdown and stumble thresholds and the load
+  balancing gain need checking against the real servos' load readings, and
+  the height map against the real ToF camera's noise.
 - **`hexapod_control` is an empty stub.** `behaviour_manager.cpp` and
   `config_manager.cpp` are 0-byte files with no build targets.
 - **ROS distro mismatch.** `hexapod_ws` targets Jazzy; `operator_ws`

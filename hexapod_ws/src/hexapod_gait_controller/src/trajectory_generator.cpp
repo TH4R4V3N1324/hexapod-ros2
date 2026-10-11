@@ -356,19 +356,32 @@ Vector3d TrajectoryGenerator::clampToStride(int legNum, const Vector3d& target) 
  * @note Resets the spline progress and marks the spline active
 */
 void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end){
-    Eigen::Vector3d dir = end - start;
+    genSwingSpline(spline, start, end, swingLift);
+}
 
+/**
+ * @brief Set up the control points of a swing-phase Bezier spline with a given lift
+ * @param[out] spline The spline to set up
+ * @param[in] start The starting position
+ * @param[in] end The ending position
+ * @param[in] lift Height of the middle control points above the path (m); the foot peaks at ~0.88x this
+ * @note The middle three points are all at the same height, so the foot rises most of the way
+ *       before moving forward and comes down nearly vertically: at 7% of the way across it is
+ *       already at half the lift, so it clears edges it used to clip (the old profile dipped
+ *       mid-swing and was only a third of the way up there).
+*/
+void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end, double lift){
     spline.P0 = start;
     spline.P4 = end;
 
     spline.P1 = spline.P0;
-    spline.P1.z() += LIFT_HEIGHT;
+    spline.P1.z() += lift;
 
-    spline.P2 = spline.P0 + dir * 0.60;
-    spline.P2.z() += LIFT_HEIGHT * 0.5;
+    spline.P2 = 0.5 * (start + end);
+    spline.P2.z() = std::max(start.z(), end.z()) + lift;
 
     spline.P3 = spline.P4;
-    spline.P3.z() += LIFT_HEIGHT * 1.5;
+    spline.P3.z() += lift;
 
     spline.s = 0.0;
     spline.active = true;

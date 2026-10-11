@@ -114,7 +114,7 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value='hexapod_world',
-            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles or tilt_platform).'
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles, tilt_platform or rough_terrain).'
         ),
         DeclareLaunchArgument(
             'bridge_vision',

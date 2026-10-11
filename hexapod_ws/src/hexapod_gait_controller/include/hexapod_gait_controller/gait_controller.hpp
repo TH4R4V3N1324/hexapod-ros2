@@ -7,6 +7,10 @@
 #include "hexapod_gait_controller/kinematic_solver.hpp"
 #include "hexapod_gait_controller/gait_config.hpp"
 #include "hexapod_gait_controller/leg_odometry.hpp"
+#include "hexapod_gait_controller/height_map.hpp"
+#include "sensor_msgs/msg/point_cloud2.hpp"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 #include "nav_msgs/msg/odometry.hpp"
 #include "tf2_ros/transform_broadcaster.h"
 #include "sensor_msgs/msg/imu.hpp"
@@ -106,6 +110,36 @@ public:
             foot_force_pubs[legNum] = this->create_publisher<geometry_msgs::msg::WrenchStamped>(
                 "foot_force/leg" + std::to_string(legNum), 10);
         }
+
+        // Uneven ground: swinging feet stop when they touch down early, or reach down to find it
+        terrain_adaptation = this->declare_parameter("terrain_adaptation", true);
+        touchdown_force = this->declare_parameter("touchdown_force", 3.0);
+        max_step_height = this->declare_parameter("max_step_height", 0.04);
+        seek_speed = this->declare_parameter("seek_speed", 0.05);
+        body_height_rate = this->declare_parameter("body_height_rate", 0.02);
+        trajectoryGen.swingLift = this->declare_parameter("step_height", 0.06);
+        touchdown_ratio = this->declare_parameter("touchdown_ratio", 1.5);
+        stumble_force = this->declare_parameter("stumble_force", 3.0);
+        stumble_lift = this->declare_parameter("stumble_lift", 0.03);
+
+        // Height map of the ground ahead from the depth camera, for choosing footholds and step heights
+        terrain_map = this->declare_parameter("terrain_map", true);
+        map_frame = this->declare_parameter("map_frame", "odom");
+        depth_stride = this->declare_parameter("depth_stride", 4);
+        map_update_period = 1.0 / this->declare_parameter("map_update_rate", 5.0);
+        map_radius = this->declare_parameter("map_radius", 1.0);
+        foothold_search = this->declare_parameter("foothold_search", 0.03);
+        foothold_edge = this->declare_parameter("foothold_edge", 0.025);
+        foothold_flatness = this->declare_parameter("foothold_flatness", 0.01);
+        step_clearance = this->declare_parameter("step_clearance", 0.03);
+        map_height_deadband = this->declare_parameter("map_height_deadband", 0.01);
+        tf_buffer = std::make_shared<tf2_ros::Buffer>(this->get_clock());
+        tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+        depth_sub = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+            this->declare_parameter("depth_topic", "front_depth/points"), rclcpp::SensorDataQoS(),
+            std::bind(&GaitController::depthCallback, this, _1));
+        terrain_map_pub = this->create_publisher<sensor_msgs::msg::PointCloud2>("terrain_map", 1);
+        terrain_map_timer = this->create_timer(std::chrono::milliseconds(500), std::bind(&GaitController::publishTerrainMap, this));
 
         // Leveling while walking (normal and strafe modes): the IMU keeps the body level on slopes
         walk_leveling = this->declare_parameter("walk_leveling", true);
@@ -217,6 +251,49 @@ private:
     double push_ratio = 0.0;      // net horizontal / total vertical force on the feet in contact, filtered
     bool blocked = false;
 
+    // Uneven ground
+    bool terrain_adaptation;    // stop swings on early contact and reach down for missing ground
+    double touchdown_force;     // N, vertical force that ends a swing in its second half
+    double max_step_height;     // m, furthest a foot's ground can be above or below nominal
+    double seek_speed;          // m/s, how fast a foot that didn't find the ground reaches down
+    double body_height_rate;    // m/s, how fast the body follows the feet's average ground height
+    std::array<double, MAX_LEGS + 1> terrain_offset{};  // m, each foot's ground above nominal (ground frame)
+    std::array<bool, MAX_LEGS + 1> seeking{};           // foot finished its swing without touching down
+    std::array<bool, MAX_LEGS + 1> landing_check{};     // swing just ended unloaded: wait to see if it loads up
+    std::array<double, MAX_LEGS + 1> unloaded_time{};   // s since the swing ended, while still unloaded
+    std::array<int, MAX_LEGS + 1> touchdown_ticks{};    // consecutive ticks a swinging foot has looked landed
+    double touchdown_ratio;     // a touchdown's vertical force must be this many times its horizontal force
+    double stumble_force;       // N, horizontal force on a swinging foot that means it hit something
+    double stumble_lift;        // m, extra height a stumbling foot is lifted by
+    std::array<double, MAX_LEGS + 1> stumble_target{};  // m, extra lift wanted for each swinging foot
+    std::array<double, MAX_LEGS + 1> stumble_boost{};   // m, extra lift applied, ramping towards the target
+
+    // Height map from the depth camera
+    bool terrain_map;           // use the depth camera's height map for footholds and step heights
+    std::string map_frame;      // fixed frame the map is kept in
+    int depth_stride;           // use every nth row and column of the depth image
+    double map_update_period;   // s, shortest time between depth frames added to the map; each one
+                                // runs on the gait loop's thread, and every frame made the legs stutter
+    rclcpp::Time last_map_update;
+    bool has_map_update = false;
+    double map_radius;          // m, how much of the map around the robot is kept
+    double foothold_search;     // m, how far a landing spot may move to get off an edge
+    double foothold_edge;       // m, flat ground needed around a foothold
+    double foothold_flatness;   // m, height difference within foothold_edge that still counts as flat
+    double step_clearance;      // m, how far a swinging foot clears the highest ground on its way
+    double map_height_deadband; // m, the map only changes a landing height by more than this: small
+                                // differences are mostly the body's pitch skewing the points, and
+                                // following them rocked the body
+    HeightMap heightMap{0.02};
+    double ground_level = 0.0;  // m, how far the body has risen to follow the ground since startup;
+                                // TF keeps base_footprint at z = 0, so map heights are TF heights plus this
+    std::shared_ptr<tf2_ros::Buffer> tf_buffer;
+    std::shared_ptr<tf2_ros::TransformListener> tf_listener;
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr depth_sub;
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr terrain_map_pub;
+    rclcpp::TimerBase::SharedPtr terrain_map_timer;
+    std::array<double, MAX_LEGS + 1> swing_lift{};      // m, lift for each swing (0 = the default)
+
     // Load balancing
     bool load_balancing;       // adjust foot heights to spread the weight evenly
     double load_balance_gain;  // m/(N s), how fast a foot moves per newton of extra load; depends on how
@@ -260,6 +337,13 @@ public:
     void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
     rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);
     bool feetAtStart();
+    Vector3d plantedStart(int legNum);
+    bool forcesValid();
+    void adaptToTerrain(double dt);
+    void depthCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg);
+    void publishTerrainMap();
+    bool bodyToMap(Eigen::Isometry2d& transform);
+    void planFoothold(int legNum, Vector3d& target, const Eigen::Isometry2d& bodyToMapTransform);
     void updateLoadBalance(double dt);
     bool reachable(const Vector3d& target);
     void updateWalkLeveling(double dt);

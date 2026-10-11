@@ -1,6 +1,9 @@
 #include "hexapod_gait_controller/gait_controller.hpp"
 
+#include <cstring>
 #include <unordered_map>
+
+#include "sensor_msgs/point_cloud2_iterator.hpp"
 
 /**
  * @brief Entry point, initialises ROS and spins the node
@@ -322,6 +325,21 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "contact_force_off") contact_force_off = parameter.as_double();
         else if (name == "foot_force_filter") foot_force_filter = parameter.as_double();
         else if (name == "load_balancing") load_balancing = parameter.as_bool();
+        else if (name == "terrain_adaptation") terrain_adaptation = parameter.as_bool();
+        else if (name == "touchdown_force") touchdown_force = parameter.as_double();
+        else if (name == "max_step_height") max_step_height = parameter.as_double();
+        else if (name == "seek_speed") seek_speed = parameter.as_double();
+        else if (name == "body_height_rate") body_height_rate = parameter.as_double();
+        else if (name == "step_height") trajectoryGen.swingLift = parameter.as_double();
+        else if (name == "touchdown_ratio") touchdown_ratio = parameter.as_double();
+        else if (name == "stumble_force") stumble_force = parameter.as_double();
+        else if (name == "stumble_lift") stumble_lift = parameter.as_double();
+        else if (name == "terrain_map") terrain_map = parameter.as_bool();
+        else if (name == "foothold_search") foothold_search = parameter.as_double();
+        else if (name == "foothold_edge") foothold_edge = parameter.as_double();
+        else if (name == "foothold_flatness") foothold_flatness = parameter.as_double();
+        else if (name == "step_clearance") step_clearance = parameter.as_double();
+        else if (name == "map_height_deadband") map_height_deadband = parameter.as_double();
         else if (name == "blocked_force_ratio") blocked_force_ratio = parameter.as_double();
         else if (name == "load_balance_gain") load_balance_gain = parameter.as_double();
         else if (name == "load_balance_max") load_balance_max = parameter.as_double();
@@ -602,6 +620,7 @@ bool GaitController::startup(double dt) {
     sendJointcommands(joint_state_msg);
 
     if (startup_progress >= 1.0) {
+        heightMap.clear();
         RCLCPP_INFO(this->get_logger(), "Startup sequence complete");
         return true;
     }
@@ -757,6 +776,106 @@ bool GaitController::isSwinging(int legNum) const {
 }
 
 /**
+ * @brief A leg's start position on its own patch of ground
+ * @param[in] legNum The leg number
+ * @return The start position (leg frame), raised or lowered by the leg's terrain offset
+*/
+Vector3d GaitController::plantedStart(int legNum) {
+    return gaitConfig.startPosition.at(legNum) + Vector3d(0.0, 0.0, terrain_offset[legNum]);
+}
+
+/**
+ * @brief Whether the foot forces can be trusted
+ * @return true once the forces add up to a robot standing on its feet; false without effort data
+ *         (mock hardware reports none) or with the robot lifted
+*/
+bool GaitController::forcesValid() {
+    double total = 0.0;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        total += std::max(0.0, foot_forces[legNum].z());
+    }
+    return has_foot_forces && total > 3.0 * contact_force_on;
+}
+
+/**
+ * @brief Follow uneven ground with the feet
+ * @param[in] dt The time since the last tick (s)
+ * @note A swinging foot that meets the ground in the second half of its swing stops there and
+ *       becomes a stance foot, so stepping onto something higher doesn't push the body up. One
+ *       that finishes its swing without touching down keeps reaching down at seek_speed until it
+ *       does. Each foot remembers its ground height (up to max_step_height either way), stays on
+ *       it in stance and aims for it on its next swing. The body rises or falls at
+ *       body_height_rate so the feet's average ground is back at nominal; slopes are left to
+ *       leveling. Off, or without force data, the offsets ease back to zero.
+*/
+void GaitController::adaptToTerrain(double dt) {
+    const Vector3d nominal = gaitConfig.startPosition.at(1);  // all legs share the start height
+    if (!terrain_adaptation || !forcesValid()) {
+        seeking.fill(false);
+        landing_check.fill(false);
+    } else {
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            const Vector3d& force = foot_forces[legNum];
+            const double sideways = force.head<2>().norm();
+            const bool loaded = force.z() > touchdown_force;
+            // Landing pushes up; catching an edge on the way across pushes back
+            const bool landed = loaded && force.z() > touchdown_ratio * sideways;
+            // Only once the foot is up: at lift-off it still carries its stance forces
+            if (leg_swinging[legNum] && phase_progress > 0.2 && phase_progress < 0.9 && sideways > stumble_force && !landed &&
+                stumble_target[legNum] == 0.0) {
+                stumble_target[legNum] = stumble_lift;
+                RCLCPP_DEBUG(this->get_logger(), "Leg %d stumbled at s=%.2f", legNum, phase_progress);
+            }
+            // Only well above where it was aiming: touching a little early is just a normal landing,
+            // and counting it as higher ground made the body creep upwards on flat floor
+            const bool aboveTarget = current_leg_positions[legNum].z() - swing_target[legNum].z() > 0.01;
+            // It has to look landed for 3 ticks in a row: a one-tick force spike mid-swing once
+            // planted a foot 33 mm up on flat floor
+            touchdown_ticks[legNum] = (leg_swinging[legNum] && phase_progress > 0.6 && landed && aboveTarget)
+                ? touchdown_ticks[legNum] + 1 : 0;
+            if (touchdown_ticks[legNum] >= 3) {
+                // Touched down early: plant the foot here
+                touchdown_ticks[legNum] = 0;
+                leg_swinging[legNum] = false;
+                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - nominal.z(),
+                    -max_step_height, max_step_height);
+                RCLCPP_DEBUG(this->get_logger(), "Leg %d touched down %.1f mm high", legNum, terrain_offset[legNum] * 1000.0);
+            } else if (landing_check[legNum] && !leg_swinging[legNum]) {
+                // Its swing ended unloaded: if it is still unloaded once the weight has had time to
+                // come onto it, the ground is lower than expected
+                if (force.z() > contact_force_off) {
+                    landing_check[legNum] = false;
+                } else if ((unloaded_time[legNum] += dt) > 0.15) {
+                    landing_check[legNum] = false;
+                    seeking[legNum] = true;
+                }
+            } else if (seeking[legNum] && !leg_swinging[legNum]) {
+                if (force.z() > contact_force_on || terrain_offset[legNum] <= -max_step_height) {
+                    seeking[legNum] = false;
+                    RCLCPP_DEBUG(this->get_logger(), "Leg %d found ground %.1f mm low", legNum, -terrain_offset[legNum] * 1000.0);
+                } else {
+                    terrain_offset[legNum] = std::max(-max_step_height, terrain_offset[legNum] - seek_speed * dt);
+                }
+            }
+        }
+    }
+
+    // Body height follows the average ground (or the offsets unwind when adaptation is off)
+    double mean = 0.0;
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        mean += terrain_offset[legNum] / MAX_LEGS;
+    }
+    const double shift = std::clamp(mean, -body_height_rate * dt, body_height_rate * dt);
+    ground_level += shift;  // the body rises by shift
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        terrain_offset[legNum] -= shift;
+        if (!terrain_adaptation || !forcesValid()) {
+            terrain_offset[legNum] -= std::clamp(terrain_offset[legNum], -body_height_rate * dt, body_height_rate * dt);
+        }
+    }
+}
+
+/**
  * @brief Whether every foot is at its start position
  * @return true if every commanded foot is within 1 mm of its start position
 */
@@ -765,7 +884,7 @@ bool GaitController::feetAtStart() {
     // looser tolerance counted it as down, so it was never planted
     constexpr double POSITION_TOLERANCE = 0.001;  // m
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
-        if ((current_leg_positions[legNum] - gaitConfig.startPosition.at(legNum)).norm() > POSITION_TOLERANCE) {
+        if ((current_leg_positions[legNum] - plantedStart(legNum)).norm() > POSITION_TOLERANCE) {
             return false;
         }
     }
@@ -802,8 +921,7 @@ void GaitController::returnToStart(double dt) {
             // Swing: move to start position
             [this](int legNum, const Vector3d& currentPos) {
                 (void)currentPos;  // Use actual current position from current_leg_positions
-                auto it = gaitConfig.startPosition.find(legNum);
-                return (it != gaitConfig.startPosition.end()) ? it->second : current_leg_positions[legNum];
+                return plantedStart(legNum);
             },
             // Stance: hold current position
             [](int, const Vector3d& currentPos) {
@@ -906,12 +1024,16 @@ std::array<Vector3d, MAX_LEGS + 1> GaitController::walkTargets(double forward, d
                 continue;
             }
             SwingSpline spline;
-            trajectoryGen.genSwingSpline(spline, swing_start[legNum], swing_target[legNum]);
+            trajectoryGen.genSwingSpline(spline, swing_start[legNum], swing_target[legNum],
+                swing_lift[legNum] > 0.0 ? swing_lift[legNum] : trajectoryGen.swingLift);
             targets[legNum] = trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s);
+            // A stumble lifts the foot higher, fading out over the last 30% so it still lands on target
+            targets[legNum].z() += stumble_boost[legNum] * std::min(1.0, (1.0 - s) / 0.3);
         } else {
             const Vector3d& current = current_leg_positions[legNum];
             targets[legNum] = trajectoryGen.stanceTarget(legNum, current,
                 trajectoryGen.footDisplacementFrom(forward, left, yaw, legNum, current, moveDt));
+            targets[legNum].z() = plantedStart(legNum).z();  // on its own ground
         }
     }
     return targets;
@@ -937,6 +1059,7 @@ void GaitController::walk(double dt) {
     if (phase_progress == 0.0) {
         applyPendingGait();
     }
+    adaptToTerrain(dt);
 
     // Current command, capped at what this gait can do
     double forward = current_motion_intent.forward;
@@ -964,6 +1087,9 @@ void GaitController::walk(double dt) {
     // Start of a phase: the next group lifts off from where it stands
     if (phase_progress == 0.0) {
         const auto& swingGroup = trajectoryGen.gaitState.config[phase];
+        stumble_target.fill(0.0);
+        stumble_boost.fill(0.0);
+        swing_lift.fill(0.0);
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
             leg_swinging[legNum] = std::find(swingGroup.begin(), swingGroup.end(), legNum) != swingGroup.end();
             swing_start[legNum] = current_leg_positions[legNum];
@@ -973,13 +1099,24 @@ void GaitController::walk(double dt) {
         }
     }
 
+    // Stumble lift ramps in at 0.5 m/s rather than jerking the foot up
+    for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+        stumble_boost[legNum] += std::clamp(stumble_target[legNum] - stumble_boost[legNum], -0.5 * dt, 0.5 * dt);
+    }
+
     // Swing landing targets follow the command, at a limited rate. Both ends stay inside the
     // stride circle, so every point in between does too.
     const double maxTargetStep = max_target_speed * dt;
+    Eigen::Isometry2d bodyToMapTransform;
+    const bool useMap = terrain_map && terrain_adaptation && forcesValid() && bodyToMap(bodyToMapTransform);
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         if (!leg_swinging[legNum]) continue;
         Vector3d desired = trajectoryGen.swingTarget(legNum,
             trajectoryGen.footDisplacement(forward, left, yaw, legNum, stanceTime / 2.0));
+        desired.z() = plantedStart(legNum).z();  // expect the ground where this foot last stood
+        if (useMap) {
+            planFoothold(legNum, desired, bodyToMapTransform);  // or what the camera saw there
+        }
         Vector3d step = desired - swing_target[legNum];
         if (step.norm() > maxTargetStep) {
             step *= maxTargetStep / step.norm();
@@ -1001,6 +1138,22 @@ void GaitController::walk(double dt) {
 
     phase_progress = std::min(1.0, phase_progress + ds);
     if (phase_progress >= 1.0) {
+        // A swing that ends without the foot touching down: keep reaching down for the ground
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            if (leg_swinging[legNum] && terrain_adaptation) {
+                // The foot is where its swing aimed: that's its ground now
+                terrain_offset[legNum] = std::clamp(current_leg_positions[legNum].z() - gaitConfig.startPosition.at(legNum).z(),
+                    -max_step_height, max_step_height);
+            }
+            // A foot that has just landed takes a moment to load up (the other legs still carry the
+            // weight), and treating that as missing ground ratcheted the feet down a few mm every
+            // step: check again once the weight has had time to come onto it
+            if (leg_swinging[legNum] && terrain_adaptation && forcesValid() &&
+                foot_forces[legNum].z() < contact_force_off) {
+                landing_check[legNum] = true;
+                unloaded_time[legNum] = 0.0;
+            }
+        }
         leg_swinging.fill(false);
         phase = (phase + 1) % trajectoryGen.gaitState.config.size();
         phase_progress = 0.0;
@@ -1038,14 +1191,28 @@ bool GaitController::tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX
  *       whatever the centre of mass puts on them. Each change is stripped of any part that
  *       would raise or tilt the body (a plane fitted through the planted feet), leaving only
  *       the twist that moves weight between feet, so body height and leveling are untouched.
- *       With load_balancing off, the offsets unwind.
+ *       With load_balancing off, the offsets unwind. Only while standing still (tilt mode
+ *       included): walking, the offsets are folded into each foot's terrain height instead.
 */
 void GaitController::updateLoadBalance(double dt) {
     constexpr double MAX_RATE = 0.02;  // m/s, fastest a foot is raised or lowered
     const double maxStep = MAX_RATE * dt;
 
+    // Only while standing still: walking, terrain adaptation owns the foot heights, and the two
+    // fought. Once walking starts the balancing is folded into each foot's ground height.
+    const bool standing = std::abs(current_motion_intent.forward) < 1e-3 && std::abs(current_motion_intent.left) < 1e-3 &&
+        std::abs(current_motion_intent.yaw) < 1e-3;  // tilt mode counts: its feet stay planted
+    if (!standing && terrain_adaptation) {
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            terrain_offset[legNum] = std::clamp(terrain_offset[legNum] + foot_height_offset[legNum],
+                -max_step_height, max_step_height);
+            foot_height_offset[legNum] = 0.0;
+        }
+        return;
+    }
+
     std::array<double, MAX_LEGS + 1> change{};
-    if (!load_balancing) {
+    if (!load_balancing || !standing) {
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
             change[legNum] = -foot_height_offset[legNum];
         }
@@ -1296,5 +1463,177 @@ void GaitController::tilt(double dt, bool exiting) {
         phase = 0;
         phase_progress = 0.0;
         RCLCPP_INFO(this->get_logger(), "Tilt mode finished, body back to neutral");
+    }
+}
+
+/**
+ * @brief Add a depth camera frame to the height map
+ * @param[in] msg The point cloud
+ * @note Only once the startup sequence is complete, and at most map_update_rate times a second.
+ *       Uses every depth_stride-th row and column. Points are moved into map_frame with TF; their
+ *       height is relative to the ground under the robot at startup (TF height plus ground_level).
+ *       Cells further than map_radius from the robot are dropped.
+*/
+void GaitController::depthCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
+    // Not until the robot is standing: before that TF's body height is wrong (in simulation the
+    // robot drops in from 0.5 m), and anything seen then would be mapped far too low
+    if (!terrain_map || !positions_initialized) {
+        return;
+    }
+    const rclcpp::Time stamp(msg->header.stamp, this->get_clock()->get_clock_type());
+    if (has_map_update && (stamp - last_map_update).seconds() < map_update_period) {
+        return;
+    }
+    last_map_update = stamp;
+    has_map_update = true;
+    geometry_msgs::msg::TransformStamped tf;
+    try {
+        tf = tf_buffer->lookupTransform(map_frame, msg->header.frame_id, msg->header.stamp,
+                                        rclcpp::Duration::from_seconds(0.05));
+    } catch (const tf2::TransformException& e) {
+        RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Depth points not used: %s", e.what());
+        return;
+    }
+    // The robot's own front feet and lower legs come into view at the end of their stride: drop
+    // points within 6 cm (horizontally) of any foot, or they map as bumps right where it steps next
+    constexpr double SELF_FILTER_RADIUS = 0.06;  // m
+    Eigen::Isometry2d bodyToMapNow;
+    std::vector<Vector2d> feetInMap;
+    if (bodyToMap(bodyToMapNow)) {
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            feetInMap.push_back(bodyToMapNow * trajectoryGen.legToBody(legNum, measured_leg_positions[legNum]).head<2>());
+        }
+    }
+    auto onOwnLeg = [&feetInMap](const Vector3d& p) {
+        for (const auto& foot : feetInMap) {
+            if ((p.head<2>() - foot).squaredNorm() < SELF_FILTER_RADIUS * SELF_FILTER_RADIUS) return true;
+        }
+        return false;
+    };
+
+    const auto& t = tf.transform;
+    Eigen::Isometry3d transform = Eigen::Isometry3d::Identity();
+    transform.linear() = Eigen::Quaterniond(t.rotation.w, t.rotation.x, t.rotation.y, t.rotation.z).toRotationMatrix();
+    transform.translation() = Vector3d(t.translation.x, t.translation.y, t.translation.z);
+
+    // Read only the rows and columns used, straight from the buffer: stepping through all ~300k
+    // points of a frame took long enough to delay gait ticks
+    int xOffset = -1, yOffset = -1, zOffset = -1;
+    for (const auto& field : msg->fields) {
+        if (field.datatype != sensor_msgs::msg::PointField::FLOAT32) continue;
+        if (field.name == "x") xOffset = field.offset;
+        else if (field.name == "y") yOffset = field.offset;
+        else if (field.name == "z") zOffset = field.offset;
+    }
+    if (xOffset < 0 || yOffset < 0 || zOffset < 0) {
+        return;
+    }
+    const uint32_t stride = static_cast<uint32_t>(std::max(1, depth_stride));
+    const uint32_t rows = std::max<uint32_t>(1, msg->height);
+    std::vector<Vector3d> points;
+    points.reserve((msg->width / stride + 1) * (rows / stride + 1));
+    for (uint32_t row = 0; row < rows; row += stride) {
+        for (uint32_t col = 0; col < msg->width; col += stride) {
+            const size_t base = row * msg->row_step + col * msg->point_step;
+            if (base + msg->point_step > msg->data.size()) break;
+            float x, y, z;
+            std::memcpy(&x, &msg->data[base + xOffset], sizeof(float));
+            std::memcpy(&y, &msg->data[base + yOffset], sizeof(float));
+            std::memcpy(&z, &msg->data[base + zOffset], sizeof(float));
+            if (!std::isfinite(x) || !std::isfinite(y) || !std::isfinite(z)) continue;
+            Vector3d p = transform * Vector3d(x, y, z);
+            if (onOwnLeg(p)) continue;
+            p.z() += ground_level;
+            points.push_back(p);
+        }
+    }
+    heightMap.insert(points);
+    heightMap.prune(transform.translation().head<2>(), map_radius);
+}
+
+/**
+ * @brief Publish the height map as a point cloud in map_frame, for viewing in RViz
+ * @note One point per cell, at its height as TF sees it (so it lines up with the robot model)
+*/
+void GaitController::publishTerrainMap() {
+    if (!terrain_map || terrain_map_pub->get_subscription_count() == 0) {
+        return;
+    }
+    const auto cells = heightMap.cellCentres();
+    sensor_msgs::msg::PointCloud2 cloud;
+    cloud.header.stamp = this->now();
+    cloud.header.frame_id = map_frame;
+    sensor_msgs::PointCloud2Modifier modifier(cloud);
+    modifier.setPointCloud2FieldsByString(1, "xyz");
+    modifier.resize(cells.size());
+    sensor_msgs::PointCloud2Iterator<float> x(cloud, "x"), y(cloud, "y"), z(cloud, "z");
+    for (const auto& c : cells) {
+        *x = c.x(); *y = c.y(); *z = c.z() - ground_level;
+        ++x; ++y; ++z;
+    }
+    terrain_map_pub->publish(cloud);
+}
+
+/**
+ * @brief Current transform from the body's horizontal plane to the map
+ * @param[out] transform Body (x, y) to map (x, y)
+ * @return false if TF can't provide it yet
+*/
+bool GaitController::bodyToMap(Eigen::Isometry2d& transform) {
+    geometry_msgs::msg::TransformStamped tf;
+    try {
+        tf = tf_buffer->lookupTransform(map_frame, base_frame, tf2::TimePointZero);
+    } catch (const tf2::TransformException&) {
+        return false;
+    }
+    const auto& q = tf.transform.rotation;
+    const double yaw = std::atan2(2.0 * (q.w * q.z + q.x * q.y), 1.0 - 2.0 * (q.y * q.y + q.z * q.z));
+    transform = Eigen::Translation2d(tf.transform.translation.x, tf.transform.translation.y) * Eigen::Rotation2Dd(yaw);
+    return true;
+}
+
+/**
+ * @brief Use the height map to place a swinging foot's landing spot and set its lift
+ * @param[in] legNum The leg number
+ * @param[in,out] target The landing target (leg frame); its height comes from the map, and it
+ *                moves up to foothold_search to keep foothold_edge of flat ground around it
+ * @param[in] bodyToMapTransform Body (x, y) to map (x, y)
+ * @note Ground the camera hasn't seen leaves the target alone (force sensing still finds it), and
+ *       so does a mapped height within map_height_deadband of the foot's own ground.
+ *       The lift clears the highest seen ground between lift-off and landing by step_clearance.
+*/
+void GaitController::planFoothold(int legNum, Vector3d& target, const Eigen::Isometry2d& bodyToMapTransform) {
+    const Vector3d nominal = gaitConfig.startPosition.at(legNum);
+    const Vector3d bodyTarget = trajectoryGen.legToBody(legNum, target);
+    Vector2d mapTarget = bodyToMapTransform * bodyTarget.head<2>();
+
+    if (auto flat = heightMap.flatFoothold(mapTarget, foothold_search, foothold_edge, foothold_flatness)) {
+        const Vector2d moved = bodyToMapTransform.inverse() * *flat;
+        Vector3d legMoved = trajectoryGen.bodyToLeg(legNum, Vector3d(moved.x(), moved.y(), bodyTarget.z()));
+        // Stay inside the stride circle
+        const Vector2d offset = legMoved.head<2>() - nominal.head<2>();
+        if (offset.norm() > MAX_STRIDE_LENGTH) {
+            legMoved.head<2>() = nominal.head<2>() + offset * (MAX_STRIDE_LENGTH / offset.norm());
+        }
+        target.head<2>() = legMoved.head<2>();
+        mapTarget = bodyToMapTransform * trajectoryGen.legToBody(legNum, target).head<2>();
+    }
+    if (auto ground = heightMap.height(mapTarget)) {
+        const double mapped = std::clamp(*ground - ground_level, -max_step_height, max_step_height);
+        if (std::abs(nominal.z() + mapped - target.z()) > map_height_deadband) {
+            target.z() = nominal.z() + mapped;
+        }
+    }
+
+    // Lift enough to clear the highest ground on the way (the foot peaks at ~0.88x the lift)
+    const Vector2d mapStart = bodyToMapTransform * trajectoryGen.legToBody(legNum, swing_start[legNum]).head<2>();
+    if (auto highest = heightMap.maxAlong(mapStart, mapTarget, 0.02)) {
+        const double ends = std::max(swing_start[legNum].z(), target.z()) - nominal.z();
+        const double needed = (*highest - ground_level) - ends + step_clearance;
+        const double wanted = std::clamp(needed / 0.88, trajectoryGen.swingLift, 0.12);
+        // Changes during a swing reshape it: limit them to 0.2 m/s so the foot doesn't jerk
+        const double current = swing_lift[legNum] > 0.0 ? swing_lift[legNum] : trajectoryGen.swingLift;
+        const double maxChange = 0.2 * nominal_dt;
+        swing_lift[legNum] = current + std::clamp(wanted - current, -maxChange, maxChange);
     }
 }
