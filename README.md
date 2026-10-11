@@ -210,9 +210,11 @@ See [Gait controller internals](#gait-controller-internals) below.
   stick is the gait controller's limit from `get_capabilities`, which it
   requests in the background until the gait controller answers; joystick
   input is ignored until then. Axis and button numbers are parameters,
-  defaulting to the SDL game controller layout that ROS 2's `joy_node`
-  reports for any supported gamepad (Xbox names first, PlayStation in
-  brackets):
+  defaulting to the SDL game controller layout that `joy`'s
+  `game_controller_node` reports for any supported gamepad (Xbox names
+  first, PlayStation in brackets). The operator launch runs that node: plain
+  `joy_node` reports some controllers in their raw order (the Steam Deck's
+  under Humble puts the triggers on axes 2 and 5):
 
   | Input | Walking (normal / strafe) | Tilt mode |
   |---|---|---|
@@ -754,7 +756,9 @@ A separate, **ROS 2 Humble** workspace (note the distro mismatch with
 `hexapod_ws`'s Jazzy — see [Known gaps](#known-gaps--todo)) containing a
 single package, `operator_bringup`, which launches:
 
-- **`joy_node`** — reads `/dev/input/js1`, 0.05 deadzone, 20 Hz autorepeat.
+- **`game_controller_node`** (from `joy`) — reads the first gamepad
+  (`device_id` 0) in the standard game controller layout, 0.05 deadzone,
+  20 Hz autorepeat.
 - **`foxglove_bridge_node`** — lets the operator's Foxglove Studio connect
   back to the robot's own Foxglove bridge (or vice versa, depending on
   which side initiates), for visualizing joint states, IMU, sim camera
