@@ -37,7 +37,9 @@ export DISPLAY=${DISPLAY:-:0}
 export WAYLAND_DISPLAY=${WAYLAND_DISPLAY:-wayland-0}
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 
-ros2 run joy joy_node &
+# game_controller_node reports the standard layout controller_teleop expects; plain joy_node
+# gives the Deck's controls in their raw order (triggers on axes 2 and 5)
+ros2 run joy game_controller_node &
 JOY_PID=$!
 echo "ros2 joy node PID: $JOY_PID"
 

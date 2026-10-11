@@ -11,7 +11,10 @@ def generate_launch_description():
 
     joy_node = Node(
         package='joy',
-        executable='joy_node',
+        # The game controller mapping reports the same layout for every supported gamepad (sticks
+        # on axes 0-3, triggers on 4 and 5), which controller_teleop expects. Plain joy_node gave
+        # the Steam Deck's raw order instead (triggers on axes 2 and 5).
+        executable='game_controller_node',
         name='joy_node',
         output='screen',
         parameters=[{
