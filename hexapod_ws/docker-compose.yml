@@ -5,6 +5,9 @@ services:
     restart: unless-stopped
     network_mode: host
     privileged: true
+    # Ahead of everything else on the Pi for CPU, notably the image rebuild hexapod-start.service
+    # runs at boot after a code update: it ran alongside the robot and made control lag
+    cpu_shares: 8192
     volumes:
       # Host /dev, so udev symlinks (/dev/rplidar) and devices plugged in after start are visible
       - /dev:/dev
