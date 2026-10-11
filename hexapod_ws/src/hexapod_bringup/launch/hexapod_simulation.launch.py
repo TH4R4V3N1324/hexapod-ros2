@@ -29,6 +29,11 @@ def generate_launch_description():
             "front_depth_width": front_depth_width,
             "front_depth_height": front_depth_height,
             "front_depth_rate": front_depth_rate,
+            "gui": LaunchConfiguration('gui'),
+            "spawn_x": LaunchConfiguration('spawn_x'),
+            "spawn_y": LaunchConfiguration('spawn_y'),
+            "spawn_z": LaunchConfiguration('spawn_z'),
+            "spawn_yaw": LaunchConfiguration('spawn_yaw'),
         }.items()
     )
 
@@ -97,7 +102,8 @@ def generate_launch_description():
         name='rviz2',
         output='screen',
         arguments=['-d', rviz_config],
-        parameters=[{'use_sim_time': True}]
+        parameters=[{'use_sim_time': True}],
+        condition=IfCondition(LaunchConfiguration('rviz'))
     )
 
     return LaunchDescription([
@@ -114,8 +120,14 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value='hexapod_world',
-            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles, tilt_platform or rough_terrain).'
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles, tilt_platform, rough_terrain, outdoor_slopes, outdoor_rocks or outdoor_low_friction).'
         ),
+        DeclareLaunchArgument('gui', default_value='true', description='Show the Gazebo window (false runs the server only).'),
+        DeclareLaunchArgument('rviz', default_value='true', description='Start RViz.'),
+        DeclareLaunchArgument('spawn_x', default_value='0.0', description='Robot spawn x (m).'),
+        DeclareLaunchArgument('spawn_y', default_value='0.0', description='Robot spawn y (m).'),
+        DeclareLaunchArgument('spawn_z', default_value='0.5', description='Robot spawn height (m); it drops onto the ground.'),
+        DeclareLaunchArgument('spawn_yaw', default_value='0.0', description='Robot spawn heading (rad).'),
         DeclareLaunchArgument(
             'bridge_vision',
             default_value='false',
