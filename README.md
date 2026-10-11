@@ -271,6 +271,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/set_mode` | `hexapod_interfaces/SetMode` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/set_height` | `hexapod_interfaces/SetHeight` | `gait_controller` | — |
 | `/get_capabilities` | `hexapod_interfaces/GetCapabilities` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
+| `/set_terrain_adaptation`, `/set_terrain_map`, `/set_walk_leveling`, `/set_tilt_leveling`, `/set_tilt_lock_yaw`, `/set_load_balancing` | `std_srvs/SetBool` | `gait_controller` | — |
 | `/ik_solver` | `hexapod_interfaces/IKSolver` | `kinematic_solver` (standalone service, not wired into `gait_controller`'s own launch) | — |
 | `/fk_solver` | `hexapod_interfaces/FKSolver` | `kinematic_solver` | — |
 
@@ -498,6 +499,22 @@ inside its stride circle and within reach (`test_leg_clearance` covers feet
 | `tilt_lock_yaw` | false | also hold the heading; off because the IMU's yaw drifts without a magnetometer and holding it uses up the stride |
 
 The tilt parameters can be changed while running (`ros2 param set`).
+
+Each on/off feature also has a `std_srvs/SetBool` service that sets its
+parameter, so the two always agree:
+
+```bash
+ros2 service call /set_terrain_adaptation std_srvs/srv/SetBool "{data: false}"
+```
+
+| Service | Feature |
+|---|---|
+| `/set_terrain_adaptation` | follow uneven ground with the feet |
+| `/set_terrain_map` | use the depth camera's height map for footholds and step heights |
+| `/set_walk_leveling` | keep the body level while walking |
+| `/set_tilt_leveling` | hold the body's roll and pitch in tilt mode |
+| `/set_tilt_lock_yaw` | also hold the heading in tilt mode |
+| `/set_load_balancing` | spread the weight evenly while standing |
 
 To try it on a moving platform:
 

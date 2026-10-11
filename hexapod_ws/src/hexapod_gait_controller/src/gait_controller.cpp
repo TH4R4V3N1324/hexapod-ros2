@@ -422,6 +422,28 @@ void GaitController::setHeightCallback(
 
 
 /**
+ * @brief Service callback to switch a feature on or off
+ * @param[in] feature The feature's parameter name, e.g. "terrain_adaptation"
+ * @param[in] request data: true to switch it on, false to switch it off
+ * @param[out] response Whether the change was accepted, and the feature's state
+ * @note Sets the parameter of the same name, so services and ros2 param always agree, and the
+ *       change takes effect straight away (through parametersCallback)
+*/
+void GaitController::toggleCallback(
+    const std::string& feature,
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response
+) {
+    const auto result = this->set_parameter(rclcpp::Parameter(feature, static_cast<bool>(request->data)));
+    response->success = result.successful;
+    response->message = feature + (request->data ? " on" : " off");
+    if (!result.successful) {
+        response->message += " refused: " + result.reason;
+    }
+    RCLCPP_INFO(this->get_logger(), "%s", response->message.c_str());
+}
+
+/**
  * @brief Service callback to report supported gaits and modes
  * @param[in] request The service request
  * @param[out] response The service response

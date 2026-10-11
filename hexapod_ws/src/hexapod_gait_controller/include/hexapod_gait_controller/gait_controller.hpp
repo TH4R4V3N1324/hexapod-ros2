@@ -19,6 +19,7 @@
 #include "geometry_msgs/msg/wrench_stamped.hpp"
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
@@ -153,6 +154,17 @@ public:
         // ROS timer, so the gait follows simulation time when use_sim_time is set
         gait_timer = this->create_timer(std::chrono::duration<double>(nominal_dt), std::bind(&GaitController::gaitTimerCallback, this));
 
+        // A SetBool service for each feature that can be switched on and off while running
+        for (const char* feature : {"terrain_adaptation", "terrain_map", "walk_leveling", "tilt_leveling",
+                                    "tilt_lock_yaw", "load_balancing"}) {
+            const std::string name = feature;
+            toggle_services.push_back(this->create_service<std_srvs::srv::SetBool>("set_" + name,
+                [this, name](const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+                             std::shared_ptr<std_srvs::srv::SetBool::Response> response) {
+                    toggleCallback(name, request, response);
+                }));
+        }
+
         RCLCPP_INFO(this->get_logger(), "GaitController node started at %.1f Hz, %.2f s per phase", loop_rate_hz, phase_duration);
     }
 private:
@@ -172,6 +184,7 @@ private:
     rclcpp::Service<SetMode>::SharedPtr set_mode_service;
     rclcpp::Service<SetHeight>::SharedPtr set_height_service;
     rclcpp::Service<GetCapabilities>::SharedPtr get_capabilities_service;
+    std::vector<rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr> toggle_services;
     TrajectoryGenerator trajectoryGen;
     GaitConfig gaitConfig;
     KinematicSolver ikSolver;
@@ -352,6 +365,8 @@ public:
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
+    void toggleCallback(const std::string& feature, const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+                        std::shared_ptr<std_srvs::srv::SetBool::Response> response);
     void getCapabilitiesCallback(const std::shared_ptr<GetCapabilities::Request> request, std::shared_ptr<GetCapabilities::Response> response);
     void gaitTimerCallback();
     void appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum);
