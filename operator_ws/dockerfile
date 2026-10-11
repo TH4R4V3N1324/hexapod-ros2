@@ -1,14 +1,16 @@
-FROM osrf/ros:humble-desktop-full
+# Same ROS 2 distro as the robot (hexapod_ws). The operator side only runs joy and
+# foxglove_bridge, so the base image is enough; Foxglove Studio runs outside ROS.
+FROM ros:jazzy-ros-base
 
 SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y \
-    ros-humble-joy \
-    ros-humble-foxglove-bridge \
+    ros-jazzy-joy \
+    ros-jazzy-foxglove-bridge \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /operator_ws
 WORKDIR /operator_ws
-RUN . /opt/ros/humble/setup.sh && colcon build
+RUN . /opt/ros/jazzy/setup.sh && colcon build
 
-CMD ["bash", "-c", "source /opt/ros/humble/setup.bash && source /operator_ws/install/setup.bash && ros2 launch operator_bringup operator.launch.py"]
+CMD ["bash", "-c", "source /opt/ros/jazzy/setup.bash && source /operator_ws/install/setup.bash && ros2 launch operator_bringup operator.launch.py"]
