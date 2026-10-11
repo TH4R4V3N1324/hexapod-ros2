@@ -15,7 +15,7 @@ def generate_launch_description():
         name='joy_node',
         output='screen',
         parameters=[{
-            'dev': '/dev/input/js1',
+            'device_id': 0,
             'deadzone': 0.05,
             'autorepeat_rate': 20.0,
         }]
