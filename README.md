@@ -827,18 +827,17 @@ Two ways to run it:
 `steamdeck/` scripts turn a Steam Deck (via `distrobox`) into a portable
 Foxglove viewing/joystick client:
 
+- **`setup_distrobox.sh`** — run once on the Deck (in Konsole) to create the
+  `jazzy` distrobox: Ubuntu 24.04 with ROS 2 Jazzy, matching the robot, plus
+  `joy` and Foxglove Studio. Running it again updates them.
 - **`hexapod_launch.sh`** — the Steam-launchable entry point. Sets up the
   Deck's Wayland/X display environment, then runs `ros2_hexapod_launch.sh`
-  inside a `distrobox` Ubuntu container.
+  inside the `jazzy` distrobox.
 - **`ros2_hexapod_launch.sh`** — finds the robot's `foxglove_bridge` (port
   `8765`): the hotspot address 192.168.50.1 first, otherwise a scan of the
   local `192.168.x.x/24` subnet. It then starts `game_controller_node` and
   opens `foxglove-studio` in kiosk mode pointed at the bridge over a
-  `foxglove://` deep link. It sources whichever ROS 2 the distrobox has,
-  Jazzy or Humble. The Deck's distrobox is currently Ubuntu 22.04 with Humble:
-  its `/joy` reaches the Jazzy robot fine, though it logs `sequence size
-  exceeds remaining buffer` for some of Jazzy's internal topics it can't
-  decode.
+  `foxglove://` deep link.
 - `images/` — icon/header art used for the Steam Deck game-mode shortcut.
 
 This gives a no-typing, walk-up client: power on the Deck, launch the

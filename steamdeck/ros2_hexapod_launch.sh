@@ -33,20 +33,12 @@ fi
 
 echo "Found bridge at: $HOST"
 
-# Whichever ROS 2 the distrobox has: the robot runs Jazzy, but Humble's /joy reaches it too
-ROS_SETUP=""
-for distro in jazzy humble; do
-    if [ -f "/opt/ros/$distro/setup.bash" ]; then
-        ROS_SETUP="/opt/ros/$distro/setup.bash"
-        break
-    fi
-done
-if [ -z "$ROS_SETUP" ]; then
-    echo "No ROS 2 (Jazzy or Humble) in /opt/ros, so the controller can't be sent to the robot."
+if [ ! -f /opt/ros/jazzy/setup.bash ]; then
+    echo "No ROS 2 Jazzy in this distrobox, so the controller can't reach the robot."
+    echo "Create the box with steamdeck/setup_distrobox.sh."
     exit 1
 fi
-echo "Using $ROS_SETUP"
-source "$ROS_SETUP"
+source /opt/ros/jazzy/setup.bash
 
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax --exit-with-session)
