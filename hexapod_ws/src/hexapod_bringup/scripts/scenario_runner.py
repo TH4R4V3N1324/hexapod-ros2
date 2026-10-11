@@ -9,6 +9,7 @@ against what was commanded and against the EKF's estimate (/odometry/filtered).
 
     ros2 run hexapod_bringup scenario_runner.py                 # every scenario
     ros2 run hexapod_bringup scenario_runner.py --only hill     # names containing "hill"
+    ros2 run hexapod_bringup scenario_runner.py --only flat,rocks --disable terrain_map
     ros2 run hexapod_bringup scenario_runner.py --list
     ros2 run hexapod_bringup scenario_runner.py --only rocks --gui   # watch in the Gazebo window
 
@@ -23,6 +24,7 @@ import argparse
 import csv
 import math
 import os
+import re
 import signal
 import subprocess
 import sys
@@ -36,6 +38,7 @@ from hexapod_interfaces.srv import GetCapabilities
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from std_srvs.srv import SetBool
 
 FALL_TILT = math.radians(45)   # body tilt that counts as a fall
 STARTUP_TIMEOUT = 120.0        # s of wall time for the simulation to come up
@@ -72,6 +75,7 @@ SCENARIOS = [
     Scenario('hill_20', 'outdoor_slopes', 'Over a 20 deg hill', (0.0, 4.5, 0.5), distance=3.0),
     Scenario('side_slope_10', 'outdoor_slopes', 'Along a 10 deg side slope', (0.0, -2.0, 0.7), distance=2.0),
     Scenario('side_slope_15', 'outdoor_slopes', 'Along a 15 deg side slope', (0.0, -4.0, 0.7), distance=2.0),
+    Scenario('slabs', 'rough_terrain', 'Over low slabs and a step (2-3 cm)', (0.0, 0.0, 0.5), distance=2.0),
     Scenario('rocks_centre', 'outdoor_rocks', 'Through the rock field, centre lane', (0.0, 0.0, 0.5), distance=3.0),
     Scenario('rocks_left', 'outdoor_rocks', 'Through the rock field, left lane', (0.0, 0.8, 0.5), distance=3.0),
     Scenario('rocks_right', 'outdoor_rocks', 'Through the rock field, right lane', (0.0, -0.8, 0.5), distance=3.0),
@@ -166,11 +170,27 @@ class ScenarioNode(Node):
         return True
 
 
+# gait_controller's debug lines for each foot event (see adaptToTerrain)
+EVENT_PATTERN = re.compile(r'\[DEBUG\] \[(\d+\.\d+)\] \[hexapod_gait_controller\]: Leg \d (touched down|found ground|stumbled)')
+EVENTS = {'touched down': 'touchdowns', 'found ground': 'ground_searches', 'stumbled': 'stumbles'}
+
+
+def count_foot_events(log_path, start, end):
+    """Count early touchdowns, searches for ground below and stumbles logged between two wall times."""
+    counts = dict.fromkeys(EVENTS.values(), 0)
+    with open(log_path, errors='replace') as f:
+        for line in f:
+            match = EVENT_PATTERN.search(line)
+            if match and start <= float(match.group(1)) <= end:
+                counts[EVENTS[match.group(2)]] += 1
+    return counts
+
+
 def launch_simulation(scenario, log_path, gui):
     """Start the scenario's world, in its own process group so it can all be stopped."""
     x, y, z = scenario.spawn
     cmd = ['ros2', 'launch', 'hexapod_bringup', 'hexapod_simulation.launch.py',
-           f'world:={scenario.world}', f'gui:={str(gui).lower()}', 'rviz:=false',
+           f'world:={scenario.world}', f'gui:={str(gui).lower()}', 'rviz:=false', 'gait_log_level:=debug',
            f'spawn_x:={x}', f'spawn_y:={y}', f'spawn_z:={z}']
     log = open(log_path, 'w')
     return subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True), log
@@ -192,7 +212,7 @@ def stop_simulation(process, log):
     time.sleep(2.0)
 
 
-def run_scenario(scenario, speed_fraction, log_dir, gui):
+def run_scenario(scenario, speed_fraction, log_dir, gui, disable):
     """Run one scenario in a fresh simulation. Returns a dict of results."""
     result = {'name': scenario.name, 'description': scenario.description}
     process, log = launch_simulation(scenario, log_dir / f'{scenario.name}.log', gui)
@@ -206,6 +226,14 @@ def run_scenario(scenario, speed_fraction, log_dir, gui):
         if caps is None:
             result['error'] = 'no reply from get_capabilities'
             return result
+        for feature in disable:
+            client = node.create_client(SetBool, f'set_{feature}')
+            future = client.call_async(SetBool.Request(data=False)) if client.wait_for_service(timeout_sec=10.0) else None
+            if future:
+                rclpy.spin_until_future_complete(node, future, timeout_sec=10.0)
+            if not future or not future.result() or not future.result().success:
+                result['error'] = f'could not turn off {feature}'
+                return result
 
         twist = Twist()
         if scenario.turn:
@@ -226,11 +254,13 @@ def run_scenario(scenario, speed_fraction, log_dir, gui):
         z_start = node.truth.pose.pose.position.z
         node.max_tilt = tilt_of(node.truth.pose.pose.orientation)
         node.recording = True
+        result['wall_start'] = time.time()
         t0 = node.now()
         if not node.drive(twist, duration, deadline):
             result['error'] = 'timed out walking'
             return result
         elapsed = node.now() - t0
+        result['wall_end'] = time.time()
         node.drive(Twist(), 1.0, deadline)
         node.recording = False
         # Body pose through the run, to see tilt section by section (e.g. up a ramp, across the top)
@@ -299,7 +329,9 @@ def grade(result, baseline_speed):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('--only', default='', help='run scenarios whose name contains this text')
+    parser.add_argument('--only', default='', help='run scenarios whose name contains any of these comma-separated texts')
+    parser.add_argument('--disable', action='append', default=[], metavar='FEATURE',
+                        help='turn off a gait_controller feature for every run (e.g. terrain_map); repeatable')
     parser.add_argument('--list', action='store_true', help='list the scenarios and exit')
     parser.add_argument('--speed', type=float, default=0.6, help='fraction of top speed to walk and turn at (default 0.6)')
     parser.add_argument('--gui', action='store_true', help='show the Gazebo window for each scenario')
@@ -312,7 +344,8 @@ def main():
             print(f'{s.name:<15} {s.world:<22} spawn_x:={x} spawn_y:={y} spawn_z:={z}  {s.description}')
         return
 
-    scenarios = [s for s in SCENARIOS if args.only in s.name]
+    patterns = args.only.split(',')
+    scenarios = [s for s in SCENARIOS if any(p in s.name for p in patterns)]
     # The flat baseline sets the reference speed, so run it first whenever any walking scenario runs
     baseline = next(s for s in SCENARIOS if s.name == 'flat_dry')
     if any(not s.turn for s in scenarios) and baseline not in scenarios:
@@ -323,13 +356,17 @@ def main():
 
     log_dir = Path(args.log_dir)
     log_dir.mkdir(parents=True, exist_ok=True)
+    if args.disable:
+        print(f'gait_controller features off: {", ".join(args.disable)}')
     rclpy.init()
     results = []
     baseline_speed = None
     for i, scenario in enumerate(scenarios, 1):
         print(f'[{i}/{len(scenarios)}] {scenario.name}: {scenario.description} ...', flush=True)
         started = time.monotonic()
-        result = run_scenario(scenario, args.speed, log_dir, args.gui)
+        result = run_scenario(scenario, args.speed, log_dir, args.gui, args.disable)
+        if 'wall_end' in result:
+            result.update(count_foot_events(log_dir / f'{scenario.name}.log', result['wall_start'], result['wall_end']))
         if scenario.name == 'flat_dry' and 'error' not in result:
             baseline_speed = result['speed']
         status, reasons = grade(result, baseline_speed)
@@ -339,7 +376,8 @@ def main():
         took = time.monotonic() - started
         if 'error' in result:
             print(f'      {status}  {result["error"]} ({took:.0f} s, log: {log_dir / scenario.name}.log)', flush=True)
-        elif scenario.turn:
+            continue
+        if scenario.turn:
             print(f'      {status}  turned {result["turned_deg"]:+.0f} deg, drifted {math.hypot(result["forward_m"], result["drift_m"]):.2f} m, '
                   f'odom heading error {result["yaw_error_deg"]:+.1f} deg, tilt {result["mean_tilt_deg"]:.1f} deg mean, '
                   f'{result["max_tilt_deg"]:.1f} max ({took:.0f} s){"  " + result["notes"] if result["notes"] else ""}', flush=True)
@@ -348,10 +386,13 @@ def main():
                   f'climbed {result["climb_m"]:+.2f} m, odom error {result["odom_error_m"]:.2f} m, '
                   f'tilt {result["mean_tilt_deg"]:.1f} deg mean, {result["max_tilt_deg"]:.1f} max ({took:.0f} s){"  " + result["notes"] if result["notes"] else ""}',
                   flush=True)
+        print(f'            feet: {result["touchdowns"]} early touchdowns, {result["ground_searches"]} ground searches, '
+              f'{result["stumbles"]} stumbles', flush=True)
     rclpy.shutdown()
 
     fields = ['name', 'status', 'notes', 'description', 'commanded', 'forward_m', 'drift_m', 'turned_deg', 'climb_m',
-              'speed', 'turn_rate', 'odom_error_m', 'odom_error_frac', 'yaw_error_deg', 'mean_tilt_deg', 'max_tilt_deg', 'fell', 'error']
+              'speed', 'turn_rate', 'odom_error_m', 'odom_error_frac', 'yaw_error_deg', 'mean_tilt_deg', 'max_tilt_deg', 'fell',
+              'touchdowns', 'ground_searches', 'stumbles', 'error']
     with open(log_dir / 'results.csv', 'w', newline='') as f:
         writer = csv.DictWriter(f, fieldnames=fields, extrasaction='ignore')
         writer.writeheader()
