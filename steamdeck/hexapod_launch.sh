@@ -9,4 +9,5 @@ export PATH=$PATH:/home/deck/.local/bin
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-/home/deck/.local/bin/distrobox enter ubuntu --no-tty -- bash -c "$SCRIPT_DIR/ros2_hexapod_launch.sh"
+# Ubuntu 24.04 with ROS 2 Jazzy, matching the robot (made by setup_distrobox.sh)
+/home/deck/.local/bin/distrobox enter jazzy --no-tty -- bash -c "$SCRIPT_DIR/ros2_hexapod_launch.sh"
