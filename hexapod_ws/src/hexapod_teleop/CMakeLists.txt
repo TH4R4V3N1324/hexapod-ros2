@@ -11,6 +11,7 @@ find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(hexapod_interfaces REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_executable(keyboard_teleop src/keyboard_teleop.cpp)
 ament_target_dependencies(keyboard_teleop
@@ -25,6 +26,7 @@ ament_target_dependencies(controller_teleop
   geometry_msgs
   sensor_msgs
   hexapod_interfaces
+  std_srvs
 )
 
 install(TARGETS

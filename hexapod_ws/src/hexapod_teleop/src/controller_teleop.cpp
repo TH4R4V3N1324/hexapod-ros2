@@ -5,6 +5,7 @@
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
+#include "std_srvs/srv/set_bool.hpp"
 #include <algorithm>
 #include <cmath>
 
@@ -14,6 +15,7 @@ using sensor_msgs::msg::Joy;
 using hexapod_interfaces::srv::GetCapabilities;
 using hexapod_interfaces::srv::SetGait;
 using hexapod_interfaces::srv::SetMode;
+using std_srvs::srv::SetBool;
 using std::placeholders::_1;
 
 /**
@@ -38,6 +40,14 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     axis_dpad_y = this->declare_parameter("axis_dpad_y", 7);
     button_mode = this->declare_parameter("button_mode", 7);  // Start
     button_gait = this->declare_parameter("button_gait", 6);  // Back
+
+    // Face buttons switch gait controller features on and off
+    gait_controller_params = std::make_shared<rclcpp::AsyncParametersClient>(this, "hexapod_gait_controller");
+    for (const auto& [feature, button] : std::vector<std::pair<std::string, int>>{
+             {"terrain_adaptation", 0}, {"walk_leveling", 1}, {"load_balancing", 2}, {"tilt_leveling", 3}}) {
+        toggles.push_back({feature, static_cast<int>(this->declare_parameter("button_" + feature, button)),
+                           this->create_client<SetBool>("set_" + feature)});
+    }
 
     // Keep asking until the gait controller answers, without blocking the executor
     capabilities_timer = this->create_wall_timer(std::chrono::seconds(1), std::bind(&ControllerTeleop::fetchCapabilities, this));
@@ -65,6 +75,13 @@ private:
     int axis_left_x, axis_left_y, axis_right_x, axis_right_y;
     int axis_left_trigger, axis_right_trigger, axis_dpad_y;
     int button_mode, button_gait;
+    struct Toggle {
+        std::string feature;  // gait controller parameter, also its set_<feature> service
+        int button;
+        rclcpp::Client<SetBool>::SharedPtr client;
+    };
+    std::vector<Toggle> toggles;
+    std::shared_ptr<rclcpp::AsyncParametersClient> gait_controller_params;
     std::vector<int> previous_buttons;
     bool left_trigger_seen = false;   // joy_node reports 0 for a trigger until it is first moved
     bool right_trigger_seen = false;
@@ -73,6 +90,7 @@ public:
     void fetchCapabilities();
     void cycleMode();
     void cycleGait();
+    void toggleFeature(const Toggle& toggle);
 };
 
 /**
@@ -96,7 +114,8 @@ int main(int argc, char * argv[]) {
  *       Tilt mode (the gait controller ignores /cmd_vel there): left stick shifts the body,
  *       right stick rolls and pitches it, the triggers yaw it and the d-pad raises and lowers it.
  *       Both are always published, and the gait controller uses whichever suits its mode.
- *       Start cycles the mode and Back cycles the gait. Full stick is the gait controller's
+ *       Start cycles the mode and Back cycles the gait; A, B, X and Y switch terrain adaptation,
+ *       walk leveling, load balancing and tilt leveling on and off. Full stick is the gait controller's
  *       limit, so nothing is published until its capabilities have been received.
 */
 void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
@@ -117,6 +136,9 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
 
     if (pressed(button_mode)) cycleMode();
     if (pressed(button_gait)) cycleGait();
+    for (const auto& toggle : toggles) {
+        if (pressed(toggle.button)) toggleFeature(toggle);
+    }
     previous_buttons = msg->buttons;
 
     Twist cmd_vel_msg;
@@ -161,6 +183,34 @@ void ControllerTeleop::cycleMode() {
     request->mode = mode.id;
     set_mode_client->async_send_request(request);
     RCLCPP_INFO(this->get_logger(), "Mode: %s", mode.name.c_str());
+}
+
+/**
+ * @brief Switch a gait controller feature to the opposite of its current state
+ * @param[in] toggle The feature
+ * @note Reads the current state from the gait controller first, so a change made some other way
+ *       (a service call or ros2 param) is never undone by mistake
+*/
+void ControllerTeleop::toggleFeature(const Toggle& toggle) {
+    if (!gait_controller_params->service_is_ready() || !toggle.client->service_is_ready()) {
+        RCLCPP_WARN(this->get_logger(), "Can't switch %s: the gait controller isn't answering", toggle.feature.c_str());
+        return;
+    }
+    auto client = toggle.client;
+    const std::string feature = toggle.feature;
+    gait_controller_params->get_parameters({feature},
+        [this, client, feature](std::shared_future<std::vector<rclcpp::Parameter>> future) {
+            const auto params = future.get();
+            if (params.empty() || params[0].get_type() != rclcpp::ParameterType::PARAMETER_BOOL) {
+                RCLCPP_WARN(this->get_logger(), "Can't read %s from the gait controller", feature.c_str());
+                return;
+            }
+            auto request = std::make_shared<SetBool::Request>();
+            request->data = !params[0].as_bool();
+            client->async_send_request(request, [this](rclcpp::Client<SetBool>::SharedFuture result) {
+                RCLCPP_INFO(this->get_logger(), "%s", result.get()->message.c_str());
+            });
+        });
 }
 
 /**
