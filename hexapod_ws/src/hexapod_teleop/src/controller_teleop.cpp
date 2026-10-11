@@ -8,6 +8,7 @@
 #include "std_srvs/srv/set_bool.hpp"
 #include <algorithm>
 #include <cmath>
+#include <optional>
 
 using geometry_msgs::msg::Twist;
 using geometry_msgs::msg::Pose;
@@ -20,7 +21,8 @@ using std::placeholders::_1;
 
 /**
  * @brief Gamepad teleop node, converts /joy input into /cmd_vel and /body_pose commands
- * @note Axis and button numbers are parameters, defaulting to an Xbox controller on joy_node
+ * @note Axis and button numbers are parameters, defaulting to the SDL game controller layout
+ *       that joy_node reports
 */
 class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node("controller_teleop") {
   	RCLCPP_INFO(this->get_logger(), "Controller Teleop Node has been started.");
@@ -31,15 +33,20 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     set_mode_client = this->create_client<SetMode>("set_mode");
     set_gait_client = this->create_client<SetGait>("set_gait");
 
+    // Defaults follow the SDL game controller layout that ROS 2's joy_node reports for any supported
+    // gamepad (Xbox, PlayStation, ...). They used to follow the raw Xbox order, which put pitch on a
+    // trigger (axis 4), so the robot pitched as soon as tilt mode started.
     axis_left_x = this->declare_parameter("axis_left_x", 0);
     axis_left_y = this->declare_parameter("axis_left_y", 1);
-    axis_right_x = this->declare_parameter("axis_right_x", 3);
-    axis_right_y = this->declare_parameter("axis_right_y", 4);
-    axis_left_trigger = this->declare_parameter("axis_left_trigger", 2);
+    axis_right_x = this->declare_parameter("axis_right_x", 2);
+    axis_right_y = this->declare_parameter("axis_right_y", 3);
+    axis_left_trigger = this->declare_parameter("axis_left_trigger", 4);
     axis_right_trigger = this->declare_parameter("axis_right_trigger", 5);
-    axis_dpad_y = this->declare_parameter("axis_dpad_y", 7);
-    button_mode = this->declare_parameter("button_mode", 7);  // Start
-    button_gait = this->declare_parameter("button_gait", 6);  // Back
+    axis_dpad_y = this->declare_parameter("axis_dpad_y", -1);        // -1: the d-pad is buttons
+    button_dpad_up = this->declare_parameter("button_dpad_up", 11);
+    button_dpad_down = this->declare_parameter("button_dpad_down", 12);
+    button_mode = this->declare_parameter("button_mode", 6);  // Start
+    button_gait = this->declare_parameter("button_gait", 4);  // Back
 
     // Face buttons switch gait controller features on and off
     gait_controller_params = std::make_shared<rclcpp::AsyncParametersClient>(this, "hexapod_gait_controller");
@@ -74,6 +81,7 @@ private:
 
     int axis_left_x, axis_left_y, axis_right_x, axis_right_y;
     int axis_left_trigger, axis_right_trigger, axis_dpad_y;
+    int button_dpad_up, button_dpad_down;
     int button_mode, button_gait;
     struct Toggle {
         std::string feature;  // gait controller parameter, also its set_<feature> service
@@ -83,8 +91,8 @@ private:
     std::vector<Toggle> toggles;
     std::shared_ptr<rclcpp::AsyncParametersClient> gait_controller_params;
     std::vector<int> previous_buttons;
-    bool left_trigger_seen = false;   // joy_node reports 0 for a trigger until it is first moved
-    bool right_trigger_seen = false;
+    std::optional<double> left_trigger_rest;   // a released trigger's reading, taken from the first message
+    std::optional<double> right_trigger_rest;
 public:
     void joyCallback(const Joy::SharedPtr msg);
     void fetchCapabilities();
@@ -147,20 +155,27 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     cmd_vel_msg.angular.z = axis(axis_right_x) * max_angular_vel;
     cmd_vel_pub->publish(cmd_vel_msg);
 
-    // Triggers rest at 1 and read -1 fully pressed
-    auto trigger = [&axis](int index, bool& seen) {
-        double value = axis(index);
-        seen = seen || value != 0.0;
-        return seen ? (1.0 - value) / 2.0 : 0.0;
+    // Drivers disagree on what a released trigger reads (0, 1 or -1), so take the first reading
+    // as released and measure presses from there: over a span of 2 from +-1, or 1 from 0
+    auto trigger = [&axis](int index, std::optional<double>& rest) {
+        const double value = axis(index);
+        if (!rest) rest = value;
+        const double span = std::abs(*rest) > 0.5 ? 2.0 : 1.0;
+        return std::clamp(std::abs(value - *rest) / span, 0.0, 1.0);
     };
+    auto button = [&msg](int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < msg->buttons.size() && msg->buttons[index];
+    };
+    const double dpad_y = axis_dpad_y >= 0 ? axis(axis_dpad_y)
+        : (button(button_dpad_up) ? 1.0 : 0.0) - (button(button_dpad_down) ? 1.0 : 0.0);
     const double roll = -axis(axis_right_x) * max_tilt_angle;   // stick right lowers the right side
     const double pitch = axis(axis_right_y) * max_tilt_angle;   // stick forward lowers the nose
-    const double yaw = (trigger(axis_left_trigger, left_trigger_seen) - trigger(axis_right_trigger, right_trigger_seen)) * max_tilt_angle;
+    const double yaw = (trigger(axis_left_trigger, left_trigger_rest) - trigger(axis_right_trigger, right_trigger_rest)) * max_tilt_angle;
 
     Pose body_pose_msg;
     body_pose_msg.position.x = axis(axis_left_y) * max_tilt_translation;
     body_pose_msg.position.y = axis(axis_left_x) * max_tilt_translation;
-    body_pose_msg.position.z = axis(axis_dpad_y) * max_tilt_translation;
+    body_pose_msg.position.z = dpad_y * max_tilt_translation;
     // Roll, pitch, yaw to a quaternion
     const double cr = std::cos(roll / 2.0), sr = std::sin(roll / 2.0);
     const double cp = std::cos(pitch / 2.0), sp = std::sin(pitch / 2.0);

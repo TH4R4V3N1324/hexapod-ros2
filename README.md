@@ -210,21 +210,27 @@ See [Gait controller internals](#gait-controller-internals) below.
   stick is the gait controller's limit from `get_capabilities`, which it
   requests in the background until the gait controller answers; joystick
   input is ignored until then. Axis and button numbers are parameters,
-  defaulting to an Xbox controller on `joy_node`:
+  defaulting to the SDL game controller layout that ROS 2's `joy_node`
+  reports for any supported gamepad (Xbox names first, PlayStation in
+  brackets):
 
   | Input | Walking (normal / strafe) | Tilt mode |
   |---|---|---|
-  | Left stick | forward/back (axis 1), left/right (axis 0) | shift the body forward/back, left/right |
-  | Right stick X (axis 3) | turn | roll |
-  | Right stick Y (axis 4) | — | pitch (forward lowers the nose) |
-  | Triggers (axes 2, 5) | — | yaw left / right |
-  | D-pad up/down (axis 7) | — | raise / lower the body |
-  | Start (button 7) | next mode | next mode |
-  | Back (button 6) | next gait | next gait |
-  | A (button 0) | terrain adaptation on/off | terrain adaptation on/off |
-  | B (button 1) | walk leveling on/off | walk leveling on/off |
-  | X (button 2) | load balancing on/off | load balancing on/off |
-  | Y (button 3) | tilt leveling on/off | tilt leveling on/off |
+  | Left stick (axes 0, 1) | forward/back, left/right | shift the body forward/back, left/right |
+  | Right stick X (axis 2) | turn | roll |
+  | Right stick Y (axis 3) | — | pitch (forward lowers the nose) |
+  | Triggers LT/RT [L2/R2] (axes 4, 5) | — | yaw left / right |
+  | D-pad up/down (buttons 11, 12) | — | raise / lower the body |
+  | Start [Options] (button 6) | next mode | next mode |
+  | Back [Create] (button 4) | next gait | next gait |
+  | A [Cross] (button 0) | terrain adaptation on/off | terrain adaptation on/off |
+  | B [Circle] (button 1) | walk leveling on/off | walk leveling on/off |
+  | X [Square] (button 2) | load balancing on/off | load balancing on/off |
+  | Y [Triangle] (button 3) | tilt leveling on/off | tilt leveling on/off |
+
+  Drivers disagree on what a released trigger reads (0, 1 or -1), so each
+  trigger's first reading is taken as released. To check another
+  controller's numbering, run `ros2 topic echo /joy` and move each control.
 
 ### `hexapod_bringup`
 
