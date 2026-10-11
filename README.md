@@ -212,9 +212,10 @@ See [Gait controller internals](#gait-controller-internals) below.
   input is ignored until then. Axis and button numbers are parameters,
   defaulting to the SDL game controller layout that `joy`'s
   `game_controller_node` reports for any supported gamepad (Xbox names
-  first, PlayStation in brackets). The operator launch runs that node: plain
-  `joy_node` reports some controllers in their raw order (the Steam Deck's
-  under Humble puts the triggers on axes 2 and 5):
+  first, PlayStation in brackets). The operator launch and the Steam Deck
+  script run that node: plain `joy_node` reports each controller's raw order,
+  which for Xbox-style controls like the Steam Deck's puts the triggers on
+  axes 2 and 5 (a DualSense's raw order happens to match):
 
   | Input | Walking (normal / strafe) | Tilt mode |
   |---|---|---|
