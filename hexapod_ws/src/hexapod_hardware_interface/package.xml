@@ -3,7 +3,7 @@
 <package format="3">
   <name>hexapod_hardware_interface</name>
   <version>0.0.0</version>
-  <description>ros2_control plugin for the ST3215 bus servos and I2C drivers for the BMI088 IMU and INA226 power monitors</description>
+  <description>ros2_control plugin for the ST3215 bus servos and I2C drivers for the ISM330DHCX IMU and INA226 power monitors</description>
   <maintainer email="raven.hollick@gmail.com">raven</maintainer>
   <license>TODO: License declaration</license>
 

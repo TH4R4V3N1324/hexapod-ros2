@@ -32,9 +32,9 @@ pluginlib_export_plugin_description_file(hardware_interface hexapod_hardware_int
 add_library(i2c_device STATIC src/i2c_device.cpp)
 set_target_properties(i2c_device PROPERTIES POSITION_INDEPENDENT_CODE ON)
 
-add_executable(bmi088_node src/bmi088_node.cpp)
-target_link_libraries(bmi088_node i2c_device)
-ament_target_dependencies(bmi088_node rclcpp sensor_msgs)
+add_executable(ism330dhcx_node src/ism330dhcx_node.cpp)
+target_link_libraries(ism330dhcx_node i2c_device)
+ament_target_dependencies(ism330dhcx_node rclcpp sensor_msgs)
 
 add_executable(ina226_node src/ina226_node.cpp)
 target_link_libraries(ina226_node i2c_device)
@@ -45,7 +45,7 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS bmi088_node ina226_node DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ism330dhcx_node ina226_node DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 

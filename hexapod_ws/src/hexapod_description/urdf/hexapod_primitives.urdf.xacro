@@ -295,7 +295,7 @@
 
 <gazebo reference="imu_link">
   <!-- 1000 Hz (the physics rate): Gazebo's gyro is an instantaneous sample, and the body's
-       yaw rate jerks with each footstep, so 100 Hz under-reads turns by ~9%. The real BMI088
+       yaw rate jerks with each footstep, so 100 Hz under-reads turns by ~9%. The real ISM330DHCX
        filters internally, so its 100 Hz readings don't have this problem. -->
   <sensor name="imu_sensor" type="imu">
     <always_on>true</always_on>
