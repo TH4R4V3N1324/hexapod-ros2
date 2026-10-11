@@ -1,0 +1,13 @@
+[Unit]
+Description=Second Wi-Fi interface (uap0) for the hexapod hotspot
+After=sys-subsystem-net-devices-wlan0.device
+Requires=sys-subsystem-net-devices-wlan0.device
+Before=NetworkManager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/bin/hexapod-uap0.sh
+
+[Install]
+WantedBy=multi-user.target
