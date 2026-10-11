@@ -49,6 +49,7 @@ hexapod-ros2/
 │       └── hexapod_control/           # placeholder package (currently stubs, see below)
 ├── operator_ws/              # ROS 2 Jazzy workspace — runs on the operator PC
 │   └── src/operator_bringup/ # game_controller_node + foxglove_bridge for the operator side
+├── foxglove_panel/            # "Hexapod" Foxglove panel: attitude, feet, power, controls
 ├── pi/                        # Robot Pi setup: I2C, hotspot, start-at-boot service
 ├── steamdeck/                 # Scripts to auto-discover the robot's Foxglove
 │   │                           bridge on the LAN and launch Foxglove Studio
@@ -822,6 +823,13 @@ Two ways to run it:
   `game_controller_node`, `foxglove_bridge`, and `foxglove-studio` directly
   on the host. Jazzy needs Ubuntu 24.04 (on Windows, a 24.04 WSL distro).
 
+## Foxglove panel
+
+`foxglove_panel/` is a Foxglove extension adding a **Hexapod** panel: body
+roll and pitch, which feet are on the ground and how hard, power for each side,
+mode, gait and body height, and switches for gait_controller's features (each
+showing the node's current parameter). See its README to build and install it.
+
 ## Steam Deck client
 
 `steamdeck/` scripts turn a Steam Deck (via `distrobox`) into a portable
@@ -829,7 +837,9 @@ Foxglove viewing/joystick client:
 
 - **`setup_distrobox.sh`** — run once on the Deck (in Konsole) to create the
   `jazzy` distrobox: Ubuntu 24.04 with ROS 2 Jazzy, matching the robot, plus
-  `joy` and Foxglove Studio. Running it again updates them.
+  `joy`, Foxglove Studio and the Hexapod panel. Running it again updates them.
+- **`install_panel.sh`** — builds `foxglove_panel/` and installs it into
+  Foxglove Studio (called by `setup_distrobox.sh`).
 - **`hexapod_launch.sh`** — the Steam-launchable entry point. Sets up the
   Deck's Wayland/X display environment, then runs `ros2_hexapod_launch.sh`
   inside the `jazzy` distrobox.
