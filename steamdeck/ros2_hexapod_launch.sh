@@ -53,6 +53,9 @@ export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 # The Deck's sticks jitter just off centre, and by default every change is published (up to
 # 1 kHz): ~400 messages a second queued up over Wi-Fi and made the robot lag by about a second.
 # Coalescing to 20 ms caps /joy at 50 Hz.
+# A joy node from an earlier launch can still be running: Steam stops this script but not what it
+# started inside the distrobox. Several publishers on /joy fight each other and add lag.
+pkill -f "lib/joy/game_controller_node" 2>/dev/null || true
 ros2 run joy game_controller_node --ros-args -p coalesce_interval_ms:=20 &
 JOY_PID=$!
 echo "ros2 joy node PID: $JOY_PID"
