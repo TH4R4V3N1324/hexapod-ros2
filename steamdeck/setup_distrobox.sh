@@ -1,7 +1,8 @@
 #!/bin/bash
 # Create the Steam Deck's "jazzy" distrobox: Ubuntu 24.04 with ROS 2 Jazzy, matching the robot,
-# plus the joy package (game_controller_node) and Foxglove Studio. Run it on the Deck itself
-# (SteamOS, Konsole), not inside a box. Safe to run again; it also updates what's installed.
+# plus the joy package (game_controller_node), Foxglove Studio and the Hexapod panel. Run it on
+# the Deck itself (SteamOS, Konsole), not inside a box. Safe to run again; it also updates what's
+# installed, including the panel from foxglove_panel/.
 #
 #   steamdeck/setup_distrobox.sh            # box named "jazzy", as hexapod_launch.sh expects
 set -euo pipefail
@@ -36,7 +37,10 @@ if ! dpkg -s foxglove-studio >/dev/null 2>&1; then
 fi
 
 sudo -E apt-get update
-sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy foxglove-studio
+# Node.js builds the Hexapod Foxglove panel (install_panel.sh)
+sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy foxglove-studio nodejs npm
 sudo -E apt-get upgrade -y
 echo "ROS: $(ls /opt/ros), Foxglove Studio $(dpkg-query -W -f '${Version}' foxglove-studio)"
 EOF
+
+distrobox enter "$BOX" --no-tty -- "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install_panel.sh"
