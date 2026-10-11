@@ -49,6 +49,7 @@ hexapod-ros2/
 │       └── hexapod_control/           # placeholder package (currently stubs, see below)
 ├── operator_ws/              # ROS 2 Jazzy workspace — runs on the operator PC
 │   └── src/operator_bringup/ # game_controller_node + foxglove_bridge for the operator side
+├── pi/                        # Robot Pi setup: I2C, hotspot, start-at-boot service
 ├── steamdeck/                 # Scripts to auto-discover the robot's Foxglove
 │   │                           bridge on the LAN and launch Foxglove Studio
 │   └── images/                 # Steam Deck / distrobox shortcut icons
@@ -865,8 +866,34 @@ builds a lean runtime image whose default `CMD` runs
 `hexapod_fake.launch.py` — intended for the real robot's onboard computer
 where Gazebo/RViz/X11 aren't needed. Switch it to `hexapod_robot.launch.py`
 once the servos are wired up. The container runs `privileged`, so the serial
-port and `/dev/i2c-1` are visible; I2C and the UART still have to be enabled
-on the Pi itself.
+port and `/dev/i2c-1` are visible.
+
+**Setting up the robot's Pi (`pi/`):** on a fresh Raspberry Pi OS install,
+with the repo cloned to `~/hexapod-ros2` and a GitHub SSH key on the Pi, run
+`pi/setup_pi.sh` once and reboot. It:
+
+- turns on I2C at 400 kHz and the servo UART (`/dev/ttyAMA0`), and installs
+  `i2c-tools` and `iw`;
+- installs the udev rule that names the lidar `/dev/rplidar`;
+- names the Pi `hexapod`, in cloud-init's `user-data` too, which otherwise
+  renames it at every boot;
+- adds a Wi-Fi hotspot, `hexapod`, at 192.168.50.1 for the Steam Deck, so ROS 2
+  DDS doesn't depend on a home router passing multicast. It runs on a second
+  interface (`uap0`) on the same radio while `wlan0` stays on the home Wi-Fi
+  for internet, which it shares with whatever joins the hotspot. The radio
+  can only use one channel, and the hotspot can't use 5 GHz radar channels,
+  so the home Wi-Fi is kept to 2.4 GHz and a NetworkManager dispatcher script
+  moves the hotspot to its channel. The password is generated on first run
+  (set `HOTSPOT_PASSWORD=...` to choose or change it);
+- adds `hexapod-start.service`, which at every boot pulls the latest code
+  (fast-forward only), rebuilds the image with `--pull` (a newer ROS base
+  image means a full rebuild, picking up new `foxglove_bridge` and ROS
+  releases), and runs `docker compose up -d`. Offline, it starts the image it
+  already has. `journalctl -u hexapod-start` shows what it did.
+
+The Steam Deck script tries the hotspot address first, then scans the local
+network. Its scan opens and closes a connection on port 8765 at every
+address, which `foxglove_bridge` logs as `handshake failed`; that is harmless.
 
 **On the operator machine (`operator_ws`):**
 

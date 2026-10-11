@@ -1,24 +1,30 @@
 #!/bin/bash
 PORT=8765
+HOTSPOT_HOST=192.168.50.1   # the robot's own Wi-Fi hotspot (pi/setup_pi.sh)
 
-# Scan for bridge
-SUBNET=$(ip route | awk '/proto kernel/ && /192\.168/ {print $1}' | head -1)
-BASE=$(echo $SUBNET | cut -d'.' -f1-3)
-
-echo "Scanning $BASE.0/24 for port $PORT..."
-
+# On the robot's hotspot it is always at the same address
 HOST=""
-for i in $(seq 1 254); do
-    (
-        if (timeout 1 bash -c "echo >/dev/tcp/$BASE.$i/$PORT") 2>/dev/null; then
-            echo "$BASE.$i" > /tmp/foxglove_bridge_ip
-        fi
-    ) &
-done
-wait
+if (timeout 1 bash -c "echo >/dev/tcp/$HOTSPOT_HOST/$PORT") 2>/dev/null; then
+    HOST=$HOTSPOT_HOST
+else
+    # Otherwise scan the local network for the bridge
+    SUBNET=$(ip route | awk '/proto kernel/ && /192\.168/ {print $1}' | head -1)
+    BASE=$(echo $SUBNET | cut -d'.' -f1-3)
 
-HOST=$(cat /tmp/foxglove_bridge_ip 2>/dev/null)
-rm -f /tmp/foxglove_bridge_ip
+    echo "Scanning $BASE.0/24 for port $PORT..."
+
+    for i in $(seq 1 254); do
+        (
+            if (timeout 1 bash -c "echo >/dev/tcp/$BASE.$i/$PORT") 2>/dev/null; then
+                echo "$BASE.$i" > /tmp/foxglove_bridge_ip
+            fi
+        ) &
+    done
+    wait
+
+    HOST=$(cat /tmp/foxglove_bridge_ip 2>/dev/null)
+    rm -f /tmp/foxglove_bridge_ip
+fi
 
 if [ -z "$HOST" ]; then
     echo "No bridge found, exiting."
