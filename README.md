@@ -4,8 +4,8 @@ ROS 2 control stack for a custom 6-legged (18-DOF) walking robot, plus a
 separate operator workstation stack for remote teleoperation. The robot side
 runs on **ROS 2 Jazzy** on a Raspberry Pi 5, drives Waveshare ST3215 serial
 bus servos through `ros2_control`, and can also run in **Gazebo Harmonic**
-for simulation and gait development. The operator side runs on **ROS 2
-Humble** and bridges a game controller to the robot over Foxglove.
+for simulation and gait development. The operator side also runs on **ROS 2
+Jazzy** and bridges a game controller to the robot over Foxglove.
 
 > **Note on `ROS2_ARCHITECTURE.md`:** the architecture doc at the repo root
 > is out of date and does not reflect the current package layout, topics, or
@@ -47,8 +47,8 @@ hexapod-ros2/
 │       ├── hexapod_teleop/            # keyboard + gamepad teleop
 │       ├── hexapod_bringup/           # top-level launch files
 │       └── hexapod_control/           # placeholder package (currently stubs, see below)
-├── operator_ws/              # ROS 2 Humble workspace — runs on the operator PC
-│   └── src/operator_bringup/ # joy_node + foxglove_bridge for the operator side
+├── operator_ws/              # ROS 2 Jazzy workspace — runs on the operator PC
+│   └── src/operator_bringup/ # game_controller_node + foxglove_bridge for the operator side
 ├── steamdeck/                 # Scripts to auto-discover the robot's Foxglove
 │   │                           bridge on the LAN and launch Foxglove Studio
 │   └── images/                 # Steam Deck / distrobox shortcut icons
@@ -65,17 +65,17 @@ sharing a workspace or overlay:
 - **`hexapod_ws`** runs *on the robot* (or in simulation on a dev machine).
   It owns the gait controller, kinematics, hardware I/O, and description.
 - **`operator_ws`** runs *on the operator's machine* (a laptop, or the Steam
-  Deck). It runs `joy_node` to read a gamepad and `foxglove_bridge` so the
+  Deck). It runs `game_controller_node` to read a gamepad and `foxglove_bridge` so the
   operator can view the robot's Foxglove panels remotely. It does **not**
   run the teleop node itself — `controller_teleop` runs on the robot side
-  and subscribes to `/joy`, which is published by the operator's `joy_node`
+  and subscribes to `/joy`, which is published by the operator's `game_controller_node`
   and reaches the robot over shared DDS/ROS domain (or Foxglove, depending
   on network setup).
 
 High-level data flow when driving the physical robot:
 
 ```
-[Gamepad] → operator_ws: joy_node → /joy
+[Gamepad] → operator_ws: game_controller_node → /joy
                                         │  (DDS, same ROS_DOMAIN_ID)
                                         ▼
 hexapod_ws: controller_teleop → /cmd_vel → gait_controller
@@ -202,7 +202,7 @@ See [Gait controller internals](#gait-controller-internals) below.
   | `c` | Exit |
 
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
-  `joy_node`, published by the operator side) and publishes both `/cmd_vel`
+  `game_controller_node`, published by the operator side) and publishes both `/cmd_vel`
   and `/body_pose`; the gait controller uses whichever suits its mode. The
   face buttons read a feature's current state from the gait controller and
   call its `set_<feature>` service with the opposite, so they never undo a
@@ -277,7 +277,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/terrain_map` | `sensor_msgs/PointCloud2` (height map cells, odom frame) | `gait_controller` | — |
 | `/front_depth/points` | `sensor_msgs/PointCloud2` | Gazebo bridge (sim) | `gait_controller`, Nav2 costmaps |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
-| `/joy` | `sensor_msgs/Joy` | `joy_node` (operator side) | `controller_teleop` |
+| `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side) | `controller_teleop` |
 
 **Services**
 
@@ -753,9 +753,8 @@ Harmonic-based sim.
 
 ## Operator stack (`operator_ws`)
 
-A separate, **ROS 2 Humble** workspace (note the distro mismatch with
-`hexapod_ws`'s Jazzy — see [Known gaps](#known-gaps--todo)) containing a
-single package, `operator_bringup`, which launches:
+A separate **ROS 2 Jazzy** workspace (the same distro as `hexapod_ws`)
+containing a single package, `operator_bringup`, which launches:
 
 - **`game_controller_node`** (from `joy`) — reads the first gamepad
   (`device_id` 0) in the standard game controller layout, 0.05 deadzone,
@@ -768,7 +767,7 @@ single package, `operator_bringup`, which launches:
 Two ways to run it:
 
 - **Docker** (`operator_ws/dockerfile` + `docker-compose.yml`): builds on
-  `osrf/ros:humble-desktop-full`, installs `joy` + `foxglove_bridge`, and
+  `ros:jazzy-ros-base`, installs `joy` + `foxglove_bridge`, and
   runs `operator.launch.py` on container start. `initHexOperator.sh` brings
   the container up, waits for the Foxglove WebSocket (port 8765) to come
   alive, then opens Foxglove via a deep link (`foxglove://open?...`).
@@ -776,7 +775,8 @@ Two ways to run it:
   if built locally, verifies `foxglove_bridge`, `joy`, `hexapod_interfaces`,
   and `hexapod_description` are all resolvable in the active overlay
   (installing `foxglove_bridge` via `apt` if missing), then starts
-  `joy_node`, `foxglove_bridge`, and `foxglove-studio` directly on the host.
+  `game_controller_node`, `foxglove_bridge`, and `foxglove-studio` directly
+  on the host. Jazzy needs Ubuntu 24.04 (on Windows, a 24.04 WSL distro).
 
 ## Steam Deck client
 
@@ -788,7 +788,7 @@ Foxglove viewing/joystick client:
   inside a `distrobox` Ubuntu container.
 - **`ros2_hexapod_launch.sh`** — scans the local `192.168.x.x/24` subnet for
   a host with port `8765` open (i.e. an active `foxglove_bridge`), starts
-  `joy_node`, and opens `foxglove-studio` in kiosk mode pointed at the
+  `game_controller_node`, and opens `foxglove-studio` in kiosk mode pointed at the
   discovered bridge over a `foxglove://` deep link.
 - `images/` — icon/header art used for the Steam Deck game-mode shortcut.
 
@@ -854,10 +854,6 @@ this out of the box:
   the height map against the real ToF camera's noise.
 - **`hexapod_control` is an empty stub.** `behaviour_manager.cpp` and
   `config_manager.cpp` are 0-byte files with no build targets.
-- **ROS distro mismatch.** `hexapod_ws` targets Jazzy; `operator_ws`
-  targets Humble. This works today because they only interact over
-  DDS/network, but it's worth keeping in mind if message definitions ever
-  need to cross that boundary directly.
 - **Leg odometry can still drift when feet slip without the robot pushing
   against anything** (e.g. on a slippery or moving surface), since it assumes
   planted feet stay put.

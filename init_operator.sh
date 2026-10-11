@@ -89,7 +89,8 @@
  # -------- START NODES --------
  
  echo "Starting ROS2 joy node..."
- ros2 run joy joy_node &
+ # Standard game controller layout, which controller_teleop expects (joy_node gives the raw order)
+ ros2 run joy game_controller_node &
  JOY_PID=$!
  
  echo "Starting Foxglove Bridge..."
