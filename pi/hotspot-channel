@@ -1,7 +1,13 @@
 #!/bin/sh
 # NetworkManager dispatcher script: keep the hotspot (uap0) on the same channel as the home Wi-Fi
-# (wlan0). Both share one radio, which can only use one channel at a time.
+# (wlan0), and bring it back if uap0 has gone. Both share one radio, which can only use one channel
+# at a time.
 [ "$1" = wlan0 ] && [ "$2" = up ] || exit 0
+
+# If uap0 has gone (it can be lost at boot), make it again and start the hotspot on it
+if ! /usr/sbin/iw dev uap0 info >/dev/null 2>&1; then
+    /usr/local/bin/hexapod-uap0.sh && nmcli connection up hexapod-hotspot
+fi
 
 CHANNEL=$(/usr/sbin/iw dev wlan0 info | awk '/channel/ {print $2; exit}')
 # The hotspot is 2.4 GHz only (channels 1-14)
