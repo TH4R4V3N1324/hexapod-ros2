@@ -2,7 +2,7 @@ from launch import LaunchDescription
 from launch.actions import SetEnvironmentVariable, DeclareLaunchArgument
 from launch.actions import ExecuteProcess, RegisterEventHandler
 from launch.event_handlers import OnProcessExit
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
@@ -15,6 +15,7 @@ def generate_launch_description():
     front_depth_width = LaunchConfiguration('front_depth_width')
     front_depth_height = LaunchConfiguration('front_depth_height')
     front_depth_rate = LaunchConfiguration('front_depth_rate')
+    gui = LaunchConfiguration('gui')
 
     pkg_path = get_package_share_directory('hexapod_description')
     pkg_share_parent = os.path.dirname(pkg_path)
@@ -60,7 +61,14 @@ def generate_launch_description():
     # Gazebo Harmonic — replaces gazebo_ros gazebo.launch.py
     gazebo = ExecuteProcess(
         cmd=['gz', 'sim', '-r', world_file],
-        output='screen'
+        output='screen',
+        condition=IfCondition(gui)
+    )
+    # Server only, for unattended test runs. Headless rendering keeps the camera and lidar working.
+    gazebo_headless = ExecuteProcess(
+        cmd=['gz', 'sim', '-r', '-s', '--headless-rendering', world_file],
+        output='screen',
+        condition=UnlessCondition(gui)
     )
 
     robot_state_publisher = Node(
@@ -88,9 +96,10 @@ def generate_launch_description():
         arguments=[
             '-topic', 'robot_description',
             '-name', 'hexapod',
-            '-x', '0',
-            '-y', '0',
-            '-z', '0.5'
+            '-x', LaunchConfiguration('spawn_x'),
+            '-y', LaunchConfiguration('spawn_y'),
+            '-z', LaunchConfiguration('spawn_z'),
+            '-Y', LaunchConfiguration('spawn_yaw'),
         ],
         output='screen'
     )
@@ -121,6 +130,8 @@ def generate_launch_description():
             '/front_depth/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             '/front_depth/points@sensor_msgs/msg/PointCloud2[gz.msgs.PointCloudPacked',
             '/lidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            # The robot's true pose, for scoring test runs against odometry
+            '/ground_truth/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
         ],
         # Match the real robot, where imu_filter_madgwick publishes orientation on /imu/data
         remappings=[('/imu', '/imu/data')],
@@ -144,8 +155,13 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'world',
             default_value='hexapod_world',
-            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles, tilt_platform or rough_terrain).'
+            description='World file in hexapod_description/worlds, without .sdf (hexapod_world, empty_world, low_obstacles, tilt_platform, rough_terrain, outdoor_slopes, outdoor_rocks or outdoor_low_friction).'
         ),
+        DeclareLaunchArgument('gui', default_value='true', description='Show the Gazebo window (false runs the server only).'),
+        DeclareLaunchArgument('spawn_x', default_value='0.0', description='Robot spawn x (m).'),
+        DeclareLaunchArgument('spawn_y', default_value='0.0', description='Robot spawn y (m).'),
+        DeclareLaunchArgument('spawn_z', default_value='0.5', description='Robot spawn height (m); it drops onto the ground.'),
+        DeclareLaunchArgument('spawn_yaw', default_value='0.0', description='Robot spawn heading (rad).'),
         DeclareLaunchArgument(
             'bridge_vision',
             default_value='false',
@@ -169,6 +185,7 @@ def generate_launch_description():
         gz_plugin_path,
         gz_resource_path,
         gazebo,
+        gazebo_headless,
         robot_state_publisher,
         joint_state_relay,
         gz_bridge_core,
