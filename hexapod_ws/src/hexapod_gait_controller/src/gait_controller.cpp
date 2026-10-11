@@ -330,6 +330,9 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "max_step_height") max_step_height = parameter.as_double();
         else if (name == "seek_speed") seek_speed = parameter.as_double();
         else if (name == "body_height_rate") body_height_rate = parameter.as_double();
+        else if (name == "height_rate") height_rate = parameter.as_double();
+        else if (name == "min_height") min_height = parameter.as_double();
+        else if (name == "max_height") max_height = parameter.as_double();
         else if (name == "step_height") trajectoryGen.swingLift = parameter.as_double();
         else if (name == "touchdown_ratio") touchdown_ratio = parameter.as_double();
         else if (name == "stumble_force") stumble_force = parameter.as_double();
@@ -414,10 +417,19 @@ void GaitController::setHeightCallback(
     const std::shared_ptr<SetHeight::Request> request,
     std::shared_ptr<SetHeight::Response> response
 ) {
-    double height = static_cast<double>(request->height);
-    gaitConfig.setHeight(height);
+    // The request is the feet's z below the hips, so negative: -0.12 for a 12 cm body height
+    const double height = static_cast<double>(request->height);
+    if (-height < min_height || -height > max_height) {
+        response->success = false;
+        response->message = "height must be between " + std::to_string(min_height) + " and " +
+            std::to_string(max_height) + " m (sent as negative z)";
+        RCLCPP_WARN(this->get_logger(), "Refused height %.3f: %s", height, response->message.c_str());
+        return;
+    }
+    target_height = height;
     response->success = true;
-    RCLCPP_INFO(this->get_logger(), "Height changed to %.2f", height);
+    response->message = "moving to " + std::to_string(-height) + " m";
+    RCLCPP_INFO(this->get_logger(), "Height target %.3f m", -height);
 }
 
 
@@ -511,6 +523,23 @@ void GaitController::gaitTimerCallback() {
     }
 
     updateLoadBalance(dt);
+
+    // Glide towards the height set_height asked for, moving every foot by the same amount. Planted
+    // feet follow the start positions; swings, the last commanded positions (which a swing restarts
+    // from) and tilt mode's ground points carry their own heights, so they're shifted too. Standing
+    // still, half the legs sit at the start of a swing that never advances, and without this they
+    // held the old height until the robot walked, then jumped to the new one in a single step.
+    if (gaitConfig.currentHeight != target_height) {
+        const double step = height_rate * dt;
+        const double delta = std::clamp(target_height - gaitConfig.currentHeight, -step, step);
+        gaitConfig.setHeight(gaitConfig.currentHeight + delta);
+        for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
+            current_leg_positions[legNum].z() += delta;
+            swing_start[legNum].z() += delta;
+            swing_target[legNum].z() += delta;
+            tilt_ground_feet[legNum].z() += delta;
+        }
+    }
 
     // Tilt mode, or easing the body back to neutral after leaving it
     if (gaitConfig.currentMode == Mode::MODE_TILT || tilt_active) {

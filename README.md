@@ -308,7 +308,13 @@ types; these cover only what has no standard equivalent.
 **Services**
 - `SetGait(uint8 gait) → (bool success, string message)` — `0=tripod, 1=ripple, 2=wave`.
 - `SetMode(uint8 mode) → (bool success, string message)` — `0=normal, 1=strafe, 2=tilt`; other values are rejected.
-- `SetHeight(float64 height) → (bool success, string message)`.
+- `SetHeight(float64 height) → (bool success, string message)`. `height` is
+  the feet's z below the hips, so negative: `-0.12` for a 12 cm body. The body
+  glides there at `height_rate` (0.03 m/s), every foot moving together, whether
+  standing, walking or in tilt mode. Heights outside `min_height`–`max_height`
+  (0.06–0.16 m) are refused. It used to move the foot targets at once, and
+  while standing still only half the feet followed: the others waited, then
+  jumped to the new height in the first step of walking.
 - `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait)`.
 - `IKSolver(uint8 leg_index, geometry_msgs/Point target) → sensor_msgs/JointState`.
 - `FKSolver(sensor_msgs/JointState) → geometry_msgs/Point foot_position`.
