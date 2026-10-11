@@ -49,10 +49,16 @@ COPY src ./src
 
 # Install dependencies.
 # Refresh apt metadata immediately before rosdep to avoid stale package URLs (404s).
+# Without the dev tools, skip the simulation and GUI packages hexapod_description lists for
+# Gazebo and RViz: the robot doesn't run them, and they made the Pi image several GB larger.
 RUN source /opt/ros/jazzy/setup.bash && \
     apt-get update && \
     rosdep update && \
-    rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy && \
+    SKIP_KEYS="" && \
+    if [ "$INSTALL_DEV_TOOLS" != "true" ]; then \
+        SKIP_KEYS="--skip-keys=rviz2 --skip-keys=gz_ros2_control --skip-keys=ros_gz_bridge --skip-keys=ros_gz_sim"; \
+    fi && \
+    rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy $SKIP_KEYS && \
     rm -rf /var/lib/apt/lists/*
 
 # Build the workspace
