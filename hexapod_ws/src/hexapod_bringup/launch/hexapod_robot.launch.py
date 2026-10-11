@@ -124,8 +124,8 @@ def generate_launch_description():
         actions=[
             Node(
                 package='hexapod_hardware_interface',
-                executable='bmi088_node',
-                name='bmi088',
+                executable='ism330dhcx_node',
+                name='ism330dhcx',
                 output='screen',
                 parameters=[sensors_file]
             ),

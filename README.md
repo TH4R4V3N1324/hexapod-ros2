@@ -42,7 +42,7 @@ hexapod-ros2/
 │   └── src/
 │       ├── hexapod_interfaces/        # custom msgs/srvs
 │       ├── hexapod_description/       # URDF/xacro, meshes, worlds, RViz, Gazebo bridge
-│       ├── hexapod_hardware_interface/ # ST3215 ros2_control plugin, BMI088 + INA226 drivers
+│       ├── hexapod_hardware_interface/ # ST3215 ros2_control plugin, ISM330DHCX + INA226 drivers
 │       ├── hexapod_gait_controller/   # kinematics, trajectories, gait state machine
 │       ├── hexapod_teleop/            # keyboard + gamepad teleop
 │       ├── hexapod_bringup/           # top-level launch files
@@ -104,7 +104,8 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
   one per side of the body, break the bus out to the legs.
 - **Power monitoring:** each daughter board carries an INA226 current/voltage
   sensor on the Pi's I2C bus, giving power draw for each side.
-- **IMU:** a BMI088 (accelerometer + gyroscope) on the Pi's I2C bus.
+- **IMU:** an Adafruit ISM330DHCX board (accelerometer + gyroscope) on the
+  Pi's I2C bus, at address 0x6A.
 - **Leg contact:** there are no contact switches. Contact is meant to be
   detected from servo load feedback, which the servo plugin publishes as
   joint effort on `/joint_states`.
@@ -118,7 +119,7 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
 |---|---|---|
 | `hexapod_interfaces` | msg/srv | Custom services and the few messages with no standard equivalent. Sensor data uses standard `sensor_msgs` types. |
 | `hexapod_description` | C++ / xacro | URDF (visual + collision meshes) and a simplified "primitives" xacro used for Gazebo physics; RViz config; Gazebo Harmonic world; ros_gz bridge config; `joint_state_relay` node. |
-| `hexapod_hardware_interface` | C++ | `ST3215System` `ros2_control` plugin for the bus servos, plus `bmi088_node` (IMU) and `ina226_node` (power monitors) I2C drivers. |
+| `hexapod_hardware_interface` | C++ | `ST3215System` `ros2_control` plugin for the bus servos, plus `ism330dhcx_node` (IMU) and `ina226_node` (power monitors) I2C drivers. |
 | `hexapod_gait_controller` | C++ | The core `gait_controller` node: inverse kinematics, Bezier swing trajectories, gait/mode state machine, and the `leg_axis_tester` diagnostic tool. |
 | `hexapod_teleop` | C++ | `keyboard_teleop` (raw-terminal WASD-style control) and `controller_teleop` (gamepad `/joy` → `/cmd_vel`). |
 | `hexapod_bringup` | launch only | Top-level launch files for the real robot, mock hardware and simulation. |
@@ -167,8 +168,8 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
     controller.
 - **`ST3215Bus`** — the serial driver: Feetech STS packets, sync read/write,
   and an `echo` option for adapters that loop TX back to RX.
-- **`bmi088_node`** — reads the BMI088 accelerometer and gyroscope and
-  publishes `sensor_msgs/Imu` on `imu/data_raw`. The BMI088 has no
+- **`ism330dhcx_node`** — reads the ISM330DHCX accelerometer and gyroscope
+  and publishes `sensor_msgs/Imu` on `imu/data_raw`. The ISM330DHCX has no
   orientation output, so `imu_filter_madgwick` fuses it into orientation on
   `imu/data`.
 - **`ina226_node`** — reads both INA226s and publishes `sensor_msgs/BatteryState`
@@ -241,7 +242,7 @@ See [Gait controller internals](#gait-controller-internals) below.
   the `ros2_control` controller manager with both controllers,
   `joint_state_relay`, `gait_controller`, `controller_teleop` and
   `foxglove_bridge`. With `hardware:=st3215` (the default) it also starts
-  the BMI088, Madgwick filter and INA226 nodes. Launch args: `hardware`,
+  the ISM330DHCX, Madgwick filter and INA226 nodes. Launch args: `hardware`,
   `serial_port` (default `/dev/ttyAMA0`) and `update_rate` (default 100).
 - `hexapod_fake.launch.py` — `hexapod_robot.launch.py` with `hardware:=mock`:
   the full control pipeline on mock hardware, for bench-testing gait logic
@@ -268,7 +269,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/joint_states` | `sensor_msgs/JointState` (position, velocity, effort) | `joint_state_broadcaster` | `gait_controller`, `robot_state_publisher` |
 | `/joint_commands` | `sensor_msgs/JointState` | `gait_controller`, `leg_axis_tester` | `joint_state_relay` |
 | `/hexapod_joint_controller/commands` | `std_msgs/Float64MultiArray` | `joint_state_relay` | `hexapod_joint_controller` (ros2_control) |
-| `/imu/data_raw` | `sensor_msgs/Imu` (no orientation) | `bmi088_node` | `imu_filter_madgwick` |
+| `/imu/data_raw` | `sensor_msgs/Imu` (no orientation) | `ism330dhcx_node` | `imu_filter_madgwick` |
 | `/imu/data` | `sensor_msgs/Imu` | `imu_filter_madgwick` (robot), Gazebo bridge (sim) | — |
 | `/power/left`, `/power/right` | `sensor_msgs/BatteryState` | `ina226_node` | — |
 | `/odometry/legs` | `nav_msgs/Odometry` | `gait_controller` | `ekf_filter_node` |

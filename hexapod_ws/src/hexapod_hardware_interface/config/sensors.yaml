@@ -1,12 +1,11 @@
-bmi088:
+ism330dhcx:
   ros__parameters:
     i2c_bus: /dev/i2c-1
-    accel_address: 25        # 0x19 (24 = 0x18 if SDO1 is pulled low)
-    gyro_address: 105        # 0x69 (104 = 0x68 if SDO2 is pulled low)
+    address: 106             # 0x6A (107 = 0x6B if the address jumper is bridged)
     frame_id: imu_link
-    accel_range_g: 6         # 3, 6, 12 or 24
-    gyro_range_dps: 1000     # 125, 250, 500, 1000 or 2000
-    rate: 100.0
+    accel_range_g: 8         # 2, 4, 8 or 16
+    gyro_range_dps: 1000     # 125, 250, 500, 1000, 2000 or 4000
+    rate: 100.0              # the chip's output rate is set to the next step up (104 Hz)
 
 imu_filter:
   ros__parameters:
