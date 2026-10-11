@@ -43,6 +43,7 @@ def generate_launch_description():
         executable='gait_controller',
         name='hexapod_gait_controller',
         output='screen',
+        arguments=['--ros-args', '--log-level', ['hexapod_gait_controller:=', LaunchConfiguration('gait_log_level')]],
         # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel)
         parameters=[{'use_sim_time': True}, {'initial_mode': ParameterValue(
             PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int)}]
@@ -124,6 +125,8 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument('gui', default_value='true', description='Show the Gazebo window (false runs the server only).'),
         DeclareLaunchArgument('rviz', default_value='true', description='Start RViz.'),
+        DeclareLaunchArgument('gait_log_level', default_value='info',
+                              description='gait_controller log level; debug logs each touchdown, stumble and ground search.'),
         DeclareLaunchArgument('spawn_x', default_value='0.0', description='Robot spawn x (m).'),
         DeclareLaunchArgument('spawn_y', default_value='0.0', description='Robot spawn y (m).'),
         DeclareLaunchArgument('spawn_z', default_value='0.5', description='Robot spawn height (m); it drops onto the ground.'),
