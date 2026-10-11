@@ -830,10 +830,15 @@ Foxglove viewing/joystick client:
 - **`hexapod_launch.sh`** — the Steam-launchable entry point. Sets up the
   Deck's Wayland/X display environment, then runs `ros2_hexapod_launch.sh`
   inside a `distrobox` Ubuntu container.
-- **`ros2_hexapod_launch.sh`** — scans the local `192.168.x.x/24` subnet for
-  a host with port `8765` open (i.e. an active `foxglove_bridge`), starts
-  `game_controller_node`, and opens `foxglove-studio` in kiosk mode pointed at the
-  discovered bridge over a `foxglove://` deep link.
+- **`ros2_hexapod_launch.sh`** — finds the robot's `foxglove_bridge` (port
+  `8765`): the hotspot address 192.168.50.1 first, otherwise a scan of the
+  local `192.168.x.x/24` subnet. It then starts `game_controller_node` and
+  opens `foxglove-studio` in kiosk mode pointed at the bridge over a
+  `foxglove://` deep link. It sources whichever ROS 2 the distrobox has,
+  Jazzy or Humble. The Deck's distrobox is currently Ubuntu 22.04 with Humble:
+  its `/joy` reaches the Jazzy robot fine, though it logs `sequence size
+  exceeds remaining buffer` for some of Jazzy's internal topics it can't
+  decode.
 - `images/` — icon/header art used for the Steam Deck game-mode shortcut.
 
 This gives a no-typing, walk-up client: power on the Deck, launch the
