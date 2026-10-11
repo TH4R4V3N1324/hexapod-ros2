@@ -406,7 +406,12 @@ With `terrain_adaptation` on (the default), each foot remembers how far its
 ground is above or below nominal, stays there in stance and aims for it on its
 next swing. Where it puts its foot comes from two sources:
 
-- **The front depth camera.** Its points (`depth_topic`, every
+- **The front depth camera**, only with `terrain_map` on (off by default, or
+  `/set_terrain_map` while running). In the outdoor scenarios it caused more
+  early touchdowns (30 against 20) and stumbles (346 against 248, before the
+  false stumbles below were fixed) than
+  the feet alone, and walked worse on hills: 1.62 m against 2.29 m over the
+  15° hill. It only helped on the slabs (1.60 m against 1.53 m). Its points (`depth_topic`, every
   `depth_stride`-th pixel, at most `map_update_rate` frames a second) build a
   height map of 2 cm cells in `map_frame` (odom), kept within `map_radius` of
   the robot and published on `terrain_map` (`sensor_msgs/PointCloud2`) for
@@ -436,8 +441,13 @@ next swing. Where it puts its foot comes from two sources:
     later reaches down at `seek_speed` until it finds the ground. Without
     the wait, feet that had just landed (before the weight came onto them)
     were pushed down a few mm every step, which slowly tipped the body.
-  - One that is hit from the side mid-swing (above `stumble_force`) is lifted
-    a further `stumble_lift` and carries on over the edge.
+  - One that is hit from the side mid-swing (above `stumble_force` for 3
+    ticks, while not bearing weight) is lifted a further `stumble_lift` and
+    carries on over the edge. Without those two conditions, normal landings
+    (pushed back and up at once) and the filtered push-off just after lift-off
+    counted as stumbles, about 38 times in a 2 m walk on flat ground, and each
+    one popped the foot up as it landed. Now flat ground gives none, while the
+    slabs, rocks and hills still give 7–15 a run.
 
 Ground heights are limited to `max_step_height` (4 cm) either way. The body
 rises or falls at `body_height_rate` so the feet's average ground is back at

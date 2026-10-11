@@ -123,8 +123,10 @@ public:
         stumble_force = this->declare_parameter("stumble_force", 3.0);
         stumble_lift = this->declare_parameter("stumble_lift", 0.03);
 
-        // Height map of the ground ahead from the depth camera, for choosing footholds and step heights
-        terrain_map = this->declare_parameter("terrain_map", true);
+        // Height map of the ground ahead from the depth camera, for choosing footholds and step heights.
+        // Off by default: in the outdoor scenarios it caused more early touchdowns and stumbles, and
+        // walked worse on hills, than sensing the ground with the feet alone.
+        terrain_map = this->declare_parameter("terrain_map", false);
         map_frame = this->declare_parameter("map_frame", "odom");
         depth_stride = this->declare_parameter("depth_stride", 4);
         map_update_period = 1.0 / this->declare_parameter("map_update_rate", 5.0);
@@ -275,6 +277,7 @@ private:
     std::array<bool, MAX_LEGS + 1> landing_check{};     // swing just ended unloaded: wait to see if it loads up
     std::array<double, MAX_LEGS + 1> unloaded_time{};   // s since the swing ended, while still unloaded
     std::array<int, MAX_LEGS + 1> touchdown_ticks{};    // consecutive ticks a swinging foot has looked landed
+    std::array<int, MAX_LEGS + 1> stumble_ticks{};      // consecutive ticks a swinging foot has looked blocked
     double touchdown_ratio;     // a touchdown's vertical force must be this many times its horizontal force
     double stumble_force;       // N, horizontal force on a swinging foot that means it hit something
     double stumble_lift;        // m, extra height a stumbling foot is lifted by

@@ -842,11 +842,17 @@ void GaitController::adaptToTerrain(double dt) {
             const bool loaded = force.z() > touchdown_force;
             // Landing pushes up; catching an edge on the way across pushes back
             const bool landed = loaded && force.z() > touchdown_ratio * sideways;
-            // Only once the foot is up: at lift-off it still carries its stance forces
-            if (leg_swinging[legNum] && phase_progress > 0.2 && phase_progress < 0.9 && sideways > stumble_force && !landed &&
-                stumble_target[legNum] == 0.0) {
+            // Only once the foot is up: at lift-off it still carries its stance forces. Blocked means
+            // pushed back without bearing weight: a foot coming down still moving forward pushes both
+            // ways, and counting that as a stumble lifted every front foot again as it landed. It has
+            // to last 3 ticks, since the force filter still carries the push-off as the window opens.
+            const bool blocked = leg_swinging[legNum] && phase_progress > 0.2 && phase_progress < 0.9 &&
+                sideways > stumble_force && !loaded;
+            stumble_ticks[legNum] = blocked ? stumble_ticks[legNum] + 1 : 0;
+            if (stumble_ticks[legNum] >= 3 && stumble_target[legNum] == 0.0) {
                 stumble_target[legNum] = stumble_lift;
-                RCLCPP_DEBUG(this->get_logger(), "Leg %d stumbled at s=%.2f", legNum, phase_progress);
+                RCLCPP_DEBUG(this->get_logger(), "Leg %d stumbled at s=%.2f (%.1f N sideways, %.1f N up)",
+                    legNum, phase_progress, sideways, force.z());
             }
             // Only well above where it was aiming: touching a little early is just a normal landing,
             // and counting it as higher ground made the body creep upwards on flat floor
