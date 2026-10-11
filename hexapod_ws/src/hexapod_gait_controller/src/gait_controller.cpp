@@ -103,6 +103,12 @@ void GaitController::updateFootForces(
         alpha = foot_force_filter > 0.0 ? std::min(1.0, dt / foot_force_filter) : 1.0;
     }
     last_foot_force_stamp = stamp;
+    // Published for display at foot_force_rate (a restarted simulation clock also counts as due)
+    const bool publishForces = stamp < last_foot_force_publish ||
+        (stamp - last_foot_force_publish).seconds() >= foot_force_period;
+    if (publishForces) {
+        last_foot_force_publish = stamp;
+    }
 
     for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
         const std::string prefix = "leg" + std::to_string(legNum) + "_";
@@ -129,13 +135,15 @@ void GaitController::updateFootForces(
             foot_contact[legNum] = false;
         }
 
-        geometry_msgs::msg::WrenchStamped wrench;
-        wrench.header.stamp = stamp;
-        wrench.header.frame_id = "base_link";
-        wrench.wrench.force.x = foot_forces[legNum].x();
-        wrench.wrench.force.y = foot_forces[legNum].y();
-        wrench.wrench.force.z = foot_forces[legNum].z();
-        foot_force_pubs[legNum]->publish(wrench);
+        if (publishForces) {
+            geometry_msgs::msg::WrenchStamped wrench;
+            wrench.header.stamp = stamp;
+            wrench.header.frame_id = "base_link";
+            wrench.wrench.force.x = foot_forces[legNum].x();
+            wrench.wrench.force.y = foot_forces[legNum].y();
+            wrench.wrench.force.z = foot_forces[legNum].z();
+            foot_force_pubs[legNum]->publish(wrench);
+        }
     }
     has_foot_forces = true;
 
