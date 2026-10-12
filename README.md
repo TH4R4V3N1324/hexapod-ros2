@@ -614,11 +614,18 @@ without the full gait state machine.
   lidar always appears as `/dev/rplidar`. The robot container bind-mounts the
   Pi's `/dev` so it sees that name.
 - **Mount:** `urdf/hexapod.lidar.xacro` sets the lidar's position for both the
-  real and Gazebo models; change `lidar_z` when the body changes. `lidar_z` is
-  the height of the scan plane above the hip joints, and it must clear the
-  legs: the knees reach about 9 cm above the hips at the end of a stride
-  (~12 cm with the leg's thickness). It's set to 15 cm. At 5 cm, 20% of each
-  scan hit the robot's own legs and SLAM was off by 25 cm.
+  real and Gazebo models. On the V6.1 body it sits on the lid, centred, with
+  its scan plane (`lidar_z`) 73.5 mm above the hip joints. The knees reach
+  about 9 cm above the hips, so the legs cross the scan plane.
+- **Leg filter:** `laser_filters` (`config/laser_filters.yaml`, started by
+  both the robot and simulation launches) drops every return nearer than
+  0.30 m, which is inside the legs' reach, and publishes the rest on
+  `/lidar/scan_filtered`. SLAM and Nav2 use that. Dropped returns become NaN
+  ("no reading"), since a leg hides what's behind it. In simulation the legs
+  take none of the scan standing, 3% on average walking (10.5% at worst), and
+  5.7% walking with the body lowered to 8 cm, and none of them leak through
+  the filter; slam_toolbox maps normally. (Without the filter, an earlier
+  5 cm mount put the legs in 20% of each scan and SLAM drifted by 25 cm.)
 - **Simulation:** the Gazebo lidar matches the A2M12: 10 Hz, 1600 points per
   scan (0.225°), 0.2–12 m.
 - **On first use**, check the scan's orientation in RViz: an object in front of
@@ -683,7 +690,7 @@ leg odometry alone was 5.7 cm and 12° off; the fused odometry was 2.4 cm and
 
 ## SLAM
 
-`slam_toolbox` (online async) builds a 2D map from `/lidar/scan` and publishes
+`slam_toolbox` (online async) builds a 2D map from `/lidar/scan_filtered` (the lidar scan without the robot's legs) and publishes
 the `map` → `odom` correction, leaving `odom` → `base_link` to the EKF. Enable
 it with `slam:=true` on `hexapod_simulation.launch.py` or
 `hexapod_robot.launch.py`. Settings are in `hexapod_bringup/config/slam_toolbox.yaml`,

@@ -65,6 +65,17 @@ def generate_launch_description():
         parameters=[ekf_file, {'use_sim_time': True}]
     )
 
+    # Drops the robot's own legs from the lidar scan (/lidar/scan -> /lidar/scan_filtered),
+    # which SLAM and Nav2 use
+    lidar_filter = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        name='scan_to_scan_filter_chain',
+        output='screen',
+        parameters=[os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'laser_filters.yaml'), {'use_sim_time': True}],
+        remappings=[('scan', '/lidar/scan'), ('scan_filtered', '/lidar/scan_filtered')]
+    )
+
     # SLAM: builds a map from the lidar and publishes map -> odom
     slam = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(os.path.join(
@@ -155,6 +166,7 @@ def generate_launch_description():
         hexapod_gait_controller,
         controller_teleop_node,
         ekf_node,
+        lidar_filter,
         slam,
         nav,
         foxglove_bridge_node,
