@@ -153,6 +153,16 @@ def generate_launch_description():
                 parameters=[sensors_file],
                 remappings=[('scan', '/lidar/scan')]
             ),
+            # Drops the robot's own legs from the scan (/lidar/scan -> /lidar/scan_filtered),
+            # which SLAM and Nav2 use
+            Node(
+                package='laser_filters',
+                executable='scan_to_scan_filter_chain',
+                name='scan_to_scan_filter_chain',
+                output='screen',
+                parameters=[os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'laser_filters.yaml')],
+                remappings=[('scan', '/lidar/scan'), ('scan_filtered', '/lidar/scan_filtered')]
+            ),
         ]
     )
 

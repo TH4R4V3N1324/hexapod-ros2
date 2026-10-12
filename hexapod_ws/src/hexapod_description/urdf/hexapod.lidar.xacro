@@ -3,14 +3,16 @@
 
   <!--
     RPLIDAR A2M12 mount, shared by the real and Gazebo models so they stay in the same place.
-    Change lidar_z when the new body is designed.
+    Placed as on the V6.1 body (Hexapod_V6.1.step).
   -->
   <xacro:property name="lidar_x" value="0.0"/>
   <xacro:property name="lidar_y" value="0.0"/>
-  <!-- Height of the scan plane above base_link (the hip joint plane). It must clear the legs:
-       the knees reach ~9 cm above the hips at the end of a stride, ~12 cm with the leg's thickness.
-       Below that, the lidar sees the robot's own legs (20% of each scan at 5 cm). -->
-  <xacro:property name="lidar_z" value="0.15"/>
+  <!-- Height of the scan plane above base_link (the hip joint plane). On the V6.1 body the lidar
+       sits on the lid, centred: lid top 72 mm and hip axis 27.5 mm above the body's base, and the
+       A2M12's scan plane 29 mm above its own base: 73.5 mm. The legs cross it (the
+       knees reach ~9 cm above the hips), so hexapod_bringup's laser_filters.yaml drops everything
+       within 0.30 m and SLAM and Nav2 use /lidar/scan_filtered. -->
+  <xacro:property name="lidar_z" value="0.0735"/>
   <xacro:property name="lidar_radius" value="0.038"/>
   <xacro:property name="lidar_height" value="0.041"/>
 

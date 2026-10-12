@@ -1,0 +1,17 @@
+# Removes the robot's own legs from the lidar scan: /lidar/scan in, /lidar/scan_filtered out
+# (laser_filters scan_to_scan_filter_chain). The lidar sits on the lid, centred, with its scan
+# plane 7.35 cm above the hips, so the legs cross it. The feet reach ~0.27 m from the centre, so
+# everything nearer than 0.30 m is dropped. Dropped returns become NaN ("no reading") rather than
+# +inf, since a leg hides whatever is behind it; nothing real can be that close anyway, inside
+# Nav2's robot_radius (0.32 m).
+scan_to_scan_filter_chain:
+  ros__parameters:
+    filter1:
+      name: legs
+      type: laser_filters/LaserScanRangeFilter
+      params:
+        use_message_range_limits: false
+        lower_threshold: 0.30
+        upper_threshold: 100.0
+        lower_replacement_value: .nan
+        upper_replacement_value: .inf
