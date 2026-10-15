@@ -41,13 +41,17 @@ echo "  PASS  Saved $OUTPUT ($(du -h "$OUTPUT" | cut -f1)), check it's in focus 
 echo
 echo "Recording 5 s of 1280x720 video to time the frame rate..."
 PTS=$(mktemp)
-trap 'rm -f "$PTS"' EXIT
+ERR=$(mktemp)
+trap 'rm -f "$PTS" "$ERR"' EXIT
+# Raw YUV, not the default H.264: the Pi 5 has no H.264 hardware encoder and rpicam-apps-lite has no software one
 rpicam-vid --camera "$INDEX" --nopreview --timeout 5000 --width 1280 --height 720 --framerate 30 \
-    --save-pts "$PTS" -o /dev/null 2>/dev/null
+    --codec yuv420 --save-pts "$PTS" -o /dev/null 2>"$ERR"
 # --save-pts writes a header line, then one timestamp (ms) per frame
 LOG=$(cat "$PTS")
 FRAMES=$(echo "$LOG" | grep -c '^[0-9]')
 if [ "$FRAMES" -lt 2 ]; then
+    echo "  rpicam-vid said:"
+    tail -n 5 "$ERR" | sed 's/^/    /'
     fail "No video frames recorded"
 fi
 FPS=$(echo "$LOG" | grep '^[0-9]' | awk 'NR == 1 { first = $1 } { last = $1 } END { printf "%.1f", (NR - 1) * 1000 / (last - first) }')
