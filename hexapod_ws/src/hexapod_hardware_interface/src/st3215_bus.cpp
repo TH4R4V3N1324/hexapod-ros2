@@ -188,6 +188,43 @@ void ST3215Bus::readStates(const std::vector<uint8_t>& ids, std::vector<std::opt
 }
 
 /**
+ * @brief Read a block of registers from one servo
+ * @param[in] id The servo ID
+ * @param[in] address The first register to read
+ * @param[in] length The number of bytes to read
+ * @param[out] data The register values
+ * @param[out] error The reply's error bits (0 = no error)
+ * @return true if the servo replied with the requested bytes, false otherwise
+*/
+bool ST3215Bus::readRegisters(uint8_t id, uint8_t address, uint8_t length, std::vector<uint8_t>& data, uint8_t& error) {
+    if (!transmit(buildPacket(id, ST3215_INST_READ, {address, length}))) {
+        return false;
+    }
+    return readStatus(id, data, error, STATUS_TIMEOUT_MS) && data.size() == length;
+}
+
+/**
+ * @brief Write a block of registers on one servo, or on every servo with the broadcast ID
+ * @param[in] id The servo ID, or ST3215_BROADCAST_ID
+ * @param[in] address The first register to write
+ * @param[in] data The bytes to write
+ * @return true if the write was sent and, unless broadcast, acknowledged, false otherwise
+*/
+bool ST3215Bus::writeRegisters(uint8_t id, uint8_t address, const std::vector<uint8_t>& data) {
+    std::vector<uint8_t> params = {address};
+    params.insert(params.end(), data.begin(), data.end());
+    if (!transmit(buildPacket(id, ST3215_INST_WRITE, params))) {
+        return false;
+    }
+    if (id == ST3215_BROADCAST_ID) {
+        return true;
+    }
+    std::vector<uint8_t> reply;
+    uint8_t error = 0;
+    return readStatus(id, reply, error, STATUS_TIMEOUT_MS);
+}
+
+/**
  * @brief Build an STS instruction packet
  * @param[in] id The servo ID (0xFE to broadcast)
  * @param[in] instruction The instruction code

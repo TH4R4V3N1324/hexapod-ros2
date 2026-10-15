@@ -7,22 +7,10 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/battery_state.hpp>
 
-#include "hexapod_hardware_interface/i2c_device.hpp"
+#include "hexapod_hardware_interface/ina226.hpp"
 
-using hexapod_hardware_interface::I2CDevice;
+using hexapod_hardware_interface::Ina226;
 using sensor_msgs::msg::BatteryState;
-
-// INA226 registers (16-bit, big-endian)
-static constexpr uint8_t INA226_CONFIG = 0x00;
-static constexpr uint8_t INA226_SHUNT_VOLTAGE = 0x01;
-static constexpr uint8_t INA226_BUS_VOLTAGE = 0x02;
-static constexpr uint8_t INA226_MANUFACTURER_ID = 0xFE;
-static constexpr uint16_t INA226_MANUFACTURER_ID_VALUE = 0x5449;  // "TI"
-
-// 16-sample averaging, 1.1 ms conversions, continuous shunt and bus
-static constexpr uint16_t INA226_CONFIG_VALUE = 0x4527;
-static constexpr double SHUNT_VOLTAGE_LSB = 2.5e-6;  // V
-static constexpr double BUS_VOLTAGE_LSB = 1.25e-3;   // V
 
 /**
  * @brief One INA226 power monitor and its publisher
@@ -31,7 +19,7 @@ struct PowerMonitor {
     std::string location;
     uint8_t address;
     double shunt_resistance;
-    I2CDevice device;
+    Ina226 device;
     bool initialised = false;
     bool warned = false;  // logged that the monitor is missing
     rclcpp::Publisher<BatteryState>::SharedPtr pub;
@@ -78,17 +66,11 @@ private:
      * @return true if the INA226 was found and configured, false otherwise
     */
     bool initialise(PowerMonitor& monitor) {
-        uint16_t id = 0;
-        if (!monitor.device.open(i2c_bus, monitor.address) ||
-            !monitor.device.readRegister16BE(INA226_MANUFACTURER_ID, id) ||
-            id != INA226_MANUFACTURER_ID_VALUE) {
+        if (!monitor.device.initialise(i2c_bus, monitor.address)) {
             if (!monitor.warned) {
                 RCLCPP_WARN(get_logger(), "INA226 (%s) not found at 0x%02X, retrying", monitor.location.c_str(), monitor.address);
                 monitor.warned = true;
             }
-            return false;
-        }
-        if (!monitor.device.writeRegister16BE(INA226_CONFIG, INA226_CONFIG_VALUE)) {
             return false;
         }
         monitor.warned = false;
@@ -109,18 +91,15 @@ private:
                 }
             }
 
-            uint16_t shunt_raw = 0;
-            uint16_t bus_raw = 0;
-            if (!monitor->device.readRegister16BE(INA226_SHUNT_VOLTAGE, shunt_raw) ||
-                !monitor->device.readRegister16BE(INA226_BUS_VOLTAGE, bus_raw)) {
+            double voltage = 0.0;
+            double current = 0.0;
+            if (!monitor->device.read(monitor->shunt_resistance, voltage, current)) {
                 RCLCPP_WARN(get_logger(), "INA226 (%s) read failed", monitor->location.c_str());
                 monitor->initialised = false;
                 continue;
             }
 
             const double nan = std::numeric_limits<double>::quiet_NaN();
-            double voltage = bus_raw * BUS_VOLTAGE_LSB;
-            double current = static_cast<int16_t>(shunt_raw) * SHUNT_VOLTAGE_LSB / monitor->shunt_resistance;
 
             BatteryState msg;
             msg.header.stamp = now();
