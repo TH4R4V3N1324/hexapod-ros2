@@ -17,10 +17,17 @@ static constexpr uint8_t ST3215_INST_SYNC_WRITE = 0x83;
 static constexpr uint8_t ST3215_BROADCAST_ID = 0xFE;
 
 // ST3215 control table (multi-byte values are little-endian)
+static constexpr uint8_t ST3215_REG_ID = 5;                    // EEPROM, unlock with ST3215_REG_LOCK first
+static constexpr uint8_t ST3215_REG_MIN_ANGLE_LIMIT = 9;
+static constexpr uint8_t ST3215_REG_MAX_ANGLE_LIMIT = 11;
 static constexpr uint8_t ST3215_REG_TORQUE_ENABLE = 40;
 static constexpr uint8_t ST3215_REG_ACCELERATION = 41;
 static constexpr uint8_t ST3215_REG_GOAL_POSITION = 42;
+static constexpr uint8_t ST3215_REG_LOCK = 55;                 // 0 = EEPROM writable, 1 = locked
 static constexpr uint8_t ST3215_REG_PRESENT_POSITION = 56;
+static constexpr uint8_t ST3215_REG_PRESENT_VOLTAGE = 62;      // 0.1 V
+static constexpr uint8_t ST3215_REG_PRESENT_TEMPERATURE = 63;  // °C
+static constexpr uint8_t ST3215_REG_MOVING = 66;
 
 static constexpr int ST3215_STEPS_PER_REV = 4096;
 static constexpr int ST3215_CENTER_POSITION = 2048;
@@ -56,6 +63,8 @@ public:
         uint16_t speed
     );
     void readStates(const std::vector<uint8_t>& ids, std::vector<std::optional<ST3215State>>& states);
+    bool readRegisters(uint8_t id, uint8_t address, uint8_t length, std::vector<uint8_t>& data, uint8_t& error);
+    bool writeRegisters(uint8_t id, uint8_t address, const std::vector<uint8_t>& data);
 
     static std::vector<uint8_t> buildPacket(uint8_t id, uint8_t instruction, const std::vector<uint8_t>& params);
     static int decodeSigned(uint16_t value, int sign_bit);
