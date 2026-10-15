@@ -183,6 +183,13 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
 Both sensor nodes keep retrying if their device is missing, so a loose
 connection recovers without a restart.
 
+`hardware_tests/` has standalone test programs for each piece of hardware:
+`test_servos` (scan, monitor, move, wiggle, set IDs), `test_power`, `test_imu`
+and `test_lidar` run in the container with `ros2 run hexapod_hardware_interface
+<test>`, and `test_camera.sh` and `test_tof.py` run on the Pi itself. See
+[hardware_tests/README.md](hexapod_ws/src/hexapod_hardware_interface/hardware_tests/README.md)
+for how to use them and a suggested bring-up order.
+
 ### `hexapod_gait_controller`
 
 See [Gait controller internals](#gait-controller-internals) below.

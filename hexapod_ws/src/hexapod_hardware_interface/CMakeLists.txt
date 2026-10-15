@@ -44,12 +44,22 @@ add_executable(ina226_node src/ina226_node.cpp)
 target_link_libraries(ina226_node i2c_sensors)
 ament_target_dependencies(ina226_node rclcpp sensor_msgs)
 
+# Hardware test programs, run on the robot without ROS (see hardware_tests/README.md)
+add_executable(test_imu hardware_tests/test_imu.cpp)
+target_link_libraries(test_imu i2c_sensors)
+
+add_executable(test_power hardware_tests/test_power.cpp)
+target_link_libraries(test_power i2c_sensors)
+
+add_executable(test_servos hardware_tests/test_servos.cpp src/st3215_bus.cpp)
+
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS ism330dhcx_node ina226_node DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ism330dhcx_node ina226_node test_imu test_power test_servos DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS hardware_tests/test_lidar.py DESTINATION lib/${PROJECT_NAME} RENAME test_lidar)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})
 
