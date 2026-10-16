@@ -6,12 +6,12 @@
     Both face forward on the front of the body, the ToF camera below the Pi camera.
       front_depth_camera_link  Arducam ToF camera (B0410): 240x180 depth, 70 deg diagonal FOV, 4 m in far mode
       camera_link              Raspberry Pi Camera Module 3 (standard lens, 66 deg horizontal FOV)
-    The ToF camera tilts down so it sees low obstacles closer to the feet.
+    Placed as in the V6.1 camera pod (Hexapod_V6.1.step), where both face straight ahead.
   -->
-  <xacro:property name="camera_x" value="0.085"/>        <!-- front face of the body -->
-  <xacro:property name="tof_z" value="0.0"/>
-  <xacro:property name="tof_pitch" value="0.1745"/>      <!-- 10 deg down -->
-  <xacro:property name="picam_z" value="0.03"/>
+  <xacro:property name="camera_x" value="0.138"/>        <!-- front of the camera pod -->
+  <xacro:property name="tof_z" value="-0.0124"/>
+  <xacro:property name="tof_pitch" value="0.0"/>
+  <xacro:property name="picam_z" value="0.0257"/>
   <xacro:property name="picam_pitch" value="0.0"/>
 
   <xacro:macro name="hexapod_cameras">

@@ -9,20 +9,32 @@
   <xacro:arg name="front_depth_rate" default="8"/>
 
   <!-- ================= CONSTANTS ================= -->
-  <xacro:property name="coxa_length" value="0.055"/>
-  <xacro:property name="femur_length" value="0.09"/>
-  <xacro:property name="tibia_length" value="0.15"/>
+  <!-- Hexapod_V6.1, as in hexapod.urdf.xacro (base_link on the hip plane) -->
+  <xacro:property name="coxa_length" value="0.063"/>
+  <xacro:property name="femur_length" value="0.1"/>
+  <!-- Straight line from the knee to the bottom of the foot; the real tibia curves outwards -->
+  <xacro:property name="tibia_length" value="0.186"/>
+  <xacro:property name="leg_radius" value="0.148"/>
+  <xacro:property name="corner_offset" value="${leg_radius * cos(pi / 4)}"/>
 
-  <xacro:property name="coxa_width" value="0.048"/>
-  <xacro:property name="coxa_height" value="0.06"/>
+  <!-- Octagonal body 220 mm across flats, 72 mm tall with the lid, its base 33.85 mm below the hips -->
+  <xacro:property name="body_radius" value="0.11"/>
+  <xacro:property name="body_height" value="0.072"/>
+  <xacro:property name="body_z" value="${body_height / 2 - 0.03385}"/>
 
-  <xacro:property name="femur_radius" value="0.029"/>
-  <xacro:property name="tibia_radius" value="0.0225"/>
+  <xacro:property name="coxa_width" value="0.054"/>
+  <xacro:property name="coxa_height" value="0.045"/>
+
+  <xacro:property name="femur_radius" value="0.025"/>
+  <xacro:property name="tibia_radius" value="0.017"/>
 
   <xacro:property name="cscale" value="0.95"/>
 
+  <!-- Visuals are the real robot's meshes (as in hexapod.urdf.xacro); collisions stay simple shapes -->
+  <xacro:property name="mesh_scale" value="0.001 0.001 0.001"/>
+
   <!-- Rubber foot at the tibia tip; its bottom sits at tibia_length so the IK leg length is unchanged -->
-  <xacro:property name="foot_radius" value="0.012"/>
+  <xacro:property name="foot_radius" value="0.014"/>
   <xacro:property name="foot_friction" value="1.5"/>
 
   <!-- ================= MATERIALS ================= -->
@@ -38,13 +50,14 @@
   <link name="base_link">
     <visual>
       <geometry>
-        <box size="0.17 0.18 0.05"/>
+        <mesh filename="package://hexapod_description/meshes/body.stl" scale="${mesh_scale}"/>
       </geometry>
       <material name="black"/>
     </visual>
     <collision>
+      <origin xyz="0 0 ${body_z}"/>
       <geometry>
-        <box size="0.17 0.18 0.05"/>
+        <cylinder length="${body_height}" radius="${body_radius}"/>
       </geometry>
     </collision>
     <inertial>
@@ -55,14 +68,14 @@
   </link>
 
 <!-- ================= LEG LINKS ================= -->
-<xacro:macro name="leg" params="name x_offset y_offset yaw colour">
+<!-- side: left or right, the left legs being mirror images of the right -->
+<xacro:macro name="leg" params="name side x_offset y_offset yaw colour">
 
   <!-- COXA -->
   <link name="${name}_coxa">
     <visual>
-      <origin xyz="${coxa_length/2} 0 0" rpy="0 0 0"/>
       <geometry>
-        <box size="${coxa_length} ${coxa_width} ${coxa_height}"/>
+        <mesh filename="package://hexapod_description/meshes/coxa_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -82,10 +95,8 @@
   <!-- FEMUR -->
   <link name="${name}_femur">
     <visual>
-      <!-- Cylinder base aligned with joint -->
-      <origin xyz="${femur_length/2} 0 0" rpy="0 -1.5708 0"/>
       <geometry>
-        <cylinder length="${femur_length}" radius="${femur_radius}"/>
+        <mesh filename="package://hexapod_description/meshes/femur_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -105,9 +116,8 @@
   <!-- TIBIA -->
   <link name="${name}_tibia">
     <visual>
-      <origin xyz="${tibia_length/2} 0 0" rpy="0 -1.5708 0"/>
       <geometry>
-        <cylinder length="${tibia_length}" radius="${tibia_radius}"/>
+        <mesh filename="package://hexapod_description/meshes/tibia_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
       <material name="${colour}"/>
     </visual>
@@ -205,22 +215,22 @@
   <!-- Body frame follows REP 103: +x forward, +y left, +z up -->
 
   <!-- Front right -->
-  <xacro:leg name="leg1" x_offset="0.0846" y_offset="-0.06733" yaw="-1.0472" colour="red"/>
+  <xacro:leg name="leg1" side="right" x_offset="${corner_offset}" y_offset="${-corner_offset}" yaw="${-pi / 4}" colour="red"/>
 
   <!-- Middle right -->
-  <xacro:leg name="leg2" x_offset="0" y_offset="-0.090" yaw="-1.5708" colour="green"/>
+  <xacro:leg name="leg2" side="right" x_offset="0" y_offset="${-leg_radius}" yaw="${-pi / 2}" colour="green"/>
 
   <!-- Rear right -->
-  <xacro:leg name="leg3" x_offset="-0.0846" y_offset="-0.06733" yaw="-2.0944" colour="blue"/>
+  <xacro:leg name="leg3" side="right" x_offset="${-corner_offset}" y_offset="${-corner_offset}" yaw="${-3 * pi / 4}" colour="blue"/>
 
   <!-- Rear left -->
-  <xacro:leg name="leg4" x_offset="-0.0846" y_offset="0.06733" yaw="2.0944" colour="yellow"/>
+  <xacro:leg name="leg4" side="left" x_offset="${-corner_offset}" y_offset="${corner_offset}" yaw="${3 * pi / 4}" colour="yellow"/>
 
   <!-- Middle left -->
-  <xacro:leg name="leg5" x_offset="0" y_offset="0.090" yaw="1.5708" colour="cyan"/>
+  <xacro:leg name="leg5" side="left" x_offset="0" y_offset="${leg_radius}" yaw="${pi / 2}" colour="cyan"/>
 
   <!-- Front left -->
-  <xacro:leg name="leg6" x_offset="0.0846" y_offset="0.06733" yaw="1.0472" colour="magenta"/>
+  <xacro:leg name="leg6" side="left" x_offset="${corner_offset}" y_offset="${corner_offset}" yaw="${pi / 4}" colour="magenta"/>
 
   <!-- ================= SENSORS ================= -->
   

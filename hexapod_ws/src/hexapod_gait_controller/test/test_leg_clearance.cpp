@@ -15,14 +15,14 @@ using hexapod_gait_controller::TrajectoryGenerator;
 using Eigen::Vector3d;
 
 // Link lengths used by KinematicSolver (m)
-static constexpr double COXA = 0.0505;
-static constexpr double FEMUR = 0.090;
-static constexpr double TIBIA = 0.15035;
+static constexpr double COXA = 0.063;
+static constexpr double FEMUR = 0.100;
+static constexpr double TIBIA = 0.186;
 
 // Half-thickness of each segment in the Gazebo model (m)
-static constexpr double COXA_RADIUS = 0.03;
-static constexpr double FEMUR_RADIUS = 0.029;
-static constexpr double TIBIA_RADIUS = 0.0225;
+static constexpr double COXA_RADIUS = 0.027;
+static constexpr double FEMUR_RADIUS = 0.025;
+static constexpr double TIBIA_RADIUS = 0.017;
 
 // Smallest gap allowed between neighbouring legs' segments (m)
 static constexpr double MIN_CLEARANCE = 0.01;
@@ -74,8 +74,8 @@ TEST(LegClearance, NeighbouringLegsNeverTouchWithinTheirStrideCircles) {
 
     // Foot offsets across the stride circle, at heights from walking (standing and mid-swing) and
     // from tilt mode, where a tilted or shifted body puts feet higher or lower than standing
-    // Walk leveling can put a foot up to 7 mm beyond its stride circle (see test_body_pose)
-    constexpr double LEVELING_SHIFT = 0.007;  // m
+    // Walk leveling can put a foot up to 9 mm beyond its stride circle (see test_body_pose)
+    constexpr double LEVELING_SHIFT = 0.009;  // m
     std::vector<Vector3d> offsets = {Vector3d::Zero()};
     for (int k = 0; k < 16; ++k) {
         double a = 2.0 * M_PI * k / 16.0;

@@ -47,7 +47,6 @@ private:
         {"strafe", MODE_STRAFE},
         {"tilt", MODE_TILT}
     };
-    Vector3d rotateZ(const Vector3d& v, double degrees);
 public:
     /**
      * @brief Get the supported gaits
@@ -59,16 +58,18 @@ public:
      * @return The list of supported modes
     */
     const std::vector<LocomotionOption>& getModes() const { return modes; }
-    double currentHeight = -0.12;
-    Vector3d homePos {0.15, 0, 0};
-    Vector3d startPos {0.15, 0, currentHeight};
+    // Neutral stance from the Hexapod_V6.1 stand pose: each foot straight out from its coxa
+    // (so the corner feet sit at 45 degrees), 0.177 m out and 0.134 m below the hips
+    double currentHeight = -0.134;
+    Vector3d homePos {0.177, 0, 0};
+    Vector3d startPos {0.177, 0, currentHeight};
     std::map<int, Vector3d> startPosition{
-        {1, rotateZ(startPos, 15)},
+        {1, startPos},
         {2, startPos},
-        {3, rotateZ(startPos, -15)},
-        {4, rotateZ(startPos, 15)},
+        {3, startPos},
+        {4, startPos},
         {5, startPos},
-        {6, rotateZ(startPos, -15)}
+        {6, startPos}
     };
     Gait currentGait = GAIT_TRIPOD;
     Mode currentMode = MODE_NORMAL;

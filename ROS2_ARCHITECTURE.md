@@ -345,10 +345,10 @@ hexapod_description/
 ```yaml
 hexapod:
   geometry:
-    coxa_length: 50.5      # mm
-    femur_length: 90.0     # mm
-    tibia_length: 150.35   # mm
-    body_radius: 100.0     # mm - distance from center to coxa
+    coxa_length: 63.0      # mm
+    femur_length: 100.0    # mm
+    tibia_length: 186.0    # mm
+    body_radius: 148.0     # mm - distance from center to coxa
   
   legs:
     # Leg mounting angles and mirror flags
@@ -572,9 +572,9 @@ Main motion planning node. Generates leg trajectories based on velocity commands
 gait_controller:
   ros__parameters:
     # Geometry (loaded from hexapod_description)
-    coxa_length: 50.5
-    femur_length: 90.0
-    tibia_length: 150.35
+    coxa_length: 63.0
+    femur_length: 100.0
+    tibia_length: 186.0
     
     # Motion
     control_rate: 100.0         # Hz

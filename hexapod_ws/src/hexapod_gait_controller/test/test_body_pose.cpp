@@ -121,12 +121,12 @@ TEST(BodyPose, UnposingUndoesPosing) {
 
 TEST(BodyPose, LevelingAboutTheGroundBarelyMovesTheFeetSideways) {
     // Walk leveling's largest correction, about the ground under the body: the feet change height
-    // but move less than 7 mm sideways (test_leg_clearance covers stride circles 7 mm wider)
+    // but move less than 9 mm sideways (test_leg_clearance covers stride circles 9 mm wider)
     TrajectoryGenerator gen;
     GaitConfig config;
     const BodyPose pose = TrajectoryGenerator::rotationAbout(0.15, 0.15, Vector3d(0.0, 0.0, config.currentHeight));
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         const Vector3d offset = gen.posedFoot(leg, config.startPosition.at(leg), pose) - config.startPosition.at(leg);
-        EXPECT_LT(offset.head<2>().norm(), 0.007) << "leg " << leg;
+        EXPECT_LT(offset.head<2>().norm(), 0.009) << "leg " << leg;
     }
 }

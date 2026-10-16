@@ -96,6 +96,10 @@ if(BUILD_TESTING)
   target_link_libraries(test_height_map height_map)
   ament_target_dependencies(test_height_map Eigen3)
 
+  ament_add_gtest(test_kinematics test/test_kinematics.cpp)
+  target_link_libraries(test_kinematics kinematic_solver)
+  ament_target_dependencies(test_kinematics rclcpp hexapod_interfaces Eigen3)
+
   ament_add_gtest(test_foot_force test/test_foot_force.cpp)
   target_link_libraries(test_foot_force kinematic_solver)
   ament_target_dependencies(test_foot_force rclcpp hexapod_interfaces Eigen3)

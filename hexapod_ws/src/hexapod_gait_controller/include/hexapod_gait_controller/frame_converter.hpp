@@ -27,13 +27,16 @@ public:
      * @brief Initialise the mounting configuration of each leg
     */
     FrameConverter() {
-        // Coxa joint yaw (rad) and position (m), matching the URDF
-        legConfigs[1] = {-M_PI / 3.0, Vector3d(0.0846, -0.06733, 0)};       // front right
-        legConfigs[2] = {-M_PI / 2.0, Vector3d(0.0, -0.09, 0)};             // middle right
-        legConfigs[3] = {-2.0 * M_PI / 3.0, Vector3d(-0.0846, -0.06733, 0)}; // rear right
-        legConfigs[4] = {2.0 * M_PI / 3.0, Vector3d(-0.0846, 0.06733, 0)};   // rear left
-        legConfigs[5] = {M_PI / 2.0, Vector3d(0.0, 0.09, 0)};               // middle left
-        legConfigs[6] = {M_PI / 3.0, Vector3d(0.0846, 0.06733, 0)};         // front left
+        // Coxa joint yaw (rad) and position (m), matching the URDF: 0.148 m from the centre,
+        // the corner legs at 45 degrees
+        const double r = 0.148;
+        const double c = r * std::cos(M_PI / 4.0);
+        legConfigs[1] = {-M_PI / 4.0, Vector3d(c, -c, 0)};          // front right
+        legConfigs[2] = {-M_PI / 2.0, Vector3d(0.0, -r, 0)};        // middle right
+        legConfigs[3] = {-3.0 * M_PI / 4.0, Vector3d(-c, -c, 0)};   // rear right
+        legConfigs[4] = {3.0 * M_PI / 4.0, Vector3d(-c, c, 0)};     // rear left
+        legConfigs[5] = {M_PI / 2.0, Vector3d(0.0, r, 0)};          // middle left
+        legConfigs[6] = {M_PI / 4.0, Vector3d(c, c, 0)};            // front left
     }
     
     /**

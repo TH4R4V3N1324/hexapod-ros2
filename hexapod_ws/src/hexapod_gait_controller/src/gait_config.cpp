@@ -3,18 +3,6 @@
 namespace hexapod_gait_controller {
 
 /**
- * @brief Rotate a vector around the Z axis
- * @param[in] v The vector to rotate
- * @param[in] degrees The rotation angle in degrees
- * @return The rotated vector
-*/
-Vector3d GaitConfig::rotateZ(const Vector3d& v, double degrees) {
-    double radians = degrees * M_PI / 180.0;
-    AngleAxisd rotation(radians, Vector3d::UnitZ());
-    return rotation * v;
-}
-
-/**
  * @brief Get the leg configuration based on the specified gait
  * @param[in] gait The gait type
  * @return A vector of vectors representing the leg configuration
@@ -75,14 +63,9 @@ void GaitConfig::setMode(Mode mode) {
 void GaitConfig::setHeight(double height) {
     currentHeight = height;
     startPos.z() = currentHeight;
-    startPosition = {
-        {1, rotateZ(startPos, 15)},
-        {2, startPos},
-        {3, rotateZ(startPos, -15)},
-        {4, rotateZ(startPos, 15)},
-        {5, startPos},
-        {6, rotateZ(startPos, -15)}
-    };
+    for (auto& [leg, position] : startPosition) {
+        position = startPos;
+    }
 }
 
 };
