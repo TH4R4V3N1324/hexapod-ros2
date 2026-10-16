@@ -22,9 +22,11 @@ struct JointAngles {
 
 class KinematicSolver {
 private:
-    static constexpr double coxaLength  = 0.0505;   // meters
-    static constexpr double femurLength = 0.090;    // meters
-    static constexpr double tibiaLength = 0.15035;  // meters
+    // Hexapod_V6.1, matching the URDF. The tibia is curved: its length is the straight line
+    // from the knee axis to the bottom of the foot.
+    static constexpr double coxaLength  = 0.063;    // meters
+    static constexpr double femurLength = 0.100;    // meters
+    static constexpr double tibiaLength = 0.186;    // meters
 public:
     JointAngles solveIK(const Vector3d& target, bool mirrored = false);
     Vector3d solveFK(const JointAngles& angles);

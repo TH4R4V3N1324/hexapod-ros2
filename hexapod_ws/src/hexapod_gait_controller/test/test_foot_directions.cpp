@@ -36,7 +36,7 @@ static double angleDiff(double a, double b) {
 TEST(FootDirections, LegFramesMatchUrdf) {
     TrajectoryGenerator gen;
     // Coxa joint yaws from hexapod_primitives.urdf.xacro
-    const double urdf_yaw[MAX_LEGS + 1] = {0.0, -1.0472, -1.5708, -2.0944, 2.0944, 1.5708, 1.0472};
+    const double urdf_yaw[MAX_LEGS + 1] = {0.0, -M_PI / 4, -M_PI / 2, -3 * M_PI / 4, 3 * M_PI / 4, M_PI / 2, M_PI / 4};
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         EXPECT_NEAR(angleDiff(gen.legYaw(leg), urdf_yaw[leg]), 0.0, 1e-3) << "leg " << leg;
     }
@@ -46,8 +46,8 @@ TEST(FootDirections, NeutralFeetPointAwayFromBody) {
     TrajectoryGenerator gen;
     for (int leg = 1; leg <= MAX_LEGS; ++leg) {
         Vector3d foot = gen.neutralFootInBody(leg);
-        EXPECT_GT(foot.norm(), 0.2) << "leg " << leg;
-        EXPECT_LT(foot.norm(), 0.3) << "leg " << leg;
+        EXPECT_GT(foot.norm(), 0.25) << "leg " << leg;
+        EXPECT_LT(foot.norm(), 0.35) << "leg " << leg;
     }
 }
 

@@ -201,7 +201,7 @@ local_costmap:
       width: 3
       height: 3
       resolution: 0.05
-      robot_radius: 0.32   # legs reach ~0.26 m from the centre, plus stride
+      robot_radius: 0.39   # feet stand ~0.325 m from the centre, plus stride
       plugins: ["voxel_layer", "inflation_layer"]
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
@@ -251,7 +251,7 @@ global_costmap:
       global_frame: map
       robot_base_frame: base_footprint
       transform_tolerance: 0.5
-      robot_radius: 0.32   # legs reach ~0.26 m from the centre, plus stride
+      robot_radius: 0.39   # feet stand ~0.325 m from the centre, plus stride
       resolution: 0.05
       track_unknown_space: true
       # A fixed-size window around the robot instead of sizing to the SLAM map. The SLAM map grows

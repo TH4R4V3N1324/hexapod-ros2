@@ -22,9 +22,9 @@ public:
         joint_cmd_pub = this->create_publisher<sensor_msgs::msg::JointState>("joint_commands", 10);
 
         // Home position: leg extended outward (X), level (Y=0), foot below body (Z negative)
-        // Total leg reach: coxa(0.0505) + femur(0.090) + tibia(0.15035) ≈ 0.29m
+        // Total leg reach: coxa(0.063) + femur(0.100) + tibia(0.186) ≈ 0.35m
         // Use a position with foot ~0.12m below hip level for a natural standing pose
-        homePos = {0.15, 0.0, 0};
+        homePos = {0.177, 0.0, 0};
 
         // Test parameters
         stepSize = 0.05;       // 5 cm along each axis
