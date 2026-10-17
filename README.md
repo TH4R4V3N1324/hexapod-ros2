@@ -7,11 +7,6 @@ bus servos through `ros2_control`, and can also run in **Gazebo Harmonic**
 for simulation and gait development. The operator side also runs on **ROS 2
 Jazzy** and bridges a game controller to the robot over Foxglove.
 
-> **Note on `ROS2_ARCHITECTURE.md`:** the architecture doc at the repo root
-> is out of date and does not reflect the current package layout, topics, or
-> services. This README is the current source of truth; the old doc should
-> be treated as historical only (or removed).
-
 ---
 
 ## Table of contents
@@ -54,8 +49,7 @@ hexapod-ros2/
 ├── steamdeck/                 # Scripts to auto-discover the robot's Foxglove
 │   │                           bridge on the LAN and launch Foxglove Studio
 │   └── images/                 # Steam Deck / distrobox shortcut icons
-├── init_operator.sh           # Native (non-Docker) operator launcher
-└── ROS2_ARCHITECTURE.md       # Outdated — ignore, see this README instead
+└── init_operator.sh           # Native (non-Docker) operator launcher
 ```
 
 ## System overview
