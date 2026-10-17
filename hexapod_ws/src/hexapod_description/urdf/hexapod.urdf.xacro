@@ -4,6 +4,10 @@
   <!-- Waveshare ST3215 at 12 V: 2.94 N·m stall torque, 0.222 s/60° no-load speed -->
   <xacro:property name="servo_effort" value="2.94"/>
   <xacro:property name="servo_velocity" value="4.7"/>
+  <!-- Femur range from the CAD meshes: raising it hits the coxa bracket at -100 deg, lowering it
+       with the knee folded puts the tibia into the body at +86 deg. Both ~10 deg inside contact. -->
+  <xacro:property name="femur_lower" value="-1.6"/>
+  <xacro:property name="femur_upper" value="1.4"/>
   <!-- ros2_control hardware: gazebo, mock or st3215 (see hexapod.ros2_control.xacro) -->
   <xacro:arg name="hardware" default="mock"/>
   <xacro:arg name="serial_port" default="/dev/ttyAMA0"/>
@@ -130,7 +134,7 @@
     <child link="${name}_femur"/>
     <origin xyz="${coxa_length} 0 0" rpy="0 0 0"/>
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
+    <limit lower="${femur_lower}" upper="${femur_upper}" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- TIBIA JOINT -->

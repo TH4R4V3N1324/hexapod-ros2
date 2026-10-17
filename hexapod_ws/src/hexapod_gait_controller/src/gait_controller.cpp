@@ -1317,13 +1317,17 @@ void GaitController::updateLoadBalance(double dt) {
 /**
  * @brief Whether a leg can put its foot at a target
  * @param[in] target The foot position (leg frame)
- * @return true if IK lands the foot within 1 mm of the target with every joint inside +-1.4 rad
+ * @return true if IK lands the foot within 1 mm of the target with every joint inside its range
+ * @note The femur range matches femur_lower and femur_upper in the URDF (from the CAD meshes);
+ *       the coxa and tibia keep +-1.4 rad until theirs are worked out
 */
 bool GaitController::reachable(const Vector3d& target) {
-    constexpr double MAX_JOINT_ANGLE = 1.4;   // rad, inside the servos' +-1.57 range
-    constexpr double REACH_TOLERANCE = 1e-3;  // m
+    constexpr double MAX_JOINT_ANGLE = 1.4;  // rad, coxa and tibia
+    constexpr double FEMUR_MIN = -1.6;       // rad, raised
+    constexpr double FEMUR_MAX = 1.4;        // rad, lowered
+    constexpr double REACH_TOLERANCE = 1e-3; // m
     const JointAngles angles = ikSolver.solveIK(target);
-    return std::abs(angles.coxa) <= MAX_JOINT_ANGLE && std::abs(angles.femur) <= MAX_JOINT_ANGLE &&
+    return std::abs(angles.coxa) <= MAX_JOINT_ANGLE && angles.femur >= FEMUR_MIN && angles.femur <= FEMUR_MAX &&
         std::abs(angles.tibia) <= MAX_JOINT_ANGLE && (ikSolver.solveFK(angles) - target).norm() <= REACH_TOLERANCE;
 }
 
