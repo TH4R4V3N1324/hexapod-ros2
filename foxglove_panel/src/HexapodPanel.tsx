@@ -39,6 +39,11 @@ const HEIGHT_DEFAULT = 0.12;
 
 const IMU_TOPIC = "/imu/data";
 const POWER_TOPICS = { left: "/power/left", right: "/power/right" };
+// behaviour_manager's battery state, one entry in the DiagnosticArrays on /diagnostics
+const DIAGNOSTICS_TOPIC = "/diagnostics";
+const BATTERY_DIAGNOSTIC = "behaviour_manager: battery";
+// gait_controller's sit service (std_srvs/SetBool) and whether it's seated (std_msgs/Bool, latched)
+const SEATED_TOPIC = "/seated";
 const footTopic = (leg: number) => `/foot_force/leg${leg}`;
 
 type Quaternion = { x: number; y: number; z: number; w: number };
@@ -50,6 +55,17 @@ type Capabilities = {
   current_gait: number;
 };
 type Battery = { voltage: number; current: number; percentage: number };
+type DiagnosticStatus = {
+  level: number;
+  name: string;
+  message: string;
+  values: { key: string; value: string }[];
+};
+// diagnostic_msgs/DiagnosticStatus levels
+const DIAG_OK = 0;
+const DIAG_ERROR = 2;
+const DIAG_STALE = 3;
+type BatteryStatus = { level: number; message: string; voltage?: string };
 
 function rollPitch(q: Quaternion): { roll: number; pitch: number } {
   const roll = Math.atan2(2 * (q.w * q.x + q.y * q.z), 1 - 2 * (q.x * q.x + q.y * q.y));
@@ -112,6 +128,7 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   const [attitude, setAttitude] = useState<{ roll: number; pitch: number } | undefined>();
   const [footForces, setFootForces] = useState<Record<number, number>>({});
   const [power, setPower] = useState<Record<string, Battery>>({});
+  const [batteryStatus, setBatteryStatus] = useState<BatteryStatus | undefined>();
   const [parameters, setParameters] = useState<
     Immutable<Map<string, ParameterValue>> | undefined
   >();
@@ -119,6 +136,9 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   const [capabilities, setCapabilities] = useState<Capabilities | undefined>();
   const [height, setHeight] = useState(HEIGHT_DEFAULT);
   const [status, setStatus] = useState<{ text: string; error: boolean } | undefined>();
+  // Seated, or asked to sit. seated only changes once a sit finishes or a stand starts, so the
+  // button follows the last request until then.
+  const [sitting, setSitting] = useState(false);
 
   useLayoutEffect(() => {
     context.onRender = (renderState: Immutable<RenderState>, done) => {
@@ -142,6 +162,18 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
         } else if (event.topic === POWER_TOPICS.left || event.topic === POWER_TOPICS.right) {
           const side = event.topic === POWER_TOPICS.left ? "left" : "right";
           batteries[side] = event.message as Battery;
+        } else if (event.topic === SEATED_TOPIC) {
+          setSitting((event.message as { data: boolean }).data);
+        } else if (event.topic === DIAGNOSTICS_TOPIC) {
+          const msg = event.message as { status: DiagnosticStatus[] };
+          const battery = msg.status.find((s) => s.name === BATTERY_DIAGNOSTIC);
+          if (battery) {
+            setBatteryStatus({
+              level: battery.level,
+              message: battery.message,
+              voltage: battery.values.find((v) => v.key === "voltage")?.value,
+            });
+          }
         }
       }
       if (Object.keys(forces).length > 0) {
@@ -159,6 +191,8 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
       ...LEG_LAYOUT.map(({ leg }) => ({ topic: footTopic(leg) })),
       { topic: POWER_TOPICS.left },
       { topic: POWER_TOPICS.right },
+      { topic: DIAGNOSTICS_TOPIC },
+      { topic: SEATED_TOPIC },
     ]);
   }, [context]);
 
@@ -209,9 +243,42 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   const contactThreshold = Number(gaitParameter(parameters, "contact_force_on") ?? 2.0);
   const muted = dark ? "#9aa0a6" : "#5f6368";
   const accent = dark ? "#7cc4ff" : "#1a73e8";
+  const warnColor = dark ? "#f5c400" : "#b06000";
+  const errorColor = dark ? "#e57373" : "#c5221f";
+  const batteryColor = (level: number) =>
+    level === DIAG_ERROR ? errorColor : level === DIAG_OK ? undefined : warnColor;
+  // behaviour_manager's message is the battery level ("OK", "Low" or "Critical"), then
+  // ", no readings from <boards>" if a board has gone quiet (which also makes it a warning)
+  const batteryText = (battery: BatteryStatus) => {
+    if (battery.level === DIAG_STALE) {
+      return `Battery: ${battery.message}`;
+    }
+    const [state = "", ...rest] = battery.message.split(", ");
+    const volts = battery.voltage && battery.voltage !== "n/a" ? ` ${battery.voltage} V` : "";
+    const missing = rest.length > 0 ? `. ${rest.join(", ").replace(/^no/, "No")}` : "";
+    const advice =
+      state === "Critical" ? ". Sitting down: charge or swap the battery" : state === "Low" ? ". Charge soon" : "";
+    return `Battery ${state === "OK" ? "OK" : state.toLowerCase()}${volts}${advice}${missing}`;
+  };
 
   return (
     <div style={{ padding: 12, fontFamily: "sans-serif", fontSize: 13, overflowY: "auto", height: "100%" }}>
+      {batteryStatus && batteryStatus.level !== DIAG_OK && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: 12,
+            padding: "8px 10px",
+            borderRadius: 4,
+            border: `2px solid ${batteryColor(batteryStatus.level) ?? warnColor}`,
+            color: batteryColor(batteryStatus.level),
+            fontWeight: "bold",
+          }}
+        >
+          {batteryText(batteryStatus)}
+        </div>
+      )}
+
       <Section title="Body">
         {attitude ? (
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -255,6 +322,9 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
       </Section>
 
       <Section title="Power">
+        <div style={{ marginBottom: 2, color: batteryStatus ? batteryColor(batteryStatus.level) : muted }}>
+          {batteryStatus ? batteryText(batteryStatus) : "No battery status from behaviour_manager"}
+        </div>
         {(["left", "right"] as const).map((side) => {
           const battery = power[side];
           return (
@@ -321,6 +391,21 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
                 onKeyUp={() => void call("/set_height", { height: -height }, `Height set to ${(height * 100).toFixed(1)} cm`)}
               />
               <span style={{ fontVariantNumeric: "tabular-nums" }}>{(height * 100).toFixed(1)} cm</span>
+            </div>
+            <span>Posture</span>
+            <div>
+              <button
+                onClick={() => {
+                  const sit = !sitting;
+                  void call("/sit", { data: sit }, sit ? "Sit" : "Stand").then((response) => {
+                    if ((response as { success?: boolean } | undefined)?.success === true) {
+                      setSitting(sit);
+                    }
+                  });
+                }}
+              >
+                {sitting ? "Stand up" : "Sit down"}
+              </button>
             </div>
           </div>
         ) : (
