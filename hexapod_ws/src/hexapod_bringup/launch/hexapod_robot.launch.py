@@ -26,6 +26,7 @@ def generate_launch_description():
     controllers_file = os.path.join(description_path, 'config', 'controllers.yaml')
     sensors_file = os.path.join(hardware_path, 'config', 'sensors.yaml')
     ekf_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'ekf.yaml')
+    behaviour_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'behaviour_manager.yaml')
 
     robot_description = ParameterValue(
         Command(['xacro ', xacro_file, ' hardware:=', hardware, ' serial_port:=', serial_port]),
@@ -76,6 +77,15 @@ def generate_launch_description():
         executable='controller_teleop',
         name='controller_teleop',
         output='screen'
+    )
+
+    # Watches the battery: warns when it's low and sits the robot down when it's critical
+    behaviour_manager = Node(
+        package='hexapod_control',
+        executable='behaviour_manager',
+        name='behaviour_manager',
+        output='screen',
+        parameters=[behaviour_file]
     )
 
     # Fuses leg odometry and the IMU gyro, publishes odom -> base_link
@@ -198,6 +208,7 @@ def generate_launch_description():
         joint_state_relay,
         gait_controller,
         controller_teleop,
+        behaviour_manager,
         ekf,
         slam,
         nav,
