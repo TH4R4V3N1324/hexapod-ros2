@@ -7,9 +7,14 @@ A Foxglove panel for the hexapod, through `foxglove_bridge`:
   `/foot_force/legN` is above gait_controller's `contact_force_on`. gait_controller
   publishes these at `foot_force_rate` (20 Hz): at the joint state rate the six
   topics were 600 messages a second, which made Foxglove on the Steam Deck lag.
-- **Power**: voltage, current and charge from `/power/left` and `/power/right`.
+- **Power**: voltage, current and charge from `/power/left` and `/power/right`, and
+  behaviour_manager's battery status from `/diagnostics`. When the battery is low,
+  critical (the robot sits down) or a board stops reporting, a banner at the top of
+  the panel says so.
 - **Mode and gait**: from `get_capabilities`, changed with `set_mode` and `set_gait`.
-  Height is sent with `set_height` when the slider is let go (8–15 cm).
+  Height is sent with `set_height` when the slider is let go (8–15 cm). **Sit down** /
+  **Stand up** calls `sit`, and follows `/seated` when behaviour_manager sits the
+  robot down on a flat battery.
 - **Features**: gait_controller's switchable features. Each shows the node's
   parameter and changes it with its `set_<feature>` service.
 
