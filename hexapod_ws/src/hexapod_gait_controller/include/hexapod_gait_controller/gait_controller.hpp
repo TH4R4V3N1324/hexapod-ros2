@@ -20,6 +20,7 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "std_srvs/srv/set_bool.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
@@ -37,6 +38,17 @@ using Eigen::Vector3d;
 using nav_msgs::msg::Odometry;
 using std::placeholders::_1;
 using std::placeholders::_2;
+
+// Sitting down rests the body on the ground, so the servos carry almost nothing. The feet step out
+// to sit_reach first: at the standing reach the femurs can't lift far enough to lower the body.
+enum class SitState {
+    STANDING,
+    SPREADING,  // stepping the feet out to sit_reach
+    LOWERING,   // lowering the body onto the ground
+    SEATED,
+    RAISING,    // lifting the body back to its standing height
+    GATHERING   // stepping the feet back in to the standing reach
+};
 
 struct MotionIntent {
     double forward;  // m/s
@@ -57,6 +69,10 @@ public:
         set_mode_service = this->create_service<SetMode>("set_mode", std::bind(&GaitController::setModeCallback, this, _1, _2));
         set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
         get_capabilities_service = this->create_service<GetCapabilities>("get_capabilities", std::bind(&GaitController::getCapabilitiesCallback, this, _1, _2));
+        sit_service = this->create_service<std_srvs::srv::SetBool>("sit", std::bind(&GaitController::sitCallback, this, _1, _2));
+        // Latched, so a node that starts later still learns whether the robot is seated
+        seated_pub = this->create_publisher<std_msgs::msg::Bool>("seated", rclcpp::QoS(1).transient_local());
+        publishSeated();
         
         double loop_rate_hz = this->declare_parameter("loop_rate", 100.0);
         phase_duration = this->declare_parameter("phase_duration", 1.0);
@@ -127,6 +143,12 @@ public:
         min_height = this->declare_parameter("min_height", 0.06);
         max_height = this->declare_parameter("max_height", 0.16);
         target_height = gaitConfig.currentHeight;
+        // Sitting: feet out at sit_reach, sit_height below the hips. The body's underside is 0.034 m
+        // below the hips, so it reaches the ground first and the feet end up just clear of it.
+        sit_reach = this->declare_parameter("sit_reach", 0.26);
+        sit_height = this->declare_parameter("sit_height", 0.015);
+        stand_reach = gaitConfig.startPos.x();
+        stand_height = target_height;
         touchdown_ratio = this->declare_parameter("touchdown_ratio", 1.5);
         stumble_force = this->declare_parameter("stumble_force", 3.0);
         stumble_lift = this->declare_parameter("stumble_lift", 0.03);
@@ -194,6 +216,8 @@ private:
     rclcpp::Service<SetMode>::SharedPtr set_mode_service;
     rclcpp::Service<SetHeight>::SharedPtr set_height_service;
     rclcpp::Service<GetCapabilities>::SharedPtr get_capabilities_service;
+    rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr sit_service;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr seated_pub;
     std::vector<rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr> toggle_services;
     TrajectoryGenerator trajectoryGen;
     GaitConfig gaitConfig;
@@ -283,6 +307,13 @@ private:
     double min_height;          // m, lowest body height set_height accepts
     double max_height;          // m, highest body height set_height accepts
     double target_height;       // m, feet z below the hips that set_height asked for (negative)
+
+    // Sitting
+    SitState sit_state = SitState::STANDING;
+    double sit_reach;           // m, how far out the feet stand while seated
+    double sit_height;          // m, feet below the hips while seated (positive)
+    double stand_reach;         // m, how far out the feet stand normally
+    double stand_height;        // m, feet z below the hips to stand back up to (negative)
     double max_step_height;     // m, furthest a foot's ground can be above or below nominal
     double seek_speed;          // m/s, how fast a foot that didn't find the ground reaches down
     double body_height_rate;    // m/s, how fast the body follows the feet's average ground height
@@ -382,6 +413,10 @@ public:
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
     void setModeCallback(const std::shared_ptr<SetMode::Request> request, std::shared_ptr<SetMode::Response> response);
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
+    void sitCallback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+                     std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+    void sit(double dt);
+    void publishSeated();
     void toggleCallback(const std::string& feature, const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                         std::shared_ptr<std_srvs::srv::SetBool::Response> response);
     void getCapabilitiesCallback(const std::shared_ptr<GetCapabilities::Request> request, std::shared_ptr<GetCapabilities::Response> response);

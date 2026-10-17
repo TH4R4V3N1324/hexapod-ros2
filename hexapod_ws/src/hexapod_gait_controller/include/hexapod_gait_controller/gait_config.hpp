@@ -81,6 +81,7 @@ public:
     void cycleMode();
     void setMode(Mode mode);
     void setHeight(double height);
+    void setReach(double reach);
 };
 
 }  // namespace hexapod_gait_controller

@@ -68,4 +68,15 @@ void GaitConfig::setHeight(double height) {
     }
 }
 
+/**
+ * @brief Set how far out from the hips the feet stand, and update start positions accordingly
+ * @param[in] reach The feet's distance out from the hips (m)
+*/
+void GaitConfig::setReach(double reach) {
+    startPos.x() = reach;
+    for (auto& [leg, position] : startPosition) {
+        position = startPos;
+    }
+}
+
 };
