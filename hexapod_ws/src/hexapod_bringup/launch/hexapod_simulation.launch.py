@@ -13,6 +13,7 @@ def generate_launch_description():
     pkg_path = get_package_share_directory('hexapod_description')
     rviz_config = os.path.join(pkg_path, 'rviz', 'hexapod.rviz')
     ekf_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'ekf.yaml')
+    behaviour_file = os.path.join(get_package_share_directory('hexapod_bringup'), 'config', 'behaviour_manager.yaml')
     bridge_vision = LaunchConfiguration('bridge_vision')
     world = LaunchConfiguration('world')
     front_depth_width = LaunchConfiguration('front_depth_width')
@@ -54,6 +55,25 @@ def generate_launch_description():
         executable='controller_teleop',
         name='controller_teleop',
         output='screen',
+    )
+
+    # Watches the battery: warns when it's low and sits the robot down when it's critical
+    behaviour_manager = Node(
+        package='hexapod_control',
+        executable='behaviour_manager',
+        name='behaviour_manager',
+        output='screen',
+        parameters=[behaviour_file, {'use_sim_time': True}]
+    )
+
+    # Stands in for the daughter boards' power monitors. Set the battery voltage while running with
+    # ros2 param set /sim_power_monitor voltage 9.8
+    sim_power_monitor = Node(
+        package='hexapod_control',
+        executable='sim_power_monitor',
+        name='sim_power_monitor',
+        output='screen',
+        parameters=[{'use_sim_time': True}]
     )
 
     # Fuses leg odometry and the simulated IMU gyro, publishes odom -> base_link
@@ -165,6 +185,8 @@ def generate_launch_description():
         gazebo_launch,
         hexapod_gait_controller,
         controller_teleop_node,
+        behaviour_manager,
+        sim_power_monitor,
         ekf_node,
         lidar_filter,
         slam,

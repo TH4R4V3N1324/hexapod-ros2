@@ -1,0 +1,12 @@
+behaviour_manager:
+  ros__parameters:
+    power_locations: [left, right]  # power/<location>, one per daughter board
+    # 3S LiPo. Starting points: tune them against real readings under load.
+    warning_voltage: 10.5   # 3.5 V/cell: buzz the controller, panel shows low
+    critical_voltage: 9.9   # 3.3 V/cell: sit down
+    hysteresis: 0.2         # V above a threshold before it clears
+    filter_time: 5.0        # s, so the dips while walking don't trip it
+    stale_timeout: 2.0      # s without a reading before a board is ignored
+    auto_sit: true
+    rumble: true
+    rate: 2.0

@@ -8,6 +8,18 @@ endif()
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+
+add_executable(behaviour_manager src/behaviour_manager.cpp)
+ament_target_dependencies(behaviour_manager rclcpp diagnostic_msgs sensor_msgs std_srvs)
+
+add_executable(sim_power_monitor src/sim_power_monitor.cpp)
+ament_target_dependencies(sim_power_monitor rclcpp geometry_msgs sensor_msgs)
+
+install(TARGETS behaviour_manager sim_power_monitor DESTINATION lib/${PROJECT_NAME})
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
