@@ -410,6 +410,12 @@ void GaitController::setModeCallback(
         RCLCPP_WARN(this->get_logger(), "%s", response->message.c_str());
         return;
     }
+    if (request->mode == MODE_TILT && sit_state != SitState::STANDING) {
+        response->success = false;
+        response->message = "Can't enter tilt mode while sitting";
+        RCLCPP_WARN(this->get_logger(), "%s", response->message.c_str());
+        return;
+    }
     gaitConfig.setMode(static_cast<Mode>(request->mode));
     response->success = true;
     response->message = "Mode changed to " + std::to_string(request->mode);
@@ -427,6 +433,12 @@ void GaitController::setHeightCallback(
 ) {
     // The request is the feet's z below the hips, so negative: -0.12 for a 12 cm body height
     const double height = static_cast<double>(request->height);
+    if (sit_state != SitState::STANDING) {
+        response->success = false;
+        response->message = "can't change height while sitting";
+        RCLCPP_WARN(this->get_logger(), "Refused height %.3f: %s", height, response->message.c_str());
+        return;
+    }
     if (-height < min_height || -height > max_height) {
         response->success = false;
         response->message = "height must be between " + std::to_string(min_height) + " and " +
@@ -438,6 +450,136 @@ void GaitController::setHeightCallback(
     response->success = true;
     response->message = "moving to " + std::to_string(-height) + " m";
     RCLCPP_INFO(this->get_logger(), "Height target %.3f m", -height);
+}
+
+/**
+ * @brief Service callback to sit down (true) or stand up (false)
+ * @param[in] request data is true to sit, false to stand
+ * @param[out] response The service response
+ * @note Returns straight away; the move carries on in the gait loop, and seated reports when it's
+ *       done. A request part way through reverses the move from wherever it has got to.
+*/
+void GaitController::sitCallback(
+    const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
+    std::shared_ptr<std_srvs::srv::SetBool::Response> response
+) {
+    response->success = true;
+    if (request->data) {
+        switch (sit_state) {
+            case SitState::STANDING:
+                if (!reachable(Vector3d(sit_reach, 0.0, -sit_height)) ||
+                    !reachable(Vector3d(sit_reach, 0.0, stand_height))) {
+                    response->success = false;
+                    response->message = "sit_reach and sit_height put a foot out of reach";
+                    RCLCPP_WARN(this->get_logger(), "Refused to sit: %s", response->message.c_str());
+                    return;
+                }
+                stand_height = target_height;
+                // Tilt mode eases the body back to neutral before the sit starts
+                gaitConfig.setMode(MODE_NORMAL);
+                gaitConfig.setReach(sit_reach);
+                sit_state = SitState::SPREADING;
+                break;
+            case SitState::GATHERING:
+                gaitConfig.setReach(sit_reach);
+                sit_state = SitState::SPREADING;
+                break;
+            case SitState::RAISING:
+                target_height = -sit_height;
+                sit_state = SitState::LOWERING;
+                break;
+            case SitState::SPREADING:
+            case SitState::LOWERING:
+            case SitState::SEATED:
+                response->message = "already sitting";
+                return;
+        }
+        response->message = "sitting down";
+    } else {
+        switch (sit_state) {
+            case SitState::SEATED:
+            case SitState::LOWERING:
+                target_height = stand_height;
+                sit_state = SitState::RAISING;
+                publishSeated();
+                break;
+            case SitState::SPREADING:
+                gaitConfig.setReach(stand_reach);
+                sit_state = SitState::GATHERING;
+                break;
+            case SitState::STANDING:
+            case SitState::RAISING:
+            case SitState::GATHERING:
+                response->message = "already standing";
+                return;
+        }
+        response->message = "standing up";
+    }
+    RCLCPP_INFO(this->get_logger(), "%s", response->message.c_str());
+}
+
+/**
+ * @brief Publish whether the robot is seated
+*/
+void GaitController::publishSeated() {
+    std_msgs::msg::Bool msg;
+    msg.data = sit_state == SitState::SEATED;
+    seated_pub->publish(msg);
+}
+
+/**
+ * @brief Sitting down or standing up, one tick at a time
+ * @param[in] dt The time since the last tick (s)
+ * @note Sitting steps the feet out to sit_reach a gait group at a time (returnToStart, aiming at
+ *       the widened start positions), then lowers the body onto the ground. Standing up is the
+ *       reverse. /cmd_vel is ignored throughout, load balancing and walk leveling unwind, and
+ *       the gait loop's height glide does the lowering and raising.
+*/
+void GaitController::sit(double dt) {
+    current_motion_intent = MotionIntent{};
+    updateWalkLeveling(dt);
+
+    switch (sit_state) {
+        case SitState::SPREADING:
+        case SitState::GATHERING:
+            if (!idleReturning) {
+                if (!feetAtStart()) {
+                    idleReturning = true;
+                    phase_progress = 0.0;
+                    leg_swinging.fill(false);
+                } else if (sit_state == SitState::SPREADING) {
+                    target_height = -sit_height;
+                    sit_state = SitState::LOWERING;
+                } else {
+                    sit_state = SitState::STANDING;
+                    RCLCPP_INFO(this->get_logger(), "Standing");
+                }
+            }
+            if (idleReturning) {
+                returnToStart(dt);
+                return;
+            }
+            break;
+        case SitState::LOWERING:
+            if (gaitConfig.currentHeight == target_height) {
+                sit_state = SitState::SEATED;
+                publishSeated();
+                RCLCPP_INFO(this->get_logger(), "Seated");
+            }
+            break;
+        case SitState::RAISING:
+            if (gaitConfig.currentHeight == target_height) {
+                gaitConfig.setReach(stand_reach);
+                sit_state = SitState::GATHERING;
+            }
+            break;
+        case SitState::SEATED:
+        case SitState::STANDING:
+            break;
+    }
+
+    // Hold the feet where they are; the height glide has already moved them this tick
+    sendFootTargets(current_leg_positions, dt);
 }
 
 
@@ -552,6 +694,11 @@ void GaitController::gaitTimerCallback() {
     // Tilt mode, or easing the body back to neutral after leaving it
     if (gaitConfig.currentMode == Mode::MODE_TILT || tilt_active) {
         tilt(dt, gaitConfig.currentMode != Mode::MODE_TILT);
+        return;
+    }
+
+    if (sit_state != SitState::STANDING) {
+        sit(dt);
         return;
     }
 
@@ -1277,7 +1424,7 @@ void GaitController::updateLoadBalance(double dt) {
     }
 
     std::array<double, MAX_LEGS + 1> change{};
-    if (!load_balancing || !standing) {
+    if (!load_balancing || !standing || sit_state != SitState::STANDING) {
         for (int legNum = 1; legNum <= MAX_LEGS; ++legNum) {
             change[legNum] = -foot_height_offset[legNum];
         }
@@ -1347,7 +1494,7 @@ void GaitController::updateWalkLeveling(double dt) {
 
     double roll = walk_level_roll;
     double pitch = walk_level_pitch;
-    if (!walk_leveling) {
+    if (!walk_leveling || sit_state != SitState::STANDING) {
         roll = 0.0;
         pitch = 0.0;
     } else if (imuFresh) {
