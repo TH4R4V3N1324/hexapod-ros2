@@ -59,6 +59,10 @@ public:
         stale_timeout = declare_parameter("stale_timeout", 2.0);
         auto_sit = declare_parameter("auto_sit", true);
         rumble = declare_parameter("rumble", true);
+        rumble_intensity = declare_parameter("rumble_intensity", 1.0);
+        warning_pulses = declare_parameter("warning_pulses", 2);
+        critical_pulses = declare_parameter("critical_pulses", 4);
+        pulse_period = declare_parameter("pulse_period", 1.5);
         double rate = declare_parameter("rate", 2.0);
 
         for (const auto& location : locations) {
@@ -175,7 +179,7 @@ private:
             sit_pending = false;
         }
         if (rumble && level > previous) {
-            buzz(level == BatteryLevel::CRITICAL ? 1.0 : 0.5);
+            buzz(level == BatteryLevel::CRITICAL ? critical_pulses : warning_pulses);
         }
     }
 
@@ -199,14 +203,32 @@ private:
     }
 
     /**
-     * @brief Rumble the controller once
-     * @param[in] intensity Rumble strength, 0 to 1
+     * @brief Rumble the controller in a train of pulses, replacing any train still playing
+     * @param[in] pulses How many pulses to play
+     * @note The joy node plays each rumble message for a fixed second, so a pulse_period over 1 s
+     *       leaves a gap between pulses. Wall time, so it buzzes at the same pace in the sim.
     */
-    void buzz(double intensity) {
+    void buzz(int pulses) {
+        pulses_left = pulses;
+        pulse();
+        pulse_timer = create_wall_timer(std::chrono::duration<double>(pulse_period), [this]() { pulse(); });
+    }
+
+    /**
+     * @brief Play one rumble pulse, stopping the pulse timer after the last
+    */
+    void pulse() {
+        if (pulses_left <= 0) {
+            if (pulse_timer) {
+                pulse_timer->cancel();
+            }
+            return;
+        }
+        pulses_left--;
         JoyFeedback feedback;
         feedback.type = JoyFeedback::TYPE_RUMBLE;
         feedback.id = 0;
-        feedback.intensity = static_cast<float>(intensity);
+        feedback.intensity = static_cast<float>(std::clamp(rumble_intensity, 0.0, 1.0));
         feedback_pub->publish(feedback);
     }
 
@@ -294,6 +316,8 @@ private:
     rclcpp::Publisher<JoyFeedback>::SharedPtr feedback_pub;
     rclcpp::Client<SetBool>::SharedPtr sit_client;
     rclcpp::TimerBase::SharedPtr timer;
+    rclcpp::TimerBase::SharedPtr pulse_timer;
+    int pulses_left = 0;        // rumble pulses still to play
     BatteryLevel level = BatteryLevel::OK;
     bool sit_pending = false;   // critical, and the sit request hasn't gone out yet
     double warning_voltage;     // V, below this the battery is low
@@ -303,6 +327,10 @@ private:
     double stale_timeout;       // s, a board with no reading for this long is ignored
     bool auto_sit;              // sit down at critical
     bool rumble;                // buzz the controller when the level gets worse
+    double rumble_intensity;    // 0 to 1
+    int warning_pulses;         // pulses when the battery goes low
+    int critical_pulses;        // pulses when it goes critical
+    double pulse_period;        // s from one pulse's start to the next
 };
 
 /**
