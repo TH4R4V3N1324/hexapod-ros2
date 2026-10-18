@@ -8,6 +8,12 @@
        with the knee folded puts the tibia into the body at +86 deg. Both ~10 deg inside contact. -->
   <xacro:property name="femur_lower" value="-1.6"/>
   <xacro:property name="femur_upper" value="1.4"/>
+  <!-- Tibia range from the revised knee in Hexapod_V6.1.step: folding, the tibia meets the femur at
+       +60 deg (whether the shank's piston is in or out); straightening, at -140 deg. Folding keeps
+       ~6 deg in hand. Walking forward peaks at +53 deg; the gait controller lowers any swing that
+       would fold further (limitSwingLift), as strafing's middle-leg swings do. -->
+  <xacro:property name="tibia_lower" value="-2.2"/>
+  <xacro:property name="tibia_upper" value="0.94"/>
   <!-- ros2_control hardware: gazebo, mock or st3215 (see hexapod.ros2_control.xacro) -->
   <xacro:arg name="hardware" default="mock"/>
   <xacro:arg name="serial_port" default="/dev/ttyAMA0"/>
@@ -143,7 +149,7 @@
     <child link="${name}_tibia"/>
     <origin xyz="${femur_length} 0 0" rpy="0 1.5708 0"/> 
     <axis xyz="0 1 0"/>
-    <limit lower="-1.57" upper="1.57" effort="${servo_effort}" velocity="${servo_velocity}"/>
+    <limit lower="${tibia_lower}" upper="${tibia_upper}" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>
 
   <!-- COXA TRANSMISSION -->

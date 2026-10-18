@@ -407,6 +407,7 @@ public:
     void planFoothold(int legNum, Vector3d& target, const Eigen::Isometry2d& bodyToMapTransform);
     void updateLoadBalance(double dt);
     bool reachable(const Vector3d& target);
+    Vector3d limitSwingLift(int legNum, const Vector3d& target, double groundZ);
     void updateWalkLeveling(double dt);
     bool tiltFeasible(const BodyPose& pose, std::array<Vector3d, MAX_LEGS + 1>& targets);
     void tilt(double dt, bool exiting);
