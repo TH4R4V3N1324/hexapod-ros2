@@ -1,0 +1,16 @@
+# Override for hosts with an NVIDIA GPU, so Gazebo renders on the card instead of failing in Mesa.
+# Needs the NVIDIA driver and the NVIDIA Container Toolkit on the host:
+#   docker compose -f docker-compose.dev.yml -f docker-compose.nvidia.yml up --build
+services:
+  hexapod:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      # The default (compute,utility) leaves out the OpenGL/EGL libraries Gazebo's renderer needs
+      - NVIDIA_DRIVER_CAPABILITIES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -889,6 +889,11 @@ ros2 launch hexapod_bringup hexapod_robot.launch.py serial_port:=/dev/ttyAMA0
 ros2 launch hexapod_bringup hexapod_simulation.launch.py bridge_vision:=true
 ```
 
+On a host with an NVIDIA GPU, add `-f docker-compose.nvidia.yml` to the
+`up` command (it needs the NVIDIA Container Toolkit on the host). Without it
+the container sees the card but has only Mesa's drivers, and Gazebo's sensor
+rendering fails with `libEGL warning: ... driver (null)` and segfaults.
+
 The plain `docker-compose.yml` (no dev tools, `INSTALL_DEV_TOOLS=false`)
 builds a lean runtime image whose default `CMD` runs
 `hexapod_fake.launch.py` — intended for the real robot's onboard computer
