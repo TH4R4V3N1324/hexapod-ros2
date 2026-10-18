@@ -849,7 +849,8 @@ std::array<Vector3d, MAX_LEGS + 1> GaitController::legTargets(double ds) {
         if (spline.active) {
             double s = std::min(1.0, spline.s + ds);
             targets[legNum] = (s >= 1.0) ? spline.P4
-                : trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s);
+                : limitSwingLift(legNum, trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s),
+                                 spline.P0.z() + (spline.P4.z() - spline.P0.z()) * s);
         } else if (stanceSpline.active) {
             double s = std::min(1.0, stanceSpline.s + ds);
             targets[legNum] = stanceSpline.P0 + (stanceSpline.P1 - stanceSpline.P0) * s;
@@ -1241,6 +1242,8 @@ std::array<Vector3d, MAX_LEGS + 1> GaitController::walkTargets(double forward, d
             targets[legNum] = trajectoryGen.evalBezier(spline.P0, spline.P1, spline.P2, spline.P3, spline.P4, s);
             // A stumble lifts the foot higher, fading out over the last 30% so it still lands on target
             targets[legNum].z() += stumble_boost[legNum] * std::min(1.0, (1.0 - s) / 0.3);
+            targets[legNum] = limitSwingLift(legNum, targets[legNum],
+                swing_start[legNum].z() + (swing_target[legNum].z() - swing_start[legNum].z()) * s);
         } else {
             const Vector3d& current = current_leg_positions[legNum];
             targets[legNum] = trajectoryGen.stanceTarget(legNum, current,
@@ -1465,17 +1468,49 @@ void GaitController::updateLoadBalance(double dt) {
  * @brief Whether a leg can put its foot at a target
  * @param[in] target The foot position (leg frame)
  * @return true if IK lands the foot within 1 mm of the target with every joint inside its range
- * @note The femur range matches femur_lower and femur_upper in the URDF (from the CAD meshes);
- *       the coxa and tibia keep +-1.4 rad until theirs are worked out
+ * @note The femur and tibia ranges match femur_lower/upper and tibia_lower/upper in the URDF (from
+ *       the CAD meshes); the coxa keeps +-1.4 rad until its range is worked out
 */
 bool GaitController::reachable(const Vector3d& target) {
-    constexpr double MAX_JOINT_ANGLE = 1.4;  // rad, coxa and tibia
+    constexpr double MAX_COXA_ANGLE = 1.4;   // rad
     constexpr double FEMUR_MIN = -1.6;       // rad, raised
     constexpr double FEMUR_MAX = 1.4;        // rad, lowered
+    constexpr double TIBIA_MIN = -2.2;       // rad, straightened
+    constexpr double TIBIA_MAX = 0.94;       // rad, folded
     constexpr double REACH_TOLERANCE = 1e-3; // m
     const JointAngles angles = ikSolver.solveIK(target);
-    return std::abs(angles.coxa) <= MAX_JOINT_ANGLE && angles.femur >= FEMUR_MIN && angles.femur <= FEMUR_MAX &&
-        std::abs(angles.tibia) <= MAX_JOINT_ANGLE && (ikSolver.solveFK(angles) - target).norm() <= REACH_TOLERANCE;
+    return std::abs(angles.coxa) <= MAX_COXA_ANGLE && angles.femur >= FEMUR_MIN && angles.femur <= FEMUR_MAX &&
+        angles.tibia >= TIBIA_MIN && angles.tibia <= TIBIA_MAX &&
+        (ikSolver.solveFK(angles) - target).norm() <= REACH_TOLERANCE;
+}
+
+/**
+ * @brief Lower a swinging foot until every joint of its leg is inside its range
+ * @param[in] legNum The leg number
+ * @param[in] target The swing's foot target (leg frame)
+ * @param[in] groundZ Height of the swing's ground line (lift-off to landing) under the target
+ * @return target, with its height above groundZ cut back as far as needed, but no lower than groundZ
+ * @note A full lift near the inner end of a stride folds the knee into the femur and raises the
+ *       femur into the coxa: strafing swings the middle feet straight in and out from the body,
+ *       and a stumble adds more lift. Checked with walk leveling applied, as the IK will be.
+*/
+Vector3d GaitController::limitSwingLift(int legNum, const Vector3d& target, double groundZ) {
+    auto fits = [&](const Vector3d& foot) { return reachable(trajectoryGen.posedFoot(legNum, foot, walk_level)); };
+    const double lift = target.z() - groundZ;
+    if (lift <= 0.0 || fits(target)) {
+        return target;
+    }
+    Vector3d lowered = target;
+    double low = 0.0, high = 1.0;  // share of the lift kept
+    for (int i = 0; i < 10; ++i) {
+        const double mid = 0.5 * (low + high);
+        lowered.z() = groundZ + lift * mid;
+        (fits(lowered) ? low : high) = mid;
+    }
+    lowered.z() = groundZ + lift * low;
+    RCLCPP_DEBUG_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+        "Leg %d swing lowered by %.0f mm to stay inside its joint limits", legNum, (1.0 - low) * lift * 1000.0);
+    return lowered;
 }
 
 /**
