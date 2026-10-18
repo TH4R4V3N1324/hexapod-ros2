@@ -9,4 +9,8 @@ behaviour_manager:
     stale_timeout: 2.0      # s without a reading before a board is ignored
     auto_sit: true
     rumble: true
+    rumble_intensity: 1.0   # 0 to 1; the joy node plays each pulse for 1 s
+    warning_pulses: 2
+    critical_pulses: 4
+    pulse_period: 1.5       # s, start to start: 1 s buzz, 0.5 s gap
     rate: 2.0
