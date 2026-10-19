@@ -145,7 +145,10 @@ public:
         target_height = gaitConfig.currentHeight;
         // Sitting: feet out at sit_reach, sit_height below the hips. The body's underside is 0.034 m
         // below the hips, so it reaches the ground first and the feet end up just clear of it.
-        sit_reach = this->declare_parameter("sit_reach", 0.26);
+        // 0.22 is about as close in as the femur allows: seated it's raised to -84 deg (limit -91.7).
+        // Every 10 mm further out adds ~10% to the femur's load and ~20% to the knee's while a
+        // tripod steps out at full height.
+        sit_reach = this->declare_parameter("sit_reach", 0.22);
         sit_height = this->declare_parameter("sit_height", 0.015);
         stand_reach = gaitConfig.startPos.x();
         stand_height = target_height;
