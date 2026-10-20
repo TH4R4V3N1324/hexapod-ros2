@@ -859,7 +859,7 @@ Foxglove viewing/joystick client:
   inside the `jazzy` distrobox.
 - **`ros2_hexapod_launch.sh`** — finds the robot's `foxglove_bridge` (port
   `8765`): the hotspot address 192.168.50.1 first, otherwise a scan of the
-  local `192.168.x.x/24` subnet. It then starts `game_controller_node` and
+  local `/24` subnet the Deck is on. It then starts `game_controller_node` and
   opens `foxglove-studio` in kiosk mode pointed at the bridge over a
   `foxglove://` deep link.
 - `images/` — icon/header art used for the Steam Deck game-mode shortcut.
