@@ -7,8 +7,9 @@ HOST=""
 if (timeout 1 bash -c "echo >/dev/tcp/$HOTSPOT_HOST/$PORT") 2>/dev/null; then
     HOST=$HOTSPOT_HOST
 else
-    # Otherwise scan the local network for the bridge
-    SUBNET=$(ip route | awk '/proto kernel/ && /192\.168/ {print $1}' | head -1)
+    # Otherwise scan the local network for the bridge. Any private network, not only 192.168.x.x:
+    # a phone hotspot or campus Wi-Fi can be 10.x or 172.16-31.x. Container bridges are skipped.
+    SUBNET=$(ip route | awk '/proto kernel/ && !/docker|br-|veth|virbr/ {print $1}' | head -1)
     BASE=$(echo $SUBNET | cut -d'.' -f1-3)
 
     echo "Scanning $BASE.0/24 for port $PORT..."
