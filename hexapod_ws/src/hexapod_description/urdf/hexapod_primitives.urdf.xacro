@@ -47,6 +47,9 @@
   <xacro:property name="foot_radius" value="0.014"/>
   <xacro:property name="foot_friction" value="1.5"/>
 
+  <!-- Masses and inertias from the CAD (scripts/mass_properties.py) -->
+  <xacro:include filename="$(find hexapod_description)/urdf/hexapod.inertials.xacro"/>
+
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
   <material name="red"><color rgba="1 0 0 1"/></material>
@@ -70,11 +73,7 @@
         <cylinder length="${body_height}" radius="${body_radius}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="1.0"/>
-      <origin xyz="0 0 0"/>
-      <inertia ixx="0.1" ixy="0.0" ixz="0.0" iyy="0.1" iyz="0.0" izz="0.1"/>
-    </inertial>
+    <xacro:hexapod_base_inertial/>
   </link>
 
 <!-- ================= LEG LINKS ================= -->
@@ -95,11 +94,7 @@
         <box size="${coxa_length*cscale} ${coxa_width*cscale} ${coxa_height*cscale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.1"/>
-      <origin xyz="${coxa_length/2} 0 0"/>
-      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="coxa" side="${side}"/>
   </link>
 
   <!-- FEMUR -->
@@ -116,11 +111,7 @@
         <cylinder length="${femur_length*cscale}" radius="${femur_radius*cscale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.05"/>
-      <origin xyz="${femur_length/2} 0 0"/>
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="femur" side="${side}"/>
   </link>
 
   <!-- TIBIA -->
@@ -144,11 +135,7 @@
         <cylinder length="${tibia_length*cscale}" radius="${tibia_radius*cscale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.05"/>
-      <origin xyz="${tibia_length/2} 0 0"/>
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="tibia" side="${side}"/>
   </link>
 
   <gazebo reference="${name}_tibia">
@@ -301,9 +288,10 @@
   <collision>
     <geometry><box size="0.015 0.015 0.005"/></geometry>
   </collision>
+  <!-- Its mass is in base_link's inertial (hexapod.inertials.xacro); fixed joints are merged into base_link -->
   <inertial>
-    <mass value="0.01"/>
-    <inertia ixx="1e-6" ixy="0.0" ixz="0.0" iyy="1e-6" iyz="0.0" izz="1e-6"/>
+    <mass value="0.001"/>
+    <inertia ixx="1e-8" ixy="0" ixz="0" iyy="1e-8" iyz="0" izz="1e-8"/>
   </inertial>
 </link>
 

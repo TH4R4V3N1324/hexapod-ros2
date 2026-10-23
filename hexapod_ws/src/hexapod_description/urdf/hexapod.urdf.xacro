@@ -33,6 +33,9 @@
        where tibia_length assumes, its foot ball 171.9 mm from the knee. -->
   <xacro:property name="mesh_scale" value="0.001 0.001 0.001"/>
 
+  <!-- Masses and inertias from the CAD (scripts/mass_properties.py) -->
+  <xacro:include filename="$(find hexapod_description)/urdf/hexapod.inertials.xacro"/>
+
   <!-- ================= MATERIALS ================= -->
   <material name="black"><color rgba="0.1 0.1 0.1 1"/></material>
   <material name="red"><color rgba="1 0 0 1"/></material>
@@ -55,11 +58,7 @@
         <mesh filename="package://hexapod_description/meshes/body.stl" scale="${mesh_scale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="1.0"/>
-      <origin xyz="0 0 0"/>
-      <inertia ixx="0.1" ixy="0.0" ixz="0.0" iyy="0.1" iyz="0.0" izz="0.1"/>
-    </inertial>
+    <xacro:hexapod_base_inertial/>
   </link>
 
 <!-- ================= LEG LINKS ================= -->
@@ -79,11 +78,7 @@
         <mesh filename="package://hexapod_description/meshes/coxa_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.1"/>
-      <origin xyz="0 0 0"/>
-      <inertia ixx="0.01" ixy="0.0" ixz="0.0" iyy="0.01" iyz="0.0" izz="0.01"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="coxa" side="${side}"/>
   </link>
 
   <!-- FEMUR -->
@@ -99,11 +94,7 @@
         <mesh filename="package://hexapod_description/meshes/femur_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.05"/>
-      <origin xyz="0 0 0"/>
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="femur" side="${side}"/>
   </link>
 
   <!-- TIBIA -->
@@ -119,11 +110,7 @@
         <mesh filename="package://hexapod_description/meshes/tibia_${side}.stl" scale="${mesh_scale}"/>
       </geometry>
     </collision>
-    <inertial>
-      <mass value="0.05"/>
-      <origin xyz="0 0 0"/>
-      <inertia ixx="0.001" ixy="0.0" ixz="0.0" iyy="0.001" iyz="0.0" izz="0.001"/>
-    </inertial>
+    <xacro:hexapod_leg_inertial link="tibia" side="${side}"/>
   </link>
 
   <!-- COXA JOINT -->
