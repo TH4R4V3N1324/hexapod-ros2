@@ -24,11 +24,13 @@
   <xacro:property name="femur_length" value="0.1"/>
   <!-- Straight line from the knee to the bottom of the foot; the real tibia curves outwards -->
   <xacro:property name="tibia_length" value="0.186"/>
-  <xacro:property name="leg_radius" value="0.148"/>
-  <xacro:property name="corner_offset" value="${leg_radius * cos(pi / 4)}"/>
+  <xacro:property name="middle_leg_y" value="0.11836"/>
+  <xacro:property name="corner_leg_x" value="0.11916"/>
+  <xacro:property name="corner_leg_y" value="0.08952"/>
 
-  <!-- Octagonal body 220 mm across flats, 72 mm tall with the lid, its base 33.85 mm below the hips -->
-  <xacro:property name="body_radius" value="0.11"/>
+  <!-- Body 220 mm long and 161 mm wide, 72 mm tall with the lid, its base 33.85 mm below the hips -->
+  <xacro:property name="body_length" value="0.22"/>
+  <xacro:property name="body_width" value="0.161"/>
   <xacro:property name="body_height" value="0.072"/>
   <xacro:property name="body_z" value="${body_height / 2 - 0.03385}"/>
 
@@ -70,7 +72,7 @@
     <collision>
       <origin xyz="0 0 ${body_z}"/>
       <geometry>
-        <cylinder length="${body_height}" radius="${body_radius}"/>
+        <box size="${body_length} ${body_width} ${body_height}"/>
       </geometry>
     </collision>
     <xacro:hexapod_base_inertial/>
@@ -212,22 +214,22 @@
   <!-- Body frame follows REP 103: +x forward, +y left, +z up -->
 
   <!-- Front right -->
-  <xacro:leg name="leg1" side="right" x_offset="${corner_offset}" y_offset="${-corner_offset}" yaw="${-pi / 4}" colour="red"/>
+  <xacro:leg name="leg1" side="right" x_offset="${corner_leg_x}" y_offset="${-corner_leg_y}" yaw="${-pi / 4}" colour="red"/>
 
   <!-- Middle right -->
-  <xacro:leg name="leg2" side="right" x_offset="0" y_offset="${-leg_radius}" yaw="${-pi / 2}" colour="green"/>
+  <xacro:leg name="leg2" side="right" x_offset="0" y_offset="${-middle_leg_y}" yaw="${-pi / 2}" colour="green"/>
 
   <!-- Rear right -->
-  <xacro:leg name="leg3" side="right" x_offset="${-corner_offset}" y_offset="${-corner_offset}" yaw="${-3 * pi / 4}" colour="blue"/>
+  <xacro:leg name="leg3" side="right" x_offset="${-corner_leg_x}" y_offset="${-corner_leg_y}" yaw="${-3 * pi / 4}" colour="blue"/>
 
   <!-- Rear left -->
-  <xacro:leg name="leg4" side="left" x_offset="${-corner_offset}" y_offset="${corner_offset}" yaw="${3 * pi / 4}" colour="yellow"/>
+  <xacro:leg name="leg4" side="left" x_offset="${-corner_leg_x}" y_offset="${corner_leg_y}" yaw="${3 * pi / 4}" colour="yellow"/>
 
   <!-- Middle left -->
-  <xacro:leg name="leg5" side="left" x_offset="0" y_offset="${leg_radius}" yaw="${pi / 2}" colour="cyan"/>
+  <xacro:leg name="leg5" side="left" x_offset="0" y_offset="${middle_leg_y}" yaw="${pi / 2}" colour="cyan"/>
 
   <!-- Front left -->
-  <xacro:leg name="leg6" side="left" x_offset="${corner_offset}" y_offset="${corner_offset}" yaw="${pi / 4}" colour="magenta"/>
+  <xacro:leg name="leg6" side="left" x_offset="${corner_leg_x}" y_offset="${corner_leg_y}" yaw="${pi / 4}" colour="magenta"/>
 
   <!-- ================= SENSORS ================= -->
   

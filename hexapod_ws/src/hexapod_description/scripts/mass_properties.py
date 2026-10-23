@@ -45,11 +45,11 @@ PACKAGE_DIR = Path(__file__).resolve().parent.parent
 CAD_TO_BASE = np.array([[0.0, 1.0, 0.0], [-1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
 HIP_HEIGHT = 33.85  # mm
 
-# Coxa joints as in hexapod.urdf.xacro: (x, y, yaw), leg_radius 148 mm, corner legs at 45 degrees
-LEG_RADIUS = 148.0
-CORNER = LEG_RADIUS * math.cos(math.pi / 4)
-LEGS = [(CORNER, -CORNER, -math.pi / 4), (0.0, -LEG_RADIUS, -math.pi / 2), (-CORNER, -CORNER, -3 * math.pi / 4),
-        (-CORNER, CORNER, 3 * math.pi / 4), (0.0, LEG_RADIUS, math.pi / 2), (CORNER, CORNER, math.pi / 4)]
+# Coxa joints as in hexapod.urdf.xacro: (x, y, yaw) in mm, on the slimmer body
+MIDDLE_Y = 118.36
+CORNER_X, CORNER_Y = 119.16, 89.52
+LEGS = [(CORNER_X, -CORNER_Y, -math.pi / 4), (0.0, -MIDDLE_Y, -math.pi / 2), (-CORNER_X, -CORNER_Y, -3 * math.pi / 4),
+        (-CORNER_X, CORNER_Y, 3 * math.pi / 4), (0.0, MIDDLE_Y, math.pi / 2), (CORNER_X, CORNER_Y, math.pi / 4)]
 CAD_LEG_YAW = math.pi / 2  # the STEP's leg is leg5, pointing along +y
 
 # Which link each top-level CAD component moves with
@@ -249,9 +249,8 @@ def leg_frames(solids):
           f'{np.linalg.norm(knee_axis - femur_axis):.2f}, femur pitch '
           f'{math.degrees(math.atan2(knee_axis[2] - femur_axis[2], np.linalg.norm((knee_axis - femur_axis)[:2]))):.1f} deg')
     print(f'  foot ball radius {foot_radius:.2f}, knee to ball centre {np.linalg.norm(foot_centre - knee_axis):.2f}')
-    if abs(np.hypot(*coxa_axis[:2]) - LEG_RADIUS) > 1.0:
-        print(f'  NOTE: the URDF puts the coxa axes {LEG_RADIUS:.0f} mm from the centre. The body gets its leg '
-              f'mounts there, as in the URDF.')
+    if abs(np.hypot(*coxa_axis[:2]) - MIDDLE_Y) > 0.5:
+        print(f'  NOTE: the URDF puts the middle coxa axes {MIDDLE_Y} mm from the centre. Update LEGS and the URDF.')
     return {'coxa': coxa, 'femur': femur, 'tibia': tibia}, coxa_axis
 
 
