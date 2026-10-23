@@ -26,9 +26,12 @@
   <!-- Knee axis to the bottom of the foot, along the straight line through the curved tibia
        (171.95 mm to the foot ball's centre, plus its 14 mm radius) -->
   <xacro:property name="tibia_length" value="0.186"/>
-  <!-- Coxa axes: 148 mm from the centre, the corner legs at 45 degrees -->
-  <xacro:property name="leg_radius" value="0.148"/>
-  <xacro:property name="corner_offset" value="${leg_radius * cos(pi / 4)}"/>
+  <!-- Coxa axes on the slimmer V6.1 body (220 x 161 mm). Every leg mount's coxa axis is 37.96 mm
+       out from the body face it sits on: the middle legs' faces are 80.4 mm from the centre, and
+       the corner legs sit in the middle of 45 degree chamfers whose centres are at (92.32, 62.68). -->
+  <xacro:property name="middle_leg_y" value="0.11836"/>
+  <xacro:property name="corner_leg_x" value="0.11916"/>
+  <xacro:property name="corner_leg_y" value="0.08952"/>
   <!-- Meshes are exported from the STEP in mm, already in each link's frame. The tibia's shank sits
        where tibia_length assumes, its foot ball 171.9 mm from the knee. -->
   <xacro:property name="mesh_scale" value="0.001 0.001 0.001"/>
@@ -182,22 +185,22 @@
   <!-- Body frame follows REP 103: +x forward, +y left, +z up -->
 
   <!-- Front right -->
-  <xacro:leg name="leg1" side="right" x_offset="${corner_offset}" y_offset="${-corner_offset}" yaw="${-pi / 4}" colour="red"/>
+  <xacro:leg name="leg1" side="right" x_offset="${corner_leg_x}" y_offset="${-corner_leg_y}" yaw="${-pi / 4}" colour="red"/>
 
   <!-- Middle right -->
-  <xacro:leg name="leg2" side="right" x_offset="0" y_offset="${-leg_radius}" yaw="${-pi / 2}" colour="green"/>
+  <xacro:leg name="leg2" side="right" x_offset="0" y_offset="${-middle_leg_y}" yaw="${-pi / 2}" colour="green"/>
 
   <!-- Rear right -->
-  <xacro:leg name="leg3" side="right" x_offset="${-corner_offset}" y_offset="${-corner_offset}" yaw="${-3 * pi / 4}" colour="blue"/>
+  <xacro:leg name="leg3" side="right" x_offset="${-corner_leg_x}" y_offset="${-corner_leg_y}" yaw="${-3 * pi / 4}" colour="blue"/>
 
   <!-- Rear left -->
-  <xacro:leg name="leg4" side="left" x_offset="${-corner_offset}" y_offset="${corner_offset}" yaw="${3 * pi / 4}" colour="yellow"/>
+  <xacro:leg name="leg4" side="left" x_offset="${-corner_leg_x}" y_offset="${corner_leg_y}" yaw="${3 * pi / 4}" colour="yellow"/>
 
   <!-- Middle left -->
-  <xacro:leg name="leg5" side="left" x_offset="0" y_offset="${leg_radius}" yaw="${pi / 2}" colour="cyan"/>
+  <xacro:leg name="leg5" side="left" x_offset="0" y_offset="${middle_leg_y}" yaw="${pi / 2}" colour="cyan"/>
 
   <!-- Front left -->
-  <xacro:leg name="leg6" side="left" x_offset="${corner_offset}" y_offset="${corner_offset}" yaw="${pi / 4}" colour="magenta"/>
+  <xacro:leg name="leg6" side="left" x_offset="${corner_leg_x}" y_offset="${corner_leg_y}" yaw="${pi / 4}" colour="magenta"/>
 
   <!-- ================= IMU ================= -->
   <link name="imu_link"/>

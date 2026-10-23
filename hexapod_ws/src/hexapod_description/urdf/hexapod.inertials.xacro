@@ -7,7 +7,7 @@
     <inertial>
       <mass value="1.1082"/>
       <origin xyz="-0.00433 0.00009 0.00993"/>
-      <inertia ixx="3.9990e-03" ixy="-1.1081e-06" ixz="-5.7272e-05" iyy="5.5599e-03" iyz="6.0138e-08" izz="7.5943e-03"/>
+      <inertia ixx="3.4133e-03" ixy="-1.1081e-06" ixz="-5.7272e-05" iyy="5.8450e-03" iyz="6.0138e-08" izz="7.2937e-03"/>
     </inertial>
   </xacro:macro>
 
