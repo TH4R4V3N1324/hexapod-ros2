@@ -138,6 +138,10 @@ public:
         seek_speed = this->declare_parameter("seek_speed", 0.05);
         body_height_rate = this->declare_parameter("body_height_rate", 0.02);
         trajectoryGen.swingLift = this->declare_parameter("step_height", 0.06);
+        // How much a swing eases in and out (0 even pace, 1 smootherstep). Full easing left the feet
+        // nearly still around every lift-off and touchdown, a visible pause at each phase change;
+        // half keeps them moving through it while still landing at half the even-pace speed.
+        trajectoryGen.swingEasing = this->declare_parameter("swing_easing", 0.5);
         // set_height glides the body to the new height rather than snapping the legs there
         height_rate = this->declare_parameter("height_rate", 0.03);
         min_height = this->declare_parameter("min_height", 0.06);
