@@ -342,6 +342,7 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "min_height") min_height = parameter.as_double();
         else if (name == "max_height") max_height = parameter.as_double();
         else if (name == "step_height") trajectoryGen.swingLift = parameter.as_double();
+        else if (name == "swing_easing") trajectoryGen.swingEasing = std::clamp(parameter.as_double(), 0.0, 1.0);
         else if (name == "touchdown_ratio") touchdown_ratio = parameter.as_double();
         else if (name == "stumble_force") stumble_force = parameter.as_double();
         else if (name == "stumble_lift") stumble_lift = parameter.as_double();

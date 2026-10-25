@@ -471,6 +471,14 @@ and clipped slab edges. A higher step clears more but walks slower: at full
 command the robot made 0.127 m/s with a ~4 cm peak, 0.124 m/s at 0.06 and
 0.109 m/s at 0.075.
 
+`swing_easing` (0.5) sets how the foot moves along that path in time: 0 at an
+even pace, 1 easing in and out (smootherstep). Full easing held the feet
+nearly still around every lift-off and touchdown, so the robot paused at each
+phase change: in Gazebo the body slowed to 0.59x its mean speed there. At 0.5
+the slowest point is 0.88x, the body averages 9% faster at full command, and
+the feet need fewer ground searches on rough ground; they land at about half
+the speed an even pace would (~0.17 m/s at full command).
+
 On the `rough_terrain` world (a 2.5 cm slab under the left feet, a 3 cm slab
 under the right, then a 2 cm step), walking 1.4–1.5 m:
 

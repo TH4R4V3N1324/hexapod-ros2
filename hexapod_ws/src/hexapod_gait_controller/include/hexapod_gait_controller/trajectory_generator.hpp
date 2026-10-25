@@ -80,6 +80,7 @@ public:
     Vector3d clampToStride(int legNum, const Vector3d& target);
     void EnsureGaitConfig();
     double swingLift = 0.06;   // m, height of the swing's middle control points (peak ~0.88x this)
+    double swingEasing = 0.5;  // 0 moves along the swing at an even pace, 1 eases in and out (smootherstep)
     void genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end);
     void genSwingSpline(SwingSpline& spline, const Vector3d& start, const Vector3d& end, double lift);
     Vector3d evalBezier(

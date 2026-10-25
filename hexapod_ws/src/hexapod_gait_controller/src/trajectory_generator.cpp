@@ -388,7 +388,7 @@ void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& st
 }
 
 /**
- * @brief Evaluate a quartic Bezier curve with smoothstep easing
+ * @brief Evaluate a quartic Bezier curve with smoothstep easing, blended with even progress by swingEasing
  * @param[in] P0 The start point
  * @param[in] P1 The first control point
  * @param[in] P2 The second control point
@@ -398,7 +398,10 @@ void TrajectoryGenerator::genSwingSpline(SwingSpline& spline, const Vector3d& st
  * @return The point on the curve
 */
 Vector3d TrajectoryGenerator::evalBezier(const Vector3d& P0, const Vector3d& P1, const Vector3d& P2, const Vector3d& P3, const Vector3d& P4, const double s) {
-    double st = s * s * s * (s * (6.0 * s - 15.0) + 10.0);
+    // Smootherstep starts and ends the swing at rest, which holds the foot nearly still around
+    // every lift-off and touchdown; blending in even progress keeps it moving through them
+    double eased = s * s * s * (s * (6.0 * s - 15.0) + 10.0);
+    double st = swingEasing * eased + (1.0 - swingEasing) * s;
     double u = 1.0 - st;
 
     Eigen::Vector3d point =
