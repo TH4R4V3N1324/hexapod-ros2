@@ -6,11 +6,14 @@
     Both face forward on the front of the body, the ToF camera below the Pi camera.
       front_depth_camera_link  Arducam ToF camera (B0410): 240x180 depth, 70 deg diagonal FOV, 4 m in far mode
       camera_link              Raspberry Pi Camera Module 3 (standard lens, 66 deg horizontal FOV)
-    Placed as in the V6.1 camera pod (Hexapod_V6.1.step), where both face straight ahead.
+    Placed as in the V6.1 camera pod (Hexapod_V6.1.step), where both face straight ahead, except
+    that the ToF camera is tilted 30 deg down (tof_pitch, positive tilts it down): level, it first
+    saw the ground 0.45 m ahead, past the front feet; tilted, it sees from the front feet to ~1.1 m.
+    The real pod's ToF mount has to match, or the height map is wrong.
   -->
   <xacro:property name="camera_x" value="0.138"/>        <!-- front of the camera pod -->
   <xacro:property name="tof_z" value="-0.0124"/>
-  <xacro:property name="tof_pitch" value="0.0"/>
+  <xacro:property name="tof_pitch" value="${radians(30)}"/>
   <xacro:property name="picam_z" value="0.0257"/>
   <xacro:property name="picam_pitch" value="0.0"/>
 
