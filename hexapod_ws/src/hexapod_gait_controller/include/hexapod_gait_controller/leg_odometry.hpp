@@ -19,7 +19,7 @@ struct BodyMotion {
 };
 
 /**
- * @brief Estimates body motion from planted feet and integrates it into a 2D pose
+ * @brief Estimates body motion from planted feet and integrates it into a 2D pose and a height
  * @note Feet on the ground are assumed not to slip, so the body motion is the rigid
  *       transform that best explains how those feet moved relative to the body.
 */
@@ -30,17 +30,25 @@ public:
         const std::vector<Vector2d>& after,
         BodyMotion& motion
     );
+    static bool estimateClimb(
+        const std::vector<double>& before,
+        const std::vector<double>& after,
+        double& climb
+    );
     void integrate(const BodyMotion& motion);
+    void integrateClimb(double climb);
     void reset();
 
     double x() const { return x_; }
     double y() const { return y_; }
     double yaw() const { return yaw_; }
+    double z() const { return z_; }
 
 private:
     double x_ = 0.0;
     double y_ = 0.0;
     double yaw_ = 0.0;
+    double z_ = 0.0;   // m, how far the body has risen since the start
 };
 
 }  // namespace hexapod_gait_controller
