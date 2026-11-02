@@ -353,8 +353,7 @@ private:
                                 // differences are mostly the body's pitch skewing the points, and
                                 // following them rocked the body
     HeightMap heightMap{0.02};
-    double ground_level = 0.0;  // m, how far the body has risen to follow the ground since startup;
-                                // TF keeps base_footprint at z = 0, so map heights are TF heights plus this
+    double ground_level = 0.0;  // m, how far the body has risen to follow the ground since startup
     std::shared_ptr<tf2_ros::Buffer> tf_buffer;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener;
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr depth_sub;
@@ -384,6 +383,12 @@ private:
     // Leg odometry
     LegOdometry legOdometry;
     std::array<Eigen::Vector2d, MAX_LEGS + 1> previous_feet;  // measured feet (body frame) at the last joint state
+    std::array<double, MAX_LEGS + 1> previous_feet_z{};      // their heights, levelled by the IMU's tilt
+    std::array<double, MAX_LEGS + 1> planted_time{};         // s each foot has been planted; the climb waits for it to settle
+    static constexpr double CLIMB_SETTLE_TIME = 0.1;          // s planted before a foot counts towards the climb
+    static constexpr double CLIMB_ANCHOR_TIME = 0.5;          // s a foot must be planted before the start height is measured from it
+    bool climb_anchored = false;     // the start height has been measured, so floorRise is valid
+    double odom_start_height = 0.0;  // m, base_link above the start floor, less the climb so far, when measured
     std::array<bool, MAX_LEGS + 1> previous_contact{};       // foot_contact at the last joint state
     rclcpp::Time previous_feet_stamp;
     bool has_previous_feet = false;
@@ -401,6 +406,9 @@ public:
     void updateFootForces(const std::unordered_map<std::string, std::pair<double, double>>& joints, const rclcpp::Time& stamp);
     void publishOdometry(const rclcpp::Time& stamp);
     void publishFootprint();
+    double footprintHeight() const;
+    Eigen::Quaterniond imuTilt() const;
+    double floorRise() const;
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
     void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
     rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);

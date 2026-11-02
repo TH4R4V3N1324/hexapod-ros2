@@ -51,6 +51,31 @@ bool LegOdometry::estimateMotion(
 }
 
 /**
+ * @brief Find how far the body rose from how planted feet moved up or down relative to it
+ * @param[in] before Planted foot heights at the start of the update (level body frame, m)
+ * @param[in] after The same feet's heights at the end of the update, in the same order
+ * @param[out] climb How far the body rose (m)
+ * @return true if there were enough feet (at least 2) to estimate the climb, false otherwise
+ * @note The feet are fixed in the world, so they drop relative to the body as far as it rises.
+ *       The heights must be in a frame levelled by the body's real tilt, or rocking reads as climbing.
+*/
+bool LegOdometry::estimateClimb(
+    const std::vector<double>& before,
+    const std::vector<double>& after,
+    double& climb
+) {
+    if (before.size() < 2 || before.size() != after.size()) {
+        return false;
+    }
+    double sum = 0.0;
+    for (size_t i = 0; i < before.size(); ++i) {
+        sum += before[i] - after[i];
+    }
+    climb = sum / static_cast<double>(before.size());
+    return true;
+}
+
+/**
  * @brief Add one update's body motion to the pose
  * @param[in] motion The body's motion, in the body frame at the start of the update
 */
@@ -61,12 +86,21 @@ void LegOdometry::integrate(const BodyMotion& motion) {
 }
 
 /**
- * @brief Put the pose back at the origin
+ * @brief Add one update's climb to the height
+ * @param[in] climb How far the body rose (m)
+*/
+void LegOdometry::integrateClimb(double climb) {
+    z_ += climb;
+}
+
+/**
+ * @brief Put the pose and height back at the origin
 */
 void LegOdometry::reset() {
     x_ = 0.0;
     y_ = 0.0;
     yaw_ = 0.0;
+    z_ = 0.0;
 }
 
 }  // namespace hexapod_gait_controller

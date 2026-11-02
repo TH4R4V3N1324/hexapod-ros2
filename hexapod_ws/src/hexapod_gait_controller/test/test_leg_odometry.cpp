@@ -74,3 +74,34 @@ TEST(LegOdometry, IntegratesInTheOdomFrame) {
     EXPECT_NEAR(odom.y(), 1.0, 1e-9);
     EXPECT_NEAR(odom.yaw(), M_PI / 2.0, 1e-9);
 }
+
+TEST(LegOdometry, ClimbIsHowFarThePlantedFeetDrop) {
+    // A tripod standing 0.134 m below the hips; the body rises 5 mm, so every foot reads 5 mm lower
+    double climb;
+    ASSERT_TRUE(LegOdometry::estimateClimb({-0.134, -0.134, -0.134}, {-0.139, -0.139, -0.139}, climb));
+    EXPECT_NEAR(climb, 0.005, 1e-12);
+}
+
+TEST(LegOdometry, ClimbAveragesTheFeet) {
+    // One foot sinking into soft ground only counts for its share
+    double climb;
+    ASSERT_TRUE(LegOdometry::estimateClimb({-0.10, -0.12, -0.14}, {-0.10, -0.12, -0.17}, climb));
+    EXPECT_NEAR(climb, 0.01, 1e-12);
+}
+
+TEST(LegOdometry, ClimbNeedsTwoFeet) {
+    double climb;
+    EXPECT_FALSE(LegOdometry::estimateClimb({-0.134}, {-0.139}, climb));
+    EXPECT_FALSE(LegOdometry::estimateClimb({-0.134, -0.134}, {-0.139}, climb));
+}
+
+TEST(LegOdometry, IntegratesClimbAndResets) {
+    LegOdometry odom;
+    // Up one 6 cm stair in steps
+    for (int i = 0; i < 60; ++i) {
+        odom.integrateClimb(0.001);
+    }
+    EXPECT_NEAR(odom.z(), 0.06, 1e-9);
+    odom.reset();
+    EXPECT_EQ(odom.z(), 0.0);
+}
