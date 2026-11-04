@@ -20,7 +20,7 @@ TEST(Kinematics, IkMatchesTheCadStandPose) {
     const JointAngles angles = solver.solveIK(foot);
     EXPECT_NEAR(angles.coxa, 0.0, 1e-6);
     EXPECT_NEAR(angles.femur, -30.02 * DEG, 0.1 * DEG);
-    EXPECT_NEAR(angles.tibia, 20.71 * DEG, 0.1 * DEG);
+    EXPECT_NEAR(angles.tibia, 110.71 * DEG, 0.1 * DEG);
     EXPECT_NEAR((solver.solveFK(angles) - foot).norm(), 0.0, 1e-9);
 }
 
@@ -31,6 +31,6 @@ TEST(Kinematics, IkMatchesTheCadWalkPose) {
     const JointAngles angles = solver.solveIK(foot);
     EXPECT_NEAR(angles.coxa, -12.0 * DEG, 0.1 * DEG);
     EXPECT_NEAR(angles.femur, -45.01 * DEG, 0.1 * DEG);
-    EXPECT_NEAR(angles.tibia, 4.50 * DEG, 0.1 * DEG);
+    EXPECT_NEAR(angles.tibia, 94.50 * DEG, 0.1 * DEG);
     EXPECT_NEAR((solver.solveFK(angles) - foot).norm(), 0.0, 1e-9);
 }

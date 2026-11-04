@@ -91,7 +91,7 @@ JointAngles KinematicSolver::solveIK(const Vector3d& target, bool mirrored){
     double q1 = acos(clamp((pow(a3,2) - pow(a2,2) - pow(r3,2)) / (-2*a2*r3)));
     double femurAngle = -(q2 + q1);
     double q3 = acos(clamp((pow(r3,2) - pow(a2,2) - pow(a3,2)) / (-2*a2*a3)));
-    double tibiaAngle = M_PI_2 - q3;
+    double tibiaAngle = M_PI - q3;
 
     return JointAngles{coxaAngle, femurAngle, tibiaAngle};
 }
@@ -110,9 +110,10 @@ Vector3d KinematicSolver::solveFK(const JointAngles& angles){
     double coxaAngle  = angles.coxa;
 
     // Elevation of each link above horizontal, matching solveIK:
-    // a negative femur angle raises the femur, and tibia = 0 puts the knee at 90°
+    // a negative femur angle raises the femur, and tibia = 0 puts the tibia straight out from the
+    // femur (positive folds it down, so the knee is at 90° at tibia = pi/2)
     double femurElevation = -angles.femur;
-    double tibiaElevation = femurElevation - angles.tibia - M_PI / 2.0;
+    double tibiaElevation = femurElevation - angles.tibia;
 
     double horizontalReach = a1 + a2 * cos(femurElevation) + a3 * cos(tibiaElevation);
     double z = a2 * sin(femurElevation) + a3 * sin(tibiaElevation);  // negative = below the hip

@@ -28,7 +28,7 @@ TEST(FootForce, JacobianMatchesAFiniteStep) {
 TEST(FootForce, StraightLegIsRejected) {
     KinematicSolver solver;
     // Femur and tibia in line: no vertical force can be found from the torques
-    JointAngles straight{0.0, 0.0, -M_PI / 2.0};
+    JointAngles straight{0.0, 0.0, 0.0};
     Vector3d force;
     EXPECT_FALSE(solver.groundForce(straight, Vector3d(0.1, 0.2, 0.3), force));
 }
