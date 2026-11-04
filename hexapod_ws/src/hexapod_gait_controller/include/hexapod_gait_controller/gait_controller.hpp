@@ -70,7 +70,8 @@ public:
         set_height_service = this->create_service<SetHeight>("set_height", std::bind(&GaitController::setHeightCallback, this, _1, _2));
         get_capabilities_service = this->create_service<GetCapabilities>("get_capabilities", std::bind(&GaitController::getCapabilitiesCallback, this, _1, _2));
         sit_service = this->create_service<std_srvs::srv::SetBool>("sit", std::bind(&GaitController::sitCallback, this, _1, _2));
-        // Latched, so a node that starts later still learns whether the robot is seated
+        // True from when a sit starts until a stand finishes, i.e. whenever the robot won't walk
+        // (it starts seated). Latched, so a node that starts later still learns it.
         seated_pub = this->create_publisher<std_msgs::msg::Bool>("seated", rclcpp::QoS(1).transient_local());
         publishSeated();
         
@@ -154,6 +155,9 @@ public:
         // tripod steps out at full height.
         sit_reach = this->declare_parameter("sit_reach", 0.22);
         sit_height = this->declare_parameter("sit_height", 0.015);
+        // Startup puts the robot in the seated pose; this stands it up straight away rather than
+        // waiting for a sit request of false (the Foxglove panel's Stand up button)
+        stand_on_startup = this->declare_parameter("stand_on_startup", false);
         stand_reach = gaitConfig.startPos.x();
         stand_height = target_height;
         touchdown_ratio = this->declare_parameter("touchdown_ratio", 1.5);
@@ -316,11 +320,12 @@ private:
     double target_height;       // m, feet z below the hips that set_height asked for (negative)
 
     // Sitting
-    SitState sit_state = SitState::STANDING;
+    SitState sit_state = SitState::SEATED;  // startup ends in the seated pose
     double sit_reach;           // m, how far out the feet stand while seated
     double sit_height;          // m, feet below the hips while seated (positive)
     double stand_reach;         // m, how far out the feet stand normally
     double stand_height;        // m, feet z below the hips to stand back up to (negative)
+    bool stand_on_startup;      // stand up as soon as startup has seated the robot
     double max_step_height;     // m, furthest a foot's ground can be above or below nominal
     double seek_speed;          // m/s, how fast a foot that didn't find the ground reaches down
     double body_height_rate;    // m/s, how fast the body follows the feet's average ground height

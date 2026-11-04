@@ -45,8 +45,9 @@ def generate_launch_description():
         name='hexapod_gait_controller',
         output='screen',
         arguments=['--ros-args', '--log-level', ['hexapod_gait_controller:=', LaunchConfiguration('gait_log_level')]],
-        # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel)
-        parameters=[{'use_sim_time': True}, {'initial_mode': ParameterValue(
+        # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel). Stands up
+        # by itself after startup, unlike the robot, so the sim is ready to drive.
+        parameters=[{'use_sim_time': True, 'stand_on_startup': True}, {'initial_mode': ParameterValue(
             PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int)}]
     )
 
