@@ -20,6 +20,8 @@ from geometry_msgs.msg import Twist
 from hexapod_interfaces.srv import GetCapabilities, SetMode
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool
 
 MODE_NORMAL = 0
 MODE_STRAFE = 1
@@ -34,6 +36,10 @@ class DirectionCheck(Node):
         self.cmd_pub = self.create_publisher(Twist, 'cmd_vel', 10)
         self.mode_client = self.create_client(SetMode, 'set_mode')
         self.caps_client = self.create_client(GetCapabilities, 'get_capabilities')
+        # The robot starts seated and stands up after startup; /cmd_vel is ignored until it's up
+        self.standing = False
+        self.create_subscription(Bool, 'seated', lambda msg: setattr(self, 'standing', not msg.data),
+                                 QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
     def now(self):
         """Simulation time in seconds."""
@@ -116,7 +122,7 @@ def main():
 
     rclpy.init()
     node = DirectionCheck(args.world)
-    while node.now() == 0.0:  # wait for the first /clock message
+    while node.now() == 0.0 or not node.standing:  # the first /clock message, and the robot standing
         rclpy.spin_once(node, timeout_sec=0.1)
 
     caps = node.call(node.caps_client, GetCapabilities.Request())

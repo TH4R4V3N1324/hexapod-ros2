@@ -339,7 +339,8 @@ it is in the Gazebo launch. Parameters:
 | `max_foot_speed` | 1.5 m/s | Cap on how fast a foot target can move |
 | `max_joint_speed` | 4.0 rad/s | The gait slows down so no joint exceeds this; keep it below the servos' top speed |
 | `idle_return_delay` | 2.0 s | Idle time before the legs return to their start positions |
-| `startup_duration` | 1.0 s | Time for the startup move (longer if `max_joint_speed` requires it) |
+| `startup_duration` | 1.0 s | Time for the startup move into the seated pose (longer if `max_joint_speed` requires it) |
+| `stand_on_startup` | false | Stand up as soon as startup has seated the robot, rather than waiting for a `sit` request of false (the simulation launch sets it) |
 
 `/cmd_vel` is in real units (m/s and rad/s). Each phase is planned from the
 commanded velocity: stance feet move back at the body's speed, and swing feet
@@ -593,8 +594,13 @@ The helper classes:
 State machine, roughly:
 
 1. **Startup** — waits for joint states from all 18 joints, then moves every
-   leg in a straight line from its measured position to its start position
-   (`startup()`) before gait execution begins.
+   leg in a straight line from its measured position to the seated pose
+   (`startup()`; in simulation the legs start laid out flat at their zeros).
+   The robot is then seated, and `/seated` is true. With `stand_on_startup`
+   (on in the simulation launch, off on the robot) it stands up straight
+   away; otherwise it waits for a `sit` request of false, such as the
+   Foxglove panel's Stand up button. `/seated` stays true until it's
+   standing, since `/cmd_vel` is ignored until then.
 2. **Walk** — while `/cmd_vel` is non-zero (beyond
    `CMD_VEL_CHANGE_THRESHOLD = 0.05`), continuously regenerates swing/stance
    trajectories per the active gait's leg groupings (tripod/ripple/wave

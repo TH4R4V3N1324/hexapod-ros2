@@ -38,6 +38,8 @@ from hexapod_interfaces.srv import GetCapabilities
 from nav_msgs.msg import Odometry
 from rclpy.node import Node
 from rclpy.parameter import Parameter
+from rclpy.qos import DurabilityPolicy, QoSProfile
+from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 
 FALL_TILT = math.radians(45)   # body tilt that counts as a fall
@@ -127,6 +129,10 @@ class ScenarioNode(Node):
         self.recording = False
         self.create_subscription(Odometry, 'ground_truth/odom', self.truth_callback, 10)
         self.create_subscription(Odometry, 'odometry/filtered', self.estimate_callback, 10)
+        # The robot starts seated and stands up after startup; /cmd_vel is ignored until it's up
+        self.standing = False
+        self.create_subscription(Bool, 'seated', lambda msg: setattr(self, 'standing', not msg.data),
+                                 QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL))
 
     def truth_callback(self, msg):
         self.truth = msg
@@ -147,10 +153,11 @@ class ScenarioNode(Node):
         return self.get_clock().now().nanoseconds / 1e9
 
     def wait_until_ready(self, deadline):
-        """Wait for the gait controller, both poses and the clock. False if the deadline passes."""
+        """Wait for the gait controller to have stood the robot up, both poses and the clock. False if the deadline passes."""
         while time.monotonic() < deadline:
             rclpy.spin_once(self, timeout_sec=0.1)
-            if self.truth and self.estimate and self.now() > 0.0 and self.caps_client.service_is_ready():
+            if (self.truth and self.estimate and self.now() > 0.0 and self.caps_client.service_is_ready()
+                    and self.standing):
                 return True
         return False
 

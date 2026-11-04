@@ -582,7 +582,6 @@ void GaitController::sitCallback(
             case SitState::LOWERING:
                 target_height = stand_height;
                 sit_state = SitState::RAISING;
-                publishSeated();
                 break;
             case SitState::SPREADING:
                 gaitConfig.setReach(stand_reach);
@@ -596,15 +595,16 @@ void GaitController::sitCallback(
         }
         response->message = "standing up";
     }
+    publishSeated();
     RCLCPP_INFO(this->get_logger(), "%s", response->message.c_str());
 }
 
 /**
- * @brief Publish whether the robot is seated
+ * @brief Publish whether the robot is seated, or sitting down or standing up: anything but ready to walk
 */
 void GaitController::publishSeated() {
     std_msgs::msg::Bool msg;
-    msg.data = sit_state == SitState::SEATED;
+    msg.data = sit_state != SitState::STANDING;
     seated_pub->publish(msg);
 }
 
@@ -633,6 +633,7 @@ void GaitController::sit(double dt) {
                     sit_state = SitState::LOWERING;
                 } else {
                     sit_state = SitState::STANDING;
+                    publishSeated();
                     RCLCPP_INFO(this->get_logger(), "Standing");
                 }
             }
@@ -644,7 +645,6 @@ void GaitController::sit(double dt) {
         case SitState::LOWERING:
             if (gaitConfig.currentHeight == target_height) {
                 sit_state = SitState::SEATED;
-                publishSeated();
                 RCLCPP_INFO(this->get_logger(), "Seated");
             }
             break;
@@ -859,12 +859,13 @@ void GaitController::home() {
 }
 
 /**
- * @brief Startup sequence to move legs from where they are to their start positions
+ * @brief Startup sequence to move legs from where they are to the seated pose
  * @param[in] dt The time since the last tick (s)
  * @return true once the sequence is complete, false while it is still running
  * @note Waits for joint states first, so the move starts from the measured leg positions
  *       instead of assuming a pose. The move takes startup_duration, or longer if a joint
- *       would otherwise exceed max_joint_speed.
+ *       would otherwise exceed max_joint_speed. The robot is then seated, and stands up if
+ *       stand_on_startup is set (or a stand was asked for meanwhile); otherwise it waits for one.
 */
 bool GaitController::startup(double dt) {
     if (!startup_planned) {
@@ -872,7 +873,19 @@ bool GaitController::startup(double dt) {
             RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for joint states from all 18 joints");
             return false;
         }
-        RCLCPP_INFO(this->get_logger(), "Moving legs from their measured positions to the start positions");
+        // Into the seated pose, whatever pose the legs start in (in simulation, laid out flat at
+        // their zeros): the stand up from there is the same as after a sit request. Going straight
+        // to the standing pose, the robot stayed on its belly when its legs started out flat.
+        if (reachable(Vector3d(sit_reach, 0.0, -sit_height)) && reachable(Vector3d(sit_reach, 0.0, stand_height))) {
+            gaitConfig.setReach(sit_reach);
+            gaitConfig.setHeight(-sit_height);
+            target_height = -sit_height;
+            RCLCPP_INFO(this->get_logger(), "Moving legs from their measured positions to the seated pose");
+        } else {
+            sit_state = SitState::STANDING;
+            RCLCPP_WARN(this->get_logger(), "sit_reach and sit_height put a foot out of reach: "
+                "moving legs from their measured positions straight to the standing pose");
+        }
         current_leg_positions = measured_leg_positions;
         startup_start_positions = measured_leg_positions;
         startup_progress = 0.0;
@@ -905,10 +918,22 @@ bool GaitController::startup(double dt) {
         appendJointCommand(joint_state_msg, targets[leg], leg);
     }
     sendJointcommands(joint_state_msg);
+    // Where the feet were sent: standing up from the seated pose holds them here, and left at the
+    // measured positions it pulled the legs back towards the pose they started in
+    current_leg_positions = targets;
 
     if (startup_progress >= 1.0) {
         heightMap.clear();
         RCLCPP_INFO(this->get_logger(), "Startup sequence complete");
+        // Stand straight away if asked to, or if a stand request came in during the move
+        if (sit_state != SitState::STANDING && (stand_on_startup || sit_state == SitState::RAISING)) {
+            target_height = stand_height;
+            sit_state = SitState::RAISING;
+            RCLCPP_INFO(this->get_logger(), "Standing up");
+        } else if (sit_state == SitState::SEATED) {
+            RCLCPP_INFO(this->get_logger(), "Seated: call sit with false to stand up");
+        }
+        publishSeated();
         return true;
     }
     return false;
@@ -1191,6 +1216,10 @@ bool GaitController::feetAtStart() {
 */
 void GaitController::returnToStart(double dt) {
     static int counter = 0;
+
+    // Standing up straight after startup comes here before the walking code has set up the gait's
+    // groups, and with none the feet never stepped back in to the standing reach
+    trajectoryGen.EnsureGaitConfig();
 
     // Safety check: phase must be valid
     if (phase >= trajectoryGen.gaitState.config.size()) {
