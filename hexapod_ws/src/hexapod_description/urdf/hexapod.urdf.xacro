@@ -8,12 +8,13 @@
        with the knee folded puts the tibia into the body at +86 deg. Both ~10 deg inside contact. -->
   <xacro:property name="femur_lower" value="-1.6"/>
   <xacro:property name="femur_upper" value="1.4"/>
-  <!-- Tibia range from the lighter V6.1 tibia (Hexapod_V6_1_posed.step): folding, the tibia meets the
-       femur's shell at +67 deg; straightening, at -149 deg (both within a degree wherever the shank's
-       piston sits). Folding keeps ~6 deg in hand and straightening ~14, as before. The gait
-       controller lowers any swing that would fold further (limitSwingLift). -->
-  <xacro:property name="tibia_lower" value="-2.35"/>
-  <xacro:property name="tibia_upper" value="1.06"/>
+  <!-- Tibia range from the lighter V6.1 tibia (Hexapod_V6_1_posed.step). 0 is the tibia straight out
+       in line with the femur (the knee-to-foot line), positive folds it down, so the knee is at 90 deg
+       at +90. Folding, the tibia meets the femur's shell at +157 deg; straightening, at -59 deg (both
+       within a degree wherever the shank's piston sits). Folding keeps ~6 deg in hand and straightening
+       ~14, as before. The gait controller lowers any swing that would fold further (limitSwingLift). -->
+  <xacro:property name="tibia_lower" value="-0.78"/>
+  <xacro:property name="tibia_upper" value="2.63"/>
   <!-- ros2_control hardware: gazebo, mock or st3215 (see hexapod.ros2_control.xacro) -->
   <xacro:arg name="hardware" default="mock"/>
   <xacro:arg name="serial_port" default="/dev/ttyAMA0"/>
@@ -138,7 +139,7 @@
   <joint name="${name}_tibia_joint" type="revolute">
     <parent link="${name}_femur"/>
     <child link="${name}_tibia"/>
-    <origin xyz="${femur_length} 0 0" rpy="0 1.5708 0"/> 
+    <origin xyz="${femur_length} 0 0" rpy="0 0 0"/>  <!-- 0: in line with the femur -->
     <axis xyz="0 1 0"/>
     <limit lower="${tibia_lower}" upper="${tibia_upper}" effort="${servo_effort}" velocity="${servo_velocity}"/>
   </joint>

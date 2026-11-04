@@ -1585,8 +1585,8 @@ bool GaitController::reachable(const Vector3d& target) {
     constexpr double MAX_COXA_ANGLE = 1.4;   // rad
     constexpr double FEMUR_MIN = -1.6;       // rad, raised
     constexpr double FEMUR_MAX = 1.4;        // rad, lowered
-    constexpr double TIBIA_MIN = -2.35;      // rad, straightened
-    constexpr double TIBIA_MAX = 1.06;       // rad, folded
+    constexpr double TIBIA_MIN = -0.78;      // rad, straightened past in line with the femur
+    constexpr double TIBIA_MAX = 2.63;       // rad, folded
     constexpr double REACH_TOLERANCE = 1e-3; // m
     const JointAngles angles = ikSolver.solveIK(target);
     return std::abs(angles.coxa) <= MAX_COXA_ANGLE && angles.femur >= FEMUR_MIN && angles.femur <= FEMUR_MAX &&

@@ -10,7 +10,9 @@
       st3215  Waveshare ST3215 serial bus servos (hexapod_hardware_interface)
   -->
 
-  <!-- servo_id, direction and offset are only used by the st3215 hardware -->
+  <!-- servo_id, direction and offset are only used by the st3215 hardware. offset is the joint angle
+       at the servo's centre position: centring each servo with its leg laid out flat (every joint at
+       0) leaves it at 0. Gazebo and mock hardware start every joint at 0, legs laid out flat. -->
   <xacro:macro name="hexapod_ros2_control_joint" params="name hardware servo_id direction:=1 offset:=0.0">
     <joint name="${name}">
       <xacro:if value="${hardware == 'st3215'}">

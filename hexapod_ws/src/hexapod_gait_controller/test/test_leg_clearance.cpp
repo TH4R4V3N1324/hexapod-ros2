@@ -34,7 +34,7 @@ static constexpr double MIN_CLEARANCE = 0.01;
 */
 static std::array<Vector3d, 4> legChain(const JointAngles& angles) {
     double femurElevation = -angles.femur;
-    double tibiaElevation = femurElevation - angles.tibia - M_PI / 2.0;
+    double tibiaElevation = femurElevation - angles.tibia;
     Vector3d dir(std::cos(angles.coxa), std::sin(angles.coxa), 0.0);
     Vector3d femurJoint = dir * COXA;
     Vector3d knee = femurJoint + dir * FEMUR * std::cos(femurElevation) + Vector3d(0, 0, FEMUR * std::sin(femurElevation));
