@@ -64,14 +64,6 @@ ament_target_dependencies(gait_controller
   tf2_ros
 )
 
-add_executable(leg_axis_tester src/leg_axis_test.cpp)
-target_link_libraries(leg_axis_tester kinematic_solver trajectory_generator)
-ament_target_dependencies(leg_axis_tester
-  rclcpp
-  hexapod_interfaces
-  geometry_msgs
-)
-
 install(TARGETS
   kinematic_solver
   trajectory_generator
@@ -82,7 +74,7 @@ install(TARGETS
   RUNTIME DESTINATION bin
 )
 
-install(TARGETS gait_controller leg_axis_tester DESTINATION lib/${PROJECT_NAME}/)
+install(TARGETS gait_controller DESTINATION lib/${PROJECT_NAME}/)
 
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
@@ -115,5 +107,10 @@ if(BUILD_TESTING)
   ament_target_dependencies(test_leg_odometry Eigen3)
 endif()
 install(DIRECTORY include/ DESTINATION include)
+
+# The IK, for hexapod_hardware_interface's test_leg
+ament_export_include_directories(include)
+ament_export_libraries(kinematic_solver)
+ament_export_dependencies(rclcpp hexapod_interfaces Eigen3)
 
 ament_package()
