@@ -69,14 +69,20 @@ Pi 5's cameras need Raspberry Pi OS's own libcamera:
 6. **Limits (optional):** after centring, `test_servos limits <id> min` and
    `limits <id> max` record each end by hand (or give degrees), so the servo
    itself refuses to drive the joint into the body or its stops.
-7. **IMU:** `test_imu` with the robot still and level checks gravity reads on
+7. **Each leg:** `test_leg limp <leg>` then `test_leg monitor <leg>`, and move
+   the foot by hand to check each joint's direction. Then, with the robot lifted
+   so its legs hang free, `test_leg test <leg>` moves the foot through stand,
+   out/in, sideways, up/down and a swing using the gait controller's IK, and
+   shows how closely the leg tracked. `goto`, `axis`, `circle` and `speed` are
+   there for looking into a leg more closely (see Legs below).
+8. **IMU:** `test_imu` with the robot still and level checks gravity reads on
    +Z, as `imu_link` expects. While it streams, raise the front (X goes
    positive), raise the left (Y goes positive) and turn it anticlockwise
    (gyro Z goes positive).
-8. **Lidar:** `test_lidar` reads the lidar's info and health, scans for 5 s and
+9. **Lidar:** `test_lidar` reads the lidar's info and health, scans for 5 s and
    prints the nearest object per 45° sector. Hold a hand close to it to see
    which sector it lands in.
-9. **Cameras:** `test_camera.sh` and `test_tof.py`, below.
+10. **Cameras:** `test_camera.sh` and `test_tof.py`, below.
 
 ## Servos
 
@@ -127,6 +133,53 @@ the body before running `limp` on a standing robot.
 
 The status column decodes the servo's error bits: voltage, sensor, overheat,
 overcurrent, angle, overload.
+
+## Legs
+
+`test_leg` drives one leg's foot with the gait controller's IK, so it tests the
+leg the way the robot drives it. Positions are mm in the leg frame: +x out from
+the coxa, +y anticlockwise seen from above, +z up. Stand is (177, 0, -134).
+
+```
+test_leg where <leg>                 where the foot is and the joint angles
+test_leg monitor <leg>               the same, live (with the leg limp, move it by hand)
+test_leg limp <leg>                  torque off on the leg's three servos
+test_leg stand <leg>                 to the stand position, joint by joint, from anywhere
+test_leg goto <leg> <x> <y> <z>      to a position, in a straight line
+test_leg move <leg> <dx> <dy> <dz>   by that much from where the foot is
+test_leg axis <leg> x|y|z [mm]       from stand: +mm, back, -mm, back (--cycles)
+test_leg swing <leg>                 gait-like swings across --step, lifting --lift (--cycles)
+test_leg circle <leg> [mm]           round a circle about stand, --plane xy|xz|yz (--cycles)
+test_leg speed <leg> [x|y|z]         the axis move at each of --speeds, with the lag at each
+test_leg test <leg>                  stand, out/in, each side, up/down and a swing, checked
+```
+
+Options: `--foot-speed <mm/s>` (default 30), `--speed <°/s>` for `stand`
+(default 30), `--step <mm>` (default 30), `--lift <mm>` (default 40),
+`--cycles <n>`, `--speeds <mm/s,...>` (default 25,50,100,200), `--pause` (`test`
+waits for Enter at each point, to measure it), `--yes`, and `--port`, `--baud`,
+`--echo` as for `test_servos`. Joint directions and offsets come from
+`hexapod.ros2_control.xacro`, as on the robot, so source the workspace first.
+
+**Lift the robot so the leg hangs free:** at stand the foot is below the body's
+underside, so on the ground it would push the body up. The first move asks
+you to (when the leg's torque is off). Every point of a move is checked against
+the joint ranges before anything moves, and moves about stand go there first.
+
+**Directions:** `limp`, then `monitor`, and move the foot by hand. x should grow
+as you pull it outward, y as you swing it anticlockwise seen from above, and z
+as you lift it. One going the wrong way is a joint whose `direction` needs
+flipping.
+
+**What the numbers show:** after a move, where the foot is (forward kinematics
+of the joints), how far that is from the target, and each joint's error and
+load. They come from the servos' own encoders, so they show how well the leg
+tracks (a blocked joint, a limit, a loose horn) but not a joint turning the
+wrong way or an off-centre servo: the encoders agree with the command either
+way. Watch each move go the way it says. `speed` reads the joints every 20 ms
+while moving: the lag behind the target grows with speed, while the error once
+stopped should stay small. It also shows the fastest joint speed each foot
+speed needs, against the servos' 270°/s. Torque stays on after a move.
 
 ## Cameras
 

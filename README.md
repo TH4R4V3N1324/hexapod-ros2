@@ -116,7 +116,7 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
 | `hexapod_interfaces` | msg/srv | Custom services and the few messages with no standard equivalent. Sensor data uses standard `sensor_msgs` types. |
 | `hexapod_description` | C++ / xacro | URDF (visual + collision meshes) and a simplified "primitives" xacro used for Gazebo physics; RViz config; Gazebo Harmonic world; ros_gz bridge config; `joint_state_relay` node. |
 | `hexapod_hardware_interface` | C++ | `ST3215System` `ros2_control` plugin for the bus servos, plus `ism330dhcx_node` (IMU) and `ina226_node` (power monitors) I2C drivers. |
-| `hexapod_gait_controller` | C++ | The core `gait_controller` node: inverse kinematics, Bezier swing trajectories, gait/mode state machine, and the `leg_axis_tester` diagnostic tool. |
+| `hexapod_gait_controller` | C++ | The core `gait_controller` node: inverse kinematics, Bezier swing trajectories, and the gait/mode state machine. |
 | `hexapod_teleop` | C++ | `keyboard_teleop` (raw-terminal WASD-style control) and `controller_teleop` (gamepad `/joy` → `/cmd_vel`). |
 | `hexapod_bringup` | launch only | Top-level launch files for the real robot, mock hardware and simulation. |
 | `hexapod_control` | C++ (stub) | Placeholder package for a `behaviour_manager` and `config_manager`; both source files currently exist but are empty — see [Known gaps](#known-gaps--todo). |
@@ -270,7 +270,7 @@ future higher-level behaviour/config logic and currently does nothing.
 |---|---|---|---|
 | `/cmd_vel` | `geometry_msgs/Twist` | `keyboard_teleop`, `controller_teleop` | `gait_controller` |
 | `/joint_states` | `sensor_msgs/JointState` (position, velocity, effort) | `joint_state_broadcaster` | `gait_controller`, `robot_state_publisher` |
-| `/joint_commands` | `sensor_msgs/JointState` | `gait_controller`, `leg_axis_tester` | `joint_state_relay` |
+| `/joint_commands` | `sensor_msgs/JointState` | `gait_controller` | `joint_state_relay` |
 | `/hexapod_joint_controller/commands` | `std_msgs/Float64MultiArray` | `joint_state_relay` | `hexapod_joint_controller` (ros2_control) |
 | `/imu/data_raw` | `sensor_msgs/Imu` (no orientation) | `ism330dhcx_node` | `imu_filter_madgwick` |
 | `/imu/data` | `sensor_msgs/Imu` | `imu_filter_madgwick` (robot), Gazebo bridge (sim) | — |
@@ -614,10 +614,9 @@ Each foot stays within `MAX_STRIDE_LENGTH = 0.06 m` of its neutral position.
 Top speeds follow from that and `min_phase_duration`, and are what
 `get_capabilities` reports back to teleop clients.
 
-`leg_axis_tester` is a small diagnostic executable that shares the same
-kinematics/trajectory libraries as `gait_controller`, publishing to
-`joint_commands` directly — useful for exercising a single leg's axes
-without the full gait state machine.
+To exercise one leg on the real servos without the gait state machine, use
+`test_leg` in `hexapod_hardware_interface/hardware_tests`: it drives the foot
+with the same IK, straight on the servo bus.
 
 ## Lidar (RPLIDAR A2M12)
 
