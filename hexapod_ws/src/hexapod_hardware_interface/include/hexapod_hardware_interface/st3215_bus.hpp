@@ -12,15 +12,18 @@ namespace hexapod_hardware_interface {
 static constexpr uint8_t ST3215_INST_PING = 0x01;
 static constexpr uint8_t ST3215_INST_READ = 0x02;
 static constexpr uint8_t ST3215_INST_WRITE = 0x03;
+static constexpr uint8_t ST3215_INST_RESET = 0x06;  // factory reset
 static constexpr uint8_t ST3215_INST_SYNC_READ = 0x82;
 static constexpr uint8_t ST3215_INST_SYNC_WRITE = 0x83;
 static constexpr uint8_t ST3215_BROADCAST_ID = 0xFE;
 
 // ST3215 control table (multi-byte values are little-endian)
 static constexpr uint8_t ST3215_REG_ID = 5;                    // EEPROM, unlock with ST3215_REG_LOCK first
-static constexpr uint8_t ST3215_REG_MIN_ANGLE_LIMIT = 9;
-static constexpr uint8_t ST3215_REG_MAX_ANGLE_LIMIT = 11;
+static constexpr uint8_t ST3215_REG_MIN_ANGLE_LIMIT = 9;      // EEPROM, steps (0 and 4095: no limit)
+static constexpr uint8_t ST3215_REG_MAX_ANGLE_LIMIT = 11;     // EEPROM, steps
+static constexpr uint8_t ST3215_REG_POSITION_OFFSET = 31;     // EEPROM, steps, sign bit 11 (±2047)
 static constexpr uint8_t ST3215_REG_TORQUE_ENABLE = 40;
+static constexpr uint8_t ST3215_TORQUE_SET_CENTRE = 128;      // written to TORQUE_ENABLE: the current position becomes 2048
 static constexpr uint8_t ST3215_REG_ACCELERATION = 41;
 static constexpr uint8_t ST3215_REG_GOAL_POSITION = 42;
 static constexpr uint8_t ST3215_REG_LOCK = 55;                 // 0 = EEPROM writable, 1 = locked
@@ -55,6 +58,8 @@ public:
     bool isOpen() const { return fd_ >= 0; }
 
     bool ping(uint8_t id);
+    bool factoryReset(uint8_t id);
+    void setDebug(bool debug) { debug_ = debug; }
     bool setTorqueEnabled(const std::vector<uint8_t>& ids, bool enabled);
     bool writeGoalPositions(
         const std::vector<uint8_t>& ids,
@@ -77,6 +82,7 @@ private:
 
     int fd_ = -1;
     bool echo_ = false;
+    bool debug_ = false;  // print every packet sent and every byte received
 };
 
 }  // namespace hexapod_hardware_interface

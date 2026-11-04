@@ -2,6 +2,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <fcntl.h>
 #include <poll.h>
 #include <termios.h>
@@ -188,6 +189,21 @@ void ST3215Bus::readStates(const std::vector<uint8_t>& ids, std::vector<std::opt
 }
 
 /**
+ * @brief Restore a servo's factory settings
+ * @param[in] id The servo ID
+ * @return true if the servo acknowledged, false otherwise
+ * @note The servo's ID, baud rate, offset and limits all go back to their defaults (ID 1)
+*/
+bool ST3215Bus::factoryReset(uint8_t id) {
+    if (!transmit(buildPacket(id, ST3215_INST_RESET, {}))) {
+        return false;
+    }
+    std::vector<uint8_t> params;
+    uint8_t error = 0;
+    return readStatus(id, params, error, STATUS_TIMEOUT_MS);
+}
+
+/**
  * @brief Read a block of registers from one servo
  * @param[in] id The servo ID
  * @param[in] address The first register to read
@@ -280,6 +296,13 @@ bool ST3215Bus::transmit(const std::vector<uint8_t>& packet) {
         return false;
     }
     tcflush(fd_, TCIFLUSH);
+    if (debug_) {
+        fprintf(stderr, "    TX");
+        for (uint8_t byte : packet) {
+            fprintf(stderr, " %02x", byte);
+        }
+        fprintf(stderr, "\n");
+    }
 
     size_t written = 0;
     while (written < packet.size()) {
@@ -377,6 +400,13 @@ bool ST3215Bus::readBytes(uint8_t* buffer, size_t length, int timeout_ms) {
             return false;
         }
         if (n > 0) {
+            if (debug_) {
+                fprintf(stderr, "    RX");
+                for (ssize_t i = 0; i < n; ++i) {
+                    fprintf(stderr, " %02x", buffer[received + static_cast<size_t>(i)]);
+                }
+                fprintf(stderr, "\n");
+            }
             received += static_cast<size_t>(n);
         }
     }

@@ -55,36 +55,73 @@ Pi 5's cameras need Raspberry Pi OS's own libcamera:
    to give it its ID (e.g. 23 for leg 2's tibia).
 3. **Servos:** `test_servos scan` should list all 18 with sensible voltage and
    temperature.
-4. **Directions and offsets:** `test_servos wiggle <id>` on each servo. It moves
+4. **Directions:** `test_servos wiggle <id>` on each servo. It moves
    +10°, back, -10°, back, so you can see which joint it drives and which way
    positive is. Joints that turn the wrong way for the URDF need `direction` -1
-   in `hexapod.ros2_control.xacro`. `test_servos monitor` with torque off
-   (`test_servos limp`) shows each joint's angle as you move it by hand, which
-   helps find the `offset` for each joint.
-5. **IMU:** `test_imu` with the robot still and level checks gravity reads on
+   in `hexapod.ros2_control.xacro`.
+5. **Centres:** every joint at 0 is the leg laid out flat: coxa straight out,
+   femur level, and the tibia in line with the femur. The tibia is curved, so
+   line up the foot ball's centre with the femur, not the tibia's body.
+   `test_servos centre <id>` turns torque off; put the joint in that pose and
+   press Enter, and the servo stores it as its centre. The `offset` in
+   `hexapod.ros2_control.xacro` can then stay 0. `test_servos offset <id> <steps>`
+   fine-tunes a centre afterwards.
+6. **Limits (optional):** after centring, `test_servos limits <id> min` and
+   `limits <id> max` record each end by hand (or give degrees), so the servo
+   itself refuses to drive the joint into the body or its stops.
+7. **IMU:** `test_imu` with the robot still and level checks gravity reads on
    +Z, as `imu_link` expects. While it streams, raise the front (X goes
    positive), raise the left (Y goes positive) and turn it anticlockwise
    (gyro Z goes positive).
-6. **Lidar:** `test_lidar` reads the lidar's info and health, scans for 5 s and
+8. **Lidar:** `test_lidar` reads the lidar's info and health, scans for 5 s and
    prints the nearest object per 45° sector. Hold a hand close to it to see
    which sector it lands in.
-7. **Cameras:** `test_camera.sh` and `test_tof.py`, below.
+9. **Cameras:** `test_camera.sh` and `test_tof.py`, below.
 
 ## Servos
 
 ```
-test_servos scan [--all]           ping the 18 leg servos (or every ID) and show their state
-test_servos monitor [id ...]       live position, load, voltage, temperature
-test_servos move <id> <degrees>    move to an angle from centre (0 = 2048 steps) and hold
-test_servos wiggle <id> [degrees]  +deg, back, -deg, back, then hold
-test_servos limp [id ...]          torque off (default: every servo). The legs will drop!
-test_servos set-id <old> <new>     change a servo's ID
+test_servos ports                         list the serial ports
+test_servos scan [--all] [--all-bauds]    ping the 18 leg servos (or every ID, at every baud rate)
+test_servos ping <id>                     check one servo replies
+test_servos info <id>                     every register, decoded
+test_servos regs                          the register names read and write take
+test_servos read <id> <reg|addr> [len]    read a register by name, or raw bytes
+test_servos write <id> <reg|addr> <value> write a register by name (EEPROM unlocked for you), or raw bytes
+
+test_servos set-id <old> <new>            change a servo's ID
+test_servos set-baud <id> <rate> --yes    change a servo's baud rate
+test_servos mode <id> <0-3>               position (0, what the robot needs), wheel, PWM, step (1-3 need --yes)
+test_servos reset <id> --yes              factory reset (ID 1, no offset or limits)
+
+test_servos centre <id>                   by hand: the pose it's in when you press Enter reads 0
+test_servos offset <id> [steps]           show or set the stored position offset
+test_servos limits <id>                   show the angle limits
+test_servos limits <id> min|max [degrees] set one limit, typed or by hand
+test_servos limits <id> <min> <max>       set both limits
+test_servos limits <id> clear             remove the limits
+
+test_servos torque <id> on|off            hold where it is, or go limp
+test_servos limp [id ...]                 torque off (default: every servo). The legs will drop!
+test_servos pos [id ...]                  where each servo is
+test_servos move <id> <degrees>           move to an angle from centre (--steps for 0-4095) and hold
+test_servos wiggle <id> [degrees]         +deg, back, -deg, back, then hold
+test_servos sweep <id> [cycles] [min max] back and forth, then the largest error, move time, load, current
+test_servos wheel <id> <°/s> [s] --yes    spin in wheel mode (only for a servo not fitted to a leg)
+test_servos monitor [id ...]              live position, load, current, voltage, temperature (--rate <Hz>)
+test_servos selftest <id>                 replies, 50 reads, voltage, temperature, errors, ±10° move
 ```
 
 Options: `--port /dev/ttyAMA0`, `--baud 1000000`, `--echo` (if the bus adapter
-loops TX back to RX), `--speed <°/s>` for `move` and `wiggle` (default 30).
+loops TX back to RX), `--speed <°/s>` for `move`, `wiggle`, `sweep` and
+`selftest` (default 30), `--debug` to print every packet sent and byte received.
+Angles are degrees from the servo's centre (2048 steps).
 
-`move` and `wiggle` leave torque on, so the joint holds its position. Ctrl+C
+`centre`, `offset`, `limits`, `set-id`, `set-baud`, `mode` and `reset` write the
+servo's EEPROM, so they're kept through a power cycle. Centre a servo before
+setting its limits: the limits count from the centre, so centring moves them.
+
+Everything that moves leaves torque on, so the joint holds its position. Ctrl+C
 stops the sequence but the servo still holds; run `limp` to release it. Support
 the body before running `limp` on a standing robot.
 
