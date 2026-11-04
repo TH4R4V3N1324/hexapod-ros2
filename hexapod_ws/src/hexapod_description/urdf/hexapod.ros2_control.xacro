@@ -27,11 +27,13 @@
     </joint>
   </xacro:macro>
 
-  <!-- Servo ID = leg * 10 + joint (1 coxa, 2 femur, 3 tibia), e.g. leg 1 is 11, 12, 13 and leg 2 is 21, 22, 23 -->
-  <xacro:macro name="hexapod_ros2_control_leg" params="leg hardware">
-    <xacro:hexapod_ros2_control_joint name="leg${leg}_coxa_joint" hardware="${hardware}" servo_id="${leg * 10 + 1}"/>
-    <xacro:hexapod_ros2_control_joint name="leg${leg}_femur_joint" hardware="${hardware}" servo_id="${leg * 10 + 2}"/>
-    <xacro:hexapod_ros2_control_joint name="leg${leg}_tibia_joint" hardware="${hardware}" servo_id="${leg * 10 + 3}"/>
+  <!-- Servo ID = leg * 10 + joint (1 coxa, 2 femur, 3 tibia), e.g. leg 1 is 11, 12, 13 and leg 2 is 21, 22, 23.
+       A direction of -1 is a servo mounted to turn the other way to its joint: check each with
+       'test_leg monitor <leg>' (hardware_tests/README.md). -->
+  <xacro:macro name="hexapod_ros2_control_leg" params="leg hardware coxa_direction:=1 femur_direction:=1 tibia_direction:=1">
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_coxa_joint" hardware="${hardware}" servo_id="${leg * 10 + 1}" direction="${coxa_direction}"/>
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_femur_joint" hardware="${hardware}" servo_id="${leg * 10 + 2}" direction="${femur_direction}"/>
+    <xacro:hexapod_ros2_control_joint name="leg${leg}_tibia_joint" hardware="${hardware}" servo_id="${leg * 10 + 3}" direction="${tibia_direction}"/>
   </xacro:macro>
 
   <xacro:macro name="hexapod_ros2_control" params="hardware serial_port:=/dev/ttyAMA0 baud_rate:=1000000">
@@ -53,12 +55,12 @@
           <param name="speed">0</param>           <!-- steps/s, 0 = no limit -->
         </xacro:if>
       </hardware>
-      <xacro:hexapod_ros2_control_leg leg="1" hardware="${hardware}"/>
-      <xacro:hexapod_ros2_control_leg leg="2" hardware="${hardware}"/>
-      <xacro:hexapod_ros2_control_leg leg="3" hardware="${hardware}"/>
-      <xacro:hexapod_ros2_control_leg leg="4" hardware="${hardware}"/>
-      <xacro:hexapod_ros2_control_leg leg="5" hardware="${hardware}"/>
-      <xacro:hexapod_ros2_control_leg leg="6" hardware="${hardware}"/>
+      <xacro:hexapod_ros2_control_leg leg="1" hardware="${hardware}" tibia_direction="-1"/>
+      <xacro:hexapod_ros2_control_leg leg="2" hardware="${hardware}" tibia_direction="-1"/>
+      <xacro:hexapod_ros2_control_leg leg="3" hardware="${hardware}" tibia_direction="-1"/>
+      <xacro:hexapod_ros2_control_leg leg="4" hardware="${hardware}" tibia_direction="-1"/>
+      <xacro:hexapod_ros2_control_leg leg="5" hardware="${hardware}" tibia_direction="-1"/>
+      <xacro:hexapod_ros2_control_leg leg="6" hardware="${hardware}" tibia_direction="-1"/>
     </ros2_control>
   </xacro:macro>
 
