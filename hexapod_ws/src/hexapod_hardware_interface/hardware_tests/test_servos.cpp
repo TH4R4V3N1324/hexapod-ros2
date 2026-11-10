@@ -1,11 +1,14 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
+#include <functional>
 #include <glob.h>
 #include <map>
 #include <optional>
 #include <poll.h>
+#include <sstream>
 #include <stdexcept>
 #include <thread>
 #include <unistd.h>
@@ -21,10 +24,17 @@ static constexpr uint8_t ACCELERATION = 20;  // 8.7 °/s² per unit
 static constexpr int ARRIVED_TOLERANCE = 10;  // steps, about 0.9°
 static constexpr double CURRENT_MA_PER_UNIT = 6.5;
 static constexpr int MAX_WHEEL_SPEED = 3400;  // steps/s
+static constexpr int CALIBRATE_MARGIN = 20;   // steps kept inside each end of the range calibrate records
+static constexpr int CALIBRATE_MIN_TRAVEL = 50;  // steps
+
+// Options that take no value
+static const std::vector<std::string> FLAGS = {"all", "all-bauds", "echo", "debug", "yes", "steps"};
 
 static const char* USAGE = R"(Test, configure and calibrate the ST3215 bus servos.
 
 Usage: test_servos <command> [args] [--port /dev/ttyAMA0] [--baud 1000000] [--echo] [--debug]
+       test_servos [shell] [options]   With no command, an interactive shell: type the commands below
+                                       at its prompt, leaving out the ID to use the selected servo.
 
 Finding servos:
   ports                     List the serial ports (the GPIO UART, USB adapters).
@@ -47,6 +57,10 @@ Configuring (saved in the servo's EEPROM):
   reset <id> --yes          Factory reset: ID 1, 1000000 baud, no offset or limits.
 
 Calibrating (angles are degrees from the servo's centre, as in move):
+  calibrate <id> [margin]   Centre and limits in one go, by hand. Torque goes off. Step 1: move the joint
+                            slowly through its full travel and press Enter. Step 2: put it in the pose that
+                            should read 0 and press Enter. After you confirm, that pose becomes the centre and
+                            the limits are set <margin> steps (default 20) inside the ends you reached.
   centre <id>               Turn torque off, move the joint by hand to the pose that should read 0 (every
                             joint at 0 is the leg laid out flat), then press Enter: that becomes the centre.
   offset <id> [steps]       Show the position offset centre stored, or set it (±2047 steps) to fine-tune.
@@ -54,7 +68,7 @@ Calibrating (angles are degrees from the servo's centre, as in move):
   limits <id> min [degrees] Set the lower limit. Without degrees, torque goes off: move the joint by hand to
   limits <id> max [degrees] the limit and press Enter. max sets the upper limit the same way.
   limits <id> <min> <max>   Set both limits, in degrees.
-  limits <id> clear         Remove the limits (the full 0-4095 steps).
+  limits <id> clear         Remove the limits (the full 0-4095 steps). unlimit <id> does the same.
 Centre a servo before setting its limits: they count from the centre, so centring moves them too.
 
 Moving and testing:
@@ -76,6 +90,20 @@ Moving and testing:
 
 --speed <°/s> sets how fast move, wiggle and sweep go (default 30). Everything that moves leaves torque on so
 the joint holds its position; run 'limp' to release it. --debug prints every packet sent and byte received.
+)";
+
+static const char* SHELL_HELP = R"(
+In the shell (the commands above work the same, without 'test_servos'):
+  select <id>               Set the servo commands use when you leave the ID out (scan selects one it found).
+  baud <rate>               Change the rate this end of the bus talks at (not the servo's: that's set-baud).
+  debug [on|off]            Print every packet sent and byte received.
+  echo [on|off]             Discard the bytes the bus adapter echoes back.
+  help [command]            This list, or one command's help.
+  quit                      Leave (also exit, or Ctrl+D).
+The ID can be left out of any command that takes one: 'wiggle' wiggles the selected servo, 'move 20' moves it
+to 20°, 'set-id 23' renumbers it. A number first is still the ID, as on the command line: 'wiggle 12' wiggles
+servo 12, and 'offset 5' shows servo 5's offset ('offset <id> 5' sets it). Ctrl+C stops a running test, and
+commands that need --yes on the command line ask instead.
 )";
 
 /**
@@ -353,6 +381,45 @@ std::string describeValue(const Register& reg, int value) {
 }
 
 /**
+ * @brief Call tick every period_ms until Enter is pressed
+ * @return true on Enter, false on Ctrl+C or the end of the input
+*/
+bool waitForEnter(const std::function<void()>& tick, int period_ms) {
+    while (!stop_requested) {
+        tick();
+        fflush(stdout);
+        pollfd input{STDIN_FILENO, POLLIN, 0};
+        if (poll(&input, 1, period_ms) > 0) {
+            char line[256];
+            printf("\n");
+            if (fgets(line, sizeof(line), stdin)) {
+                return true;
+            }
+            clearerr(stdin);
+            return false;
+        }
+    }
+    printf("\n");
+    return false;
+}
+
+/**
+ * @brief Ask a yes/no question on the terminal
+ * @return true if the answer starts with y
+*/
+bool askYes(const std::string& question) {
+    printf("%s [y/N] ", question.c_str());
+    fflush(stdout);
+    char line[64];
+    if (!fgets(line, sizeof(line), stdin)) {
+        clearerr(stdin);
+        printf("\n");
+        return false;
+    }
+    return line[0] == 'y' || line[0] == 'Y';
+}
+
+/**
  * @brief Turn torque off and show a joint's position live until Enter
  * @param[in] what Where to move the joint to, e.g. "the pose that should read 0"
  * @return The position when Enter was pressed, or nullopt on Ctrl+C or if the servo didn't reply
@@ -365,7 +432,7 @@ std::optional<int> positionByHand(ST3215Bus& bus, uint8_t id, const std::string&
     printf("Torque off on servo %d (%s). Move it by hand to %s, then press Enter (Ctrl+C cancels).\n",
         id, jointName(id).c_str(), what.c_str());
     std::optional<int> position;
-    while (!stop_requested) {
+    const bool entered = waitForEnter([&] {
         auto status = readStatus(bus, id);
         if (status) {
             position = status->position;
@@ -373,25 +440,47 @@ std::optional<int> positionByHand(ST3215Bus& bus, uint8_t id, const std::string&
         } else {
             printf("\r  no reply                 ");
         }
-        fflush(stdout);
-        pollfd input{STDIN_FILENO, POLLIN, 0};
-        if (poll(&input, 1, 100) > 0) {
-            char line[256];
-            printf("\n");
-            if (!fgets(line, sizeof(line), stdin) || !position) {
-                break;
-            }
-            return position;
-        }
+    }, 100);
+    if (entered && position) {
+        return position;
     }
-    printf("\nCancelled\n");
+    printf("Cancelled\n");
     return std::nullopt;
+}
+
+/**
+ * @brief Make where the joint is now read as the centre (2048 steps), kept in EEPROM, and leave torque off
+ * @return The position it reads afterwards, or nullopt if the servo didn't acknowledge
+*/
+std::optional<int> centreHere(ST3215Bus& bus, uint8_t id) {
+    // Unlocked around it so the new offset is kept through a power cycle
+    bus.writeRegisters(id, ST3215_REG_LOCK, {0});
+    const bool centred = bus.writeRegisters(id, ST3215_REG_TORQUE_ENABLE, {ST3215_TORQUE_SET_CENTRE});
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    bus.writeRegisters(id, ST3215_REG_LOCK, {1});
+    bus.setTorqueEnabled({id}, false);
+    auto status = readStatus(bus, id);
+    if (!centred || !status) {
+        return std::nullopt;
+    }
+    return status->position;
+}
+
+/**
+ * @brief Write both angle limits to EEPROM
+ * @return true if the servo acknowledged the write
+*/
+bool writeLimits(ST3215Bus& bus, uint8_t id, int low, int high) {
+    std::vector<uint8_t> data = littleEndian(static_cast<uint16_t>(low));
+    const auto high_bytes = littleEndian(static_cast<uint16_t>(high));
+    data.insert(data.end(), high_bytes.begin(), high_bytes.end());
+    return writeEeprom(bus, id, ST3215_REG_MIN_ANGLE_LIMIT, data);
 }
 
 /**
  * @brief Ping servos and print the state of each one that replies
 */
-int scan(ST3215Bus& bus, bool all) {
+int scan(ST3215Bus& bus, bool all, std::vector<uint8_t>* found_ids = nullptr) {
     const auto expected = legServoIds();
     std::vector<uint8_t> ids = expected;
     if (all) {
@@ -412,6 +501,9 @@ int scan(ST3215Bus& bus, bool all) {
                 missing.push_back(id);
             }
             continue;
+        }
+        if (found_ids) {
+            found_ids->push_back(id);
         }
         if (!is_expected) {
             unexpected.push_back(id);
@@ -1075,24 +1167,145 @@ int centre(ST3215Bus& bus, uint8_t id) {
     if (!positionByHand(bus, id, "the pose that should read 0")) {
         return 1;
     }
-    // Unlocked around it so the new offset is kept through a power cycle
-    bus.writeRegisters(id, ST3215_REG_LOCK, {0});
-    const bool centred = bus.writeRegisters(id, ST3215_REG_TORQUE_ENABLE, {ST3215_TORQUE_SET_CENTRE});
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    bus.writeRegisters(id, ST3215_REG_LOCK, {1});
-    bus.setTorqueEnabled({id}, false);
-    auto status = readStatus(bus, id);
-    if (!centred || !status) {
+    auto position = centreHere(bus, id);
+    if (!position) {
         printf("Servo %d didn't acknowledge centring\n", id);
         return 1;
     }
-    printf("Centred: it now reads %+.1f° (%d steps). Torque is off.\n", stepsToDegrees(status->position),
-        status->position);
+    printf("Centred: it now reads %+.1f° (%d steps). Torque is off.\n", stepsToDegrees(*position), *position);
     printCalibration(bus, id);
     if (!(*low == 0 && *high == ST3215_STEPS_PER_REV - 1)) {
         printf("Its limits were set before centring, so they've moved with it: set them again with "
-            "'limits %d min' and 'limits %d max'.\n", id, id);
+            "'calibrate %d', or 'limits %d min' and 'limits %d max'.\n", id, id, id);
     }
+    return 0;
+}
+
+/**
+ * @brief The signed change between two position readings, across the 4095 -> 0 wrap
+*/
+int unwrapStep(int previous, int now) {
+    return (now - previous + ST3215_CENTER_POSITION + ST3215_STEPS_PER_REV) % ST3215_STEPS_PER_REV
+        - ST3215_CENTER_POSITION;
+}
+
+double stepsToDegreesSpan(int steps) {
+    return steps * 360.0 / ST3215_STEPS_PER_REV;
+}
+
+/**
+ * @brief Record the joint's travel by hand, then its centre, and write the centre and the limits
+ * @param[in] margin Steps to keep the limits inside the ends of the recorded travel
+ * @param[in] yes Write without asking
+*/
+int calibrate(ST3215Bus& bus, uint8_t id, int margin, bool yes) {
+    const int max_steps = ST3215_STEPS_PER_REV - 1;
+    if (margin < 0) {
+        printf("The margin must be 0 or more steps\n");
+        return 1;
+    }
+    std::optional<ServoStatus> start;
+    if (bus.setTorqueEnabled({id}, false)) {
+        start = readStatus(bus, id);
+    }
+    if (!start) {
+        printf("Servo %d didn't reply. Run 'scan'.\n", id);
+        return 1;
+    }
+
+    // Position unwrapped from where it started, so a range across 4095 -> 0 still works
+    int raw = start->position;
+    int unwrapped = 0, lowest = 0, highest = 0;
+    auto track = [&]() {
+        auto status = readStatus(bus, id);
+        if (status) {
+            unwrapped += unwrapStep(raw, status->position);
+            raw = status->position;
+        }
+        return status.has_value();
+    };
+
+    printf("Torque off on servo %d (%s).\n", id, jointName(id).c_str());
+    printf("Step 1: move the joint slowly through its FULL travel, then press Enter (Ctrl+C cancels).\n");
+    bool entered = waitForEnter([&] {
+        if (!track()) {
+            printf("\r  no reply                                        ");
+            return;
+        }
+        lowest = std::min(lowest, unwrapped);
+        highest = std::max(highest, unwrapped);
+        printf("\r  at %4d steps   travel %4d steps (%5.1f°)   ", raw, highest - lowest,
+            stepsToDegreesSpan(highest - lowest));
+    }, 30);
+    if (!entered) {
+        printf("Cancelled, nothing written\n");
+        return 1;
+    }
+    const int travel = highest - lowest;
+    if (travel < CALIBRATE_MIN_TRAVEL) {
+        printf("Travel too small (%d steps): nothing written\n", travel);
+        return 1;
+    }
+    if (travel > max_steps) {
+        printf("Travel is more than a full turn, which angle limits can't hold: nothing written\n");
+        return 1;
+    }
+
+    printf("Step 2: put the joint in the pose that should read 0 (its centre), then press Enter.\n");
+    entered = waitForEnter([&] {
+        if (!track()) {
+            printf("\r  no reply                                                ");
+            return;
+        }
+        printf("\r  at %4d steps   %6.1f° from the lower end   %6.1f° from the upper end   ", raw,
+            stepsToDegreesSpan(unwrapped - lowest), stepsToDegreesSpan(highest - unwrapped));
+    }, 30);
+    if (!entered) {
+        printf("Cancelled, nothing written\n");
+        return 1;
+    }
+    if (unwrapped < lowest || unwrapped > highest) {
+        printf("The centre is outside the travel you recorded: nothing written\n");
+        return 1;
+    }
+
+    int low = ST3215_CENTER_POSITION + (lowest - unwrapped) + margin;
+    int high = ST3215_CENTER_POSITION + (highest - unwrapped) - margin;
+    if (low >= high) {
+        printf("A margin of %d steps leaves no travel between the limits: nothing written\n", margin);
+        return 1;
+    }
+    if (low < 0 || high > max_steps) {
+        printf("The centre is more than 180° from one end of the travel: the limits would be %d to %d steps, "
+            "outside 0-4095. Nothing written.\n", low, high);
+        return 1;
+    }
+    printf("Travel %d steps (%.1f°); the centre is %.1f° from the lower end and %.1f° from the upper.\n", travel,
+        stepsToDegreesSpan(travel), stepsToDegreesSpan(unwrapped - lowest), stepsToDegreesSpan(highest - unwrapped));
+    printf("This pose becomes the centre (2048 steps), with limits %+.1f° to %+.1f° (%d to %d steps, %d inside "
+        "each end).\n", stepsToDegrees(low), stepsToDegrees(high), low, high, margin);
+    if (!yes && !askYes("Keep the joint still. Write the centre and limits to the servo's EEPROM?")) {
+        printf("Nothing written\n");
+        return 1;
+    }
+
+    // Catch any drift while the question was open
+    track();
+    auto centre_position = centreHere(bus, id);
+    if (!centre_position) {
+        printf("Servo %d didn't acknowledge centring: nothing written\n", id);
+        return 1;
+    }
+    low = std::max(0, *centre_position + (lowest - unwrapped) + margin);
+    high = std::min(max_steps, *centre_position + (highest - unwrapped) - margin);
+    if (!writeLimits(bus, id, low, high)) {
+        printf("Centred, but servo %d didn't acknowledge the limits. Set them with 'limits %d min' and "
+            "'limits %d max'.\n", id, id, id);
+        return 1;
+    }
+    printf("Centred: it now reads %+.1f° (%d steps). Torque is off.\n", stepsToDegrees(*centre_position),
+        *centre_position);
+    printCalibration(bus, id);
     return 0;
 }
 
@@ -1149,10 +1362,7 @@ int limits(ST3215Bus& bus, uint8_t id, const std::vector<std::string>& args) {
             stepsToDegrees(*high));
         return 1;
     }
-    std::vector<uint8_t> data = littleEndian(static_cast<uint16_t>(*low));
-    const auto high_bytes = littleEndian(static_cast<uint16_t>(*high));
-    data.insert(data.end(), high_bytes.begin(), high_bytes.end());
-    if (!writeEeprom(bus, id, ST3215_REG_MIN_ANGLE_LIMIT, data)) {
+    if (!writeLimits(bus, id, *low, *high)) {
         printf("Servo %d didn't acknowledge the write\n", id);
         return 1;
     }
@@ -1171,53 +1381,55 @@ std::vector<uint8_t> parseIds(const std::vector<std::string>& args, size_t first
     return ids;
 }
 
+
 /**
- * @brief Open the servo bus and run a command
- * @param[in] argc Number of command line arguments
- * @param[in] argv Command line arguments
- * @return 0 if the command succeeded, 1 otherwise
+ * @brief The open bus and how it was opened
 */
-int main(int argc, char** argv) {
-    Args args(argc, argv, {"all", "all-bauds", "echo", "debug", "yes", "steps"});
-    const auto& pos = args.positional();
-    if (args.has("help") || pos.empty()) {
-        printf("%s", USAGE);
-        return pos.empty() && !args.has("help") ? 1 : 0;
-    }
-    const std::string& command = pos[0];
-    if (command == "ports") {
-        return ports();
-    }
-    if (command == "regs") {
-        return regs();
-    }
-
-    const std::string port = args.get("port", "/dev/ttyAMA0");
-    const int baud = args.getInt("baud", 1000000);
-    const bool echo = args.has("echo");
-    const double speed_dps = args.getDouble("speed", 30.0);
-    const auto speed = static_cast<uint16_t>(std::clamp(speed_dps * ST3215_STEPS_PER_REV / 360.0, 1.0, 3000.0));
-    catchCtrlC();
-
+struct Session {
     ST3215Bus bus;
-    if (!bus.open(port, baud, echo)) {
-        printf("Failed to open %s at %d baud\n", port.c_str(), baud);
-        printf("Is the robot running with hardware:=st3215? It holds the port; stop it or use hardware:=mock.\n");
-        return 1;
-    }
-    bus.setDebug(args.has("debug"));
+    std::string port;
+    int baud = 1000000;
+    bool echo = false;
+    bool debug = false;
+    bool interactive = false;            // in the shell: ask instead of needing --yes
+    std::vector<uint8_t> found_ids;      // what the last scan found
+};
+
+/**
+ * @brief Run one command
+ * @param[in] pos The positional arguments, starting with the command
+ * @param[in] args This command's options
+ * @param[in] defaults Options to fall back on for --speed and --rate (the shell's own command line)
+ * @return The command's exit code, or -1 if the arguments weren't a form the command takes
+*/
+int runCommand(Session& session, const std::vector<std::string>& pos, const Args& args, const Args& defaults) {
+    ST3215Bus& bus = session.bus;
+    const std::string& command = pos[0];
+    const double speed_dps = args.getDouble("speed", defaults.getDouble("speed", 30.0));
+    const auto speed = static_cast<uint16_t>(std::clamp(speed_dps * ST3215_STEPS_PER_REV / 360.0, 1.0, 3000.0));
+    const double rate = args.getDouble("rate", defaults.getDouble("rate", 5.0));
 
     // Commands that can leave a servo hard to talk to, or move a fitted joint into its stops
-    auto confirmed = [&args](const char* why) {
-        if (!args.has("yes")) {
-            printf("%s Add --yes to go ahead.\n", why);
+    auto confirmed = [&](const char* why) {
+        if (args.has("yes")) {
+            return true;
         }
-        return args.has("yes");
+        if (session.interactive) {
+            return askYes(format("%s Go ahead?", why));
+        }
+        printf("%s Add --yes to go ahead.\n", why);
+        return false;
     };
 
     try {
-        if (command == "scan" && pos.size() == 1) {
-            return args.has("all-bauds") ? scanAllBauds(bus, port, echo, args.has("all")) : scan(bus, args.has("all"));
+        if (command == "ports" && pos.size() == 1) {
+            return ports();
+        } else if (command == "regs" && pos.size() == 1) {
+            return regs();
+        } else if (command == "scan" && pos.size() == 1) {
+            session.found_ids.clear();
+            return args.has("all-bauds") ? scanAllBauds(bus, session.port, session.echo, args.has("all"))
+                : scan(bus, args.has("all"), &session.found_ids);
         } else if (command == "ping" && pos.size() == 2) {
             return ping(bus, parseId(pos[1]));
         } else if (command == "info" && pos.size() == 2) {
@@ -1230,7 +1442,7 @@ int main(int argc, char** argv) {
             return setId(bus, std::stoi(pos[1]), std::stoi(pos[2]));
         } else if (command == "set-baud" && pos.size() == 3) {
             return confirmed("The servo will stop answering at the robot's 1000000 baud unless that's the new rate.")
-                ? setBaud(bus, parseId(pos[1]), std::stoi(pos[2]), port, echo) : 1;
+                ? setBaud(bus, parseId(pos[1]), std::stoi(pos[2]), session.port, session.echo) : 1;
         } else if (command == "mode" && pos.size() == 3) {
             const int value = std::stoi(pos[2]);
             return value == 0 || confirmed("Only position mode (0) moves to a goal: in the others a fitted joint can "
@@ -1238,12 +1450,17 @@ int main(int argc, char** argv) {
         } else if (command == "reset" && pos.size() == 2) {
             return confirmed("This resets the servo's ID to 1 and clears its offset and limits.")
                 ? reset(bus, parseId(pos[1])) : 1;
+        } else if (command == "calibrate" && (pos.size() == 2 || pos.size() == 3)) {
+            return calibrate(bus, parseId(pos[1]), pos.size() == 3 ? std::stoi(pos[2]) : CALIBRATE_MARGIN,
+                args.has("yes"));
         } else if ((command == "centre" || command == "center") && pos.size() == 2) {
             return centre(bus, parseId(pos[1]));
         } else if (command == "offset" && (pos.size() == 2 || pos.size() == 3)) {
             return offset(bus, parseId(pos[1]), pos.size() == 3 ? std::optional<int>(std::stoi(pos[2])) : std::nullopt);
         } else if (command == "limits" && pos.size() >= 2 && pos.size() <= 4) {
             return limits(bus, parseId(pos[1]), {pos.begin() + 2, pos.end()});
+        } else if (command == "unlimit" && pos.size() == 2) {
+            return limits(bus, parseId(pos[1]), {"clear"});
         } else if (command == "torque" && pos.size() == 3 && (pos[2] == "on" || pos[2] == "off")) {
             return torque(bus, parseId(pos[1]), pos[2] == "on", speed);
         } else if (command == "limp") {
@@ -1266,13 +1483,232 @@ int main(int argc, char** argv) {
             return confirmed("Wheel mode spins continuously: only for a servo that isn't fitted to a leg.")
                 ? wheel(bus, parseId(pos[1]), std::stod(pos[2]), pos.size() == 4 ? std::stod(pos[3]) : 3.0) : 1;
         } else if (command == "monitor") {
-            return monitor(bus, parseIds(pos, 1), args.getDouble("rate", 5.0));
+            return monitor(bus, parseIds(pos, 1), rate);
         } else if (command == "selftest" && pos.size() == 2) {
             return selftest(bus, parseId(pos[1]), speed);
         }
     } catch (const std::exception&) {
-        printf("Invalid number in the arguments\n\n");
+        printf("Invalid number in the arguments\n");
     }
-    printf("%s", USAGE);
-    return 1;
+    return -1;
+}
+
+/**
+ * @brief Whether text is a servo ID (0-253) and nothing else
+*/
+bool isIdText(const std::string& text) {
+    return isIntegerIn(text, 0, ST3215_BROADCAST_ID - 1);
+}
+
+/**
+ * @brief Whether the arguments after a command's ID are a form it takes
+ * @return nullopt if the command doesn't take one servo ID
+*/
+std::optional<bool> fitsAfterId(const std::string& command, const std::vector<std::string>& rest) {
+    const size_t n = rest.size();
+    for (const char* name : {"ping", "info", "reset", "centre", "center", "unlimit", "selftest"}) {
+        if (command == name) {
+            return n == 0;
+        }
+    }
+    for (const char* name : {"set-id", "set-baud", "mode", "move"}) {
+        if (command == name) {
+            return n == 1;
+        }
+    }
+    for (const char* name : {"calibrate", "offset", "wiggle"}) {
+        if (command == name) {
+            return n <= 1;
+        }
+    }
+    if (command == "read") {
+        return n == 1 || n == 2;
+    }
+    if (command == "write") {
+        return n >= 2;
+    }
+    if (command == "torque") {
+        return n == 1 && (rest[0] == "on" || rest[0] == "off");
+    }
+    if (command == "sweep") {
+        return n == 0 || n == 1 || n == 3;
+    }
+    if (command == "wheel") {
+        return n == 1 || n == 2;
+    }
+    if (command == "limits") {
+        return n == 0 || (n == 1 && (rest[0] == "clear" || rest[0] == "min" || rest[0] == "max"))
+            || (n == 2 && rest[0] != "clear");
+    }
+    return std::nullopt;
+}
+
+/**
+ * @brief Put the selected ID into a shell command that left its ID out
+ * @return The command as it would be typed on the command line
+*/
+std::vector<std::string> withSelectedId(std::vector<std::string> pos, int selected) {
+    const std::vector<std::string> rest(pos.begin() + 1, pos.end());
+    const auto fits = fitsAfterId(pos[0], rest);
+    if (!fits.has_value()) {
+        return pos;
+    }
+    // A number first is the ID, as on the command line
+    if (!rest.empty() && isIdText(rest[0]) && *fitsAfterId(pos[0], {rest.begin() + 1, rest.end()})) {
+        return pos;
+    }
+    if (*fits) {
+        pos.insert(pos.begin() + 1, std::to_string(selected));
+    }
+    return pos;
+}
+
+/**
+ * @brief Print the help lines for one command
+*/
+void printServoCommandHelp(std::string command) {
+    if (command == "center") {
+        command = "centre";
+    } else if (command == "exit") {
+        command = "quit";
+    }
+    printCommandHelp(std::string(USAGE) + SHELL_HELP, command);
+}
+
+/**
+ * @brief Read commands from the terminal and run them until quit or Ctrl+D
+ * @param[in] startup The program's own options, which --speed and --rate fall back on
+*/
+int shell(Session& session, const Args& startup) {
+    session.interactive = true;
+    int selected = 1;
+    printf("ST3215 servo shell. Type 'help' for the commands, 'help <command>' for one.\n"
+        "Ctrl+C stops a running test, Ctrl+D or 'quit' leaves.\n\n");
+    while (true) {
+        stop_requested = 0;
+        std::vector<std::string> words;
+        if (!readShellLine(format("st3215[%s@%d id=%d]> ", session.port.c_str(), session.baud, selected), words)) {
+            return 0;
+        }
+        const Args args(words, FLAGS);
+        const auto& pos = args.positional();
+        if (pos.empty()) {
+            continue;
+        }
+        const std::string& command = pos[0];
+
+        if (command == "quit" || command == "exit") {
+            return 0;
+        }
+        if (command == "help") {
+            if (pos.size() > 1) {
+                printServoCommandHelp(pos[1]);
+            } else {
+                printf("%s%s", USAGE, SHELL_HELP);
+            }
+            continue;
+        }
+        if (command == "select") {
+            if (pos.size() == 2 && isIdText(pos[1])) {
+                selected = std::stoi(pos[1], nullptr, 0);
+            } else {
+                printServoCommandHelp(command);
+            }
+            continue;
+        }
+        if (command == "baud") {
+            int rate = 0;
+            try {
+                rate = pos.size() == 2 ? std::stoi(pos[1]) : 0;
+            } catch (const std::exception&) {
+            }
+            if (rate > 0 && session.bus.open(session.port, rate, session.echo)) {
+                session.baud = rate;
+            } else {
+                printf("Couldn't open %s at that rate. Use one of 1000000 500000 115200 57600 38400.\n",
+                    session.port.c_str());
+                session.bus.open(session.port, session.baud, session.echo);
+            }
+            continue;
+        }
+        if (command == "debug") {
+            session.debug = parseSwitch(pos, session.debug);
+            session.bus.setDebug(session.debug);
+            printf("Debug %s\n", session.debug ? "on" : "off");
+            continue;
+        }
+        if (command == "echo") {
+            session.echo = parseSwitch(pos, session.echo);
+            session.bus.open(session.port, session.baud, session.echo);
+            printf("Discarding the adapter's echo: %s\n", session.echo ? "on" : "off");
+            continue;
+        }
+
+        const auto full = withSelectedId(pos, selected);
+        const int result = runCommand(session, full, args, startup);
+        if (result < 0) {
+            printServoCommandHelp(command);
+        }
+        printf("\n");
+
+        if (command == "set-id" && result == 0) {
+            selected = std::stoi(full[2]);
+        } else if (command == "set-baud" && result == 0) {
+            session.baud = std::stoi(full[2]);
+        } else if (command == "scan" && !args.has("all-bauds") && !session.found_ids.empty()
+            && std::find(session.found_ids.begin(), session.found_ids.end(), selected) == session.found_ids.end()) {
+            selected = session.found_ids[0];
+            printf("Selected ID %d ('select <id>' to change)\n\n", selected);
+        }
+        // scan --all-bauds and set-baud leave the port at another rate
+        if (command == "set-baud" || (command == "scan" && args.has("all-bauds"))) {
+            if (!session.bus.open(session.port, session.baud, session.echo)) {
+                printf("Couldn't reopen %s at %d baud\n", session.port.c_str(), session.baud);
+            }
+            session.bus.setDebug(session.debug);
+        }
+    }
+}
+
+/**
+ * @brief Open the servo bus and run a command, or the shell if there's none
+ * @param[in] argc Number of command line arguments
+ * @param[in] argv Command line arguments
+ * @return 0 if the command succeeded, 1 otherwise
+*/
+int main(int argc, char** argv) {
+    Args args(argc, argv, FLAGS);
+    const auto& pos = args.positional();
+    if (args.has("help")) {
+        printf("%s%s", USAGE, SHELL_HELP);
+        return 0;
+    }
+    const bool shell_mode = pos.empty() || (pos[0] == "shell" && pos.size() == 1);
+    if (!shell_mode && (pos[0] == "ports" || pos[0] == "regs") && pos.size() == 1) {
+        return pos[0] == "ports" ? ports() : regs();
+    }
+
+    Session session;
+    session.port = args.get("port", "/dev/ttyAMA0");
+    session.baud = args.getInt("baud", 1000000);
+    session.echo = args.has("echo");
+    session.debug = args.has("debug");
+    catchCtrlCWithoutRestart();
+
+    if (!session.bus.open(session.port, session.baud, session.echo)) {
+        printf("Failed to open %s at %d baud\n", session.port.c_str(), session.baud);
+        printf("Is the robot running with hardware:=st3215? It holds the port; stop it or use hardware:=mock.\n");
+        return 1;
+    }
+    session.bus.setDebug(session.debug);
+
+    if (shell_mode) {
+        return shell(session, args);
+    }
+    const int result = runCommand(session, pos, args, args);
+    if (result < 0) {
+        printf("\n%s", USAGE);
+        return 1;
+    }
+    return result;
 }

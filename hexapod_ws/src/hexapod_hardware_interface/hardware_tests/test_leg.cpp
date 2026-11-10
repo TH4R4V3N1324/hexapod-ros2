@@ -3,6 +3,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstdio>
+#include <map>
 #include <optional>
 #include <poll.h>
 #include <sstream>
@@ -26,6 +27,8 @@ using Eigen::Vector3d;
 static const char* USAGE = R"(Drive one leg's foot with the gait controller's IK, and check it gets there.
 
 Usage: test_leg <command> <leg 1-6> [args] [options]
+       test_leg [shell] [options]   With no command, an interactive shell: type the commands below at its
+                                    prompt, leaving out the leg to use the selected one.
 
 Positions are mm in the leg frame: +x out from the coxa, +y anticlockwise seen from above, +z up. The
 stand position is (177, 0, -134): 177 mm out and 134 mm below the hip.
@@ -60,7 +63,7 @@ Options:
   --speeds <mm/s,...>       Foot speeds for speed (default 25,50,100,200).
   --pause                   test: wait for Enter at each point, to measure it.
   --yes                     Don't ask before the first move.
-  --port /dev/ttyAMA0  --baud 1000000  --echo
+  --port /dev/ttyAMA0  --baud 1000000  --echo  --debug (print every packet)
 
 Lift the robot so the leg hangs free: at stand the foot is below the body's underside, so on the ground it
 pushes the body up. The first move asks you to (when the leg's torque is off).
@@ -70,6 +73,23 @@ the wrong way or an off-centre servo (the encoders agree with the command either
 the way it says, or use monitor. Joint directions and offsets come from hexapod.ros2_control.xacro, as on
 the robot. Torque stays on after a move; run 'limp' to release it.
 )";
+
+static const char* SHELL_HELP = R"(
+In the shell (the commands above work the same, without 'test_leg'):
+  select <leg>              Set the leg commands use when you leave the leg out.
+  baud <rate>               Change the rate this end of the bus talks at.
+  debug [on|off]            Print every packet sent and byte received.
+  echo [on|off]             Discard the bytes the bus adapter echoes back.
+  help [command]            This list, or one command's help.
+  quit                      Leave (also exit, or Ctrl+D).
+The leg can be left out of any command: 'stand' stands the selected leg, 'axis z 20' moves it up and down
+20 mm, 'goto 190 0 -120' sends its foot there. A number from 1 to 6 first is still the leg, as on the command
+line: 'circle 3' circles leg 3. Options can go on any line ('axis x --foot-speed 60'), and the ones given when
+the shell started apply to every line. Ctrl+C stops a running move.
+)";
+
+// Options that take no value
+static const std::vector<std::string> FLAGS = {"echo", "pause", "yes", "debug"};
 
 // The stand position in the leg frame (+x out from the coxa, z up), as gait_config.hpp's startPos
 static const Vector3d STAND(0.177, 0.0, -0.134);
@@ -183,7 +203,11 @@ bool waitForEnter() {
         pollfd input{STDIN_FILENO, POLLIN, 0};
         if (poll(&input, 1, 100) > 0) {
             char line[256];
-            return fgets(line, sizeof(line), stdin) != nullptr;
+            if (fgets(line, sizeof(line), stdin)) {
+                return true;
+            }
+            clearerr(stdin);
+            return false;
         }
     }
     return false;
@@ -795,85 +819,266 @@ int test(Context& c) {
     return report.finish();
 }
 
-int main(int argc, char** argv) {
-    Args args(argc, argv, {"echo", "pause", "yes"});
-    const auto& pos = args.positional();
-    if (args.has("help") || pos.size() < 2) {
-        printf("%s", USAGE);
-        return args.has("help") ? 0 : 1;
-    }
-    const std::string& command = pos[0];
-    int leg_number = 0;
-    try {
-        leg_number = std::stoi(pos[1]);
-    } catch (const std::exception&) {
-    }
-    if (leg_number < 1 || leg_number > 6) {
-        printf("The leg must be 1-6\n\n%s", USAGE);
-        return 1;
-    }
-    catchCtrlC();
+bool isAxis(const std::string& text) {
+    return text == "x" || text == "y" || text == "z";
+}
 
-    auto mappings = loadMappings(leg_number);
-    if (!mappings) {
-        mappings = std::array<JointMapping, 3>{};
-        printf("Couldn't read the URDF (is the workspace sourced?): using direction 1 and offset 0 for every joint\n");
+/**
+ * @brief Whether the arguments after the leg are a form a command takes
+ * @return nullopt if there's no such command
+*/
+std::optional<bool> fitsAfterLeg(const std::string& command, const std::vector<std::string>& rest) {
+    const size_t n = rest.size();
+    for (const char* name : {"where", "monitor", "limp", "stand", "swing", "test"}) {
+        if (command == name) {
+            return n == 0;
+        }
     }
+    if (command == "goto" || command == "move") {
+        return n == 3;
+    }
+    if (command == "axis") {
+        return (n == 1 || n == 2) && isAxis(rest[0]);
+    }
+    if (command == "circle") {
+        return n <= 1;
+    }
+    if (command == "speed") {
+        return n == 0 || (n == 1 && isAxis(rest[0]));
+    }
+    return std::nullopt;
+}
 
-    const std::string port = args.get("port", "/dev/ttyAMA0");
-    const int baud = args.getInt("baud", 1000000);
+/**
+ * @brief The open bus, and what's been loaded for each leg
+*/
+struct Session {
     ST3215Bus bus;
-    if (!bus.open(port, baud, args.has("echo"))) {
-        printf("Failed to open %s at %d baud\n", port.c_str(), baud);
-        printf("Is the robot running with hardware:=st3215? It holds the port; stop it or use hardware:=mock.\n");
-        return 1;
+    std::string port;
+    int baud = 1000000;
+    bool echo = false;
+    bool debug = false;
+    KinematicSolver ik;
+    std::map<int, std::array<JointMapping, 3>> mappings;  // by leg, read from the URDF once
+};
+
+/**
+ * @brief Run one command on one leg
+ * @param[in] pos The positional arguments: the command, the leg, then its arguments
+ * @return The command's exit code, or -1 if the arguments weren't a form the command takes
+*/
+int runCommand(Session& session, const std::vector<std::string>& pos, const Args& args) {
+    const std::string& command = pos[0];
+    if (pos.size() < 2 || !fitsAfterLeg(command, {pos.begin() + 2, pos.end()}).value_or(false)) {
+        return -1;
     }
-    Leg leg(bus, leg_number, *mappings);
+    if (!isIntegerIn(pos[1], 1, 6)) {
+        printf("The leg must be 1-6\n");
+        return -1;
+    }
+    const int leg_number = std::stoi(pos[1]);
+
+    auto mappings = session.mappings.find(leg_number);
+    if (mappings == session.mappings.end()) {
+        auto loaded = loadMappings(leg_number);
+        if (!loaded) {
+            loaded = std::array<JointMapping, 3>{};
+            printf("Couldn't read the URDF (is the workspace sourced?): using direction 1 and offset 0 for every "
+                "joint of leg %d\n", leg_number);
+        }
+        mappings = session.mappings.emplace(leg_number, *loaded).first;
+    }
+    Leg leg(session.bus, leg_number, mappings->second);
     for (uint8_t id : leg.ids()) {
-        if (!bus.ping(id)) {
+        if (!session.bus.ping(id)) {
             printf("Servo %d (leg %d) didn't reply. Run 'test_servos scan'.\n", id, leg_number);
             return 1;
         }
     }
 
-    KinematicSolver ik;
     try {
-        Context c{leg, ik, args, std::max(args.getDouble("foot-speed", 30.0), 1.0) / 1000.0,
+        Context c{leg, session.ik, args, std::max(args.getDouble("foot-speed", 30.0), 1.0) / 1000.0,
             args.getDouble("step", 30.0) / 1000.0, args.getDouble("lift", 40.0) / 1000.0,
             std::max(args.getInt("cycles", 1), 1), args.getDouble("speed", 30.0)};
         auto at = [&pos](size_t i) { return std::stod(pos[i]) / 1000.0; };
 
-        if (command == "where" && pos.size() == 2) {
+        if (command == "where") {
             return where(c);
-        } else if (command == "monitor" && pos.size() == 2) {
+        } else if (command == "monitor") {
             return monitor(c);
-        } else if (command == "limp" && pos.size() == 2) {
+        } else if (command == "limp") {
             return limp(c);
-        } else if (command == "stand" && pos.size() == 2) {
+        } else if (command == "stand") {
             return stand(c);
-        } else if (command == "goto" && pos.size() == 5) {
+        } else if (command == "goto") {
             return goTo(c, Vector3d(at(2), at(3), at(4)), "to");
-        } else if (command == "move" && pos.size() == 5) {
+        } else if (command == "move") {
             auto from = footNow(c);
             if (!from) {
                 printf("No reply from leg %d\n", leg_number);
                 return 1;
             }
             return goTo(c, *from + Vector3d(at(2), at(3), at(4)), "by " + mm(Vector3d(at(2), at(3), at(4))) + ", to");
-        } else if (command == "axis" && (pos.size() == 3 || pos.size() == 4)) {
+        } else if (command == "axis") {
             return axis(c, pos[2], pos.size() == 4 ? at(3) : c.step);
-        } else if (command == "swing" && pos.size() == 2) {
+        } else if (command == "swing") {
             return swing(c);
-        } else if (command == "circle" && (pos.size() == 2 || pos.size() == 3)) {
+        } else if (command == "circle") {
             return circle(c, pos.size() == 3 ? at(2) : c.step);
-        } else if (command == "speed" && (pos.size() == 2 || pos.size() == 3)) {
+        } else if (command == "speed") {
             return speed(c, pos.size() == 3 ? pos[2] : "x");
-        } else if (command == "test" && pos.size() == 2) {
+        } else if (command == "test") {
             return test(c);
         }
     } catch (const std::exception&) {
-        printf("Invalid number in the arguments\n\n");
+        printf("Invalid number in the arguments\n");
     }
-    printf("%s", USAGE);
-    return 1;
+    return -1;
+}
+
+/**
+ * @brief Put the selected leg into a shell command that left it out
+ * @return The command as it would be typed on the command line
+*/
+std::vector<std::string> withSelectedLeg(std::vector<std::string> pos, int selected) {
+    const std::vector<std::string> rest(pos.begin() + 1, pos.end());
+    const auto fits = fitsAfterLeg(pos[0], rest);
+    if (!fits.has_value()) {
+        return pos;
+    }
+    // A leg number first is the leg, as on the command line
+    if (!rest.empty() && isIntegerIn(rest[0], 1, 6) && *fitsAfterLeg(pos[0], {rest.begin() + 1, rest.end()})) {
+        return pos;
+    }
+    if (*fits) {
+        pos.insert(pos.begin() + 1, std::to_string(selected));
+    }
+    return pos;
+}
+
+void printLegCommandHelp(std::string command) {
+    if (command == "exit") {
+        command = "quit";
+    }
+    printCommandHelp(std::string(USAGE) + SHELL_HELP, command);
+}
+
+/**
+ * @brief Read commands from the terminal and run them until quit or Ctrl+D
+ * @param[in] startup_options The program's own options, put before every line's so the line's win
+*/
+int shell(Session& session, const std::vector<std::string>& startup_options) {
+    int selected = 1;
+    printf("Leg shell. Type 'help' for the commands, 'help <command>' for one.\n"
+        "Ctrl+C stops a running move, Ctrl+D or 'quit' leaves.\n\n");
+    while (true) {
+        stop_requested = 0;
+        std::vector<std::string> words;
+        if (!readShellLine(format("test_leg[%s@%d leg=%d]> ", session.port.c_str(), session.baud, selected), words)) {
+            return 0;
+        }
+        std::vector<std::string> all = startup_options;
+        all.insert(all.end(), words.begin(), words.end());
+        const Args args(all, FLAGS);
+        const auto& pos = args.positional();
+        if (pos.empty()) {
+            continue;
+        }
+        const std::string& command = pos[0];
+
+        if (command == "quit" || command == "exit") {
+            return 0;
+        } else if (command == "help") {
+            if (pos.size() > 1) {
+                printLegCommandHelp(pos[1]);
+            } else {
+                printf("%s%s", USAGE, SHELL_HELP);
+            }
+        } else if (command == "select") {
+            if (pos.size() == 2 && isIntegerIn(pos[1], 1, 6)) {
+                selected = std::stoi(pos[1]);
+            } else {
+                printf("The leg must be 1-6\n");
+            }
+        } else if (command == "baud") {
+            const int rate = pos.size() == 2 && isIntegerIn(pos[1], 1, 4000000) ? std::stoi(pos[1]) : 0;
+            if (rate > 0 && session.bus.open(session.port, rate, session.echo)) {
+                session.baud = rate;
+            } else {
+                printf("Couldn't open %s at that rate. Use one of 1000000 500000 115200 57600 38400.\n",
+                    session.port.c_str());
+                session.bus.open(session.port, session.baud, session.echo);
+            }
+            session.bus.setDebug(session.debug);
+        } else if (command == "debug") {
+            session.debug = parseSwitch(pos, session.debug);
+            session.bus.setDebug(session.debug);
+            printf("Debug %s\n", session.debug ? "on" : "off");
+        } else if (command == "echo") {
+            session.echo = parseSwitch(pos, session.echo);
+            session.bus.open(session.port, session.baud, session.echo);
+            session.bus.setDebug(session.debug);
+            printf("Discarding the adapter's echo: %s\n", session.echo ? "on" : "off");
+        } else {
+            if (runCommand(session, withSelectedLeg(pos, selected), args) < 0) {
+                printLegCommandHelp(command);
+            }
+            printf("\n");
+        }
+    }
+}
+
+/**
+ * @brief Open the servo bus and run a command, or the shell if there's none
+ * @return 0 if the command succeeded, 1 otherwise
+*/
+int main(int argc, char** argv) {
+    Args args(argc, argv, FLAGS);
+    const auto& pos = args.positional();
+    if (args.has("help")) {
+        printf("%s%s", USAGE, SHELL_HELP);
+        return 0;
+    }
+    const bool shell_mode = pos.empty() || (pos[0] == "shell" && pos.size() == 1);
+    if (!shell_mode && (pos.size() < 2 || !fitsAfterLeg(pos[0], {pos.begin() + 2, pos.end()}).value_or(false))) {
+        printf("%s", USAGE);
+        return 1;
+    }
+
+    Session session;
+    session.port = args.get("port", "/dev/ttyAMA0");
+    session.baud = args.getInt("baud", 1000000);
+    session.echo = args.has("echo");
+    session.debug = args.has("debug");
+    catchCtrlCWithoutRestart();
+    if (!session.bus.open(session.port, session.baud, session.echo)) {
+        printf("Failed to open %s at %d baud\n", session.port.c_str(), session.baud);
+        printf("Is the robot running with hardware:=st3215? It holds the port; stop it or use hardware:=mock.\n");
+        return 1;
+    }
+    session.bus.setDebug(session.debug);
+
+    if (shell_mode) {
+        // The options alone, in order, so they can go in front of every line
+        std::vector<std::string> startup_options;
+        for (int i = 1; i < argc; ++i) {
+            const std::string word = argv[i];
+            if (word.rfind("--", 0) != 0) {
+                continue;
+            }
+            startup_options.push_back(word);
+            const bool flag = word == "--help" ||
+                std::find(FLAGS.begin(), FLAGS.end(), word.substr(2)) != FLAGS.end();
+            if (!flag && i + 1 < argc) {
+                startup_options.push_back(argv[++i]);
+            }
+        }
+        return shell(session, startup_options);
+    }
+    const int result = runCommand(session, pos, args);
+    if (result < 0) {
+        printf("\n%s", USAGE);
+        return 1;
+    }
+    return result;
 }

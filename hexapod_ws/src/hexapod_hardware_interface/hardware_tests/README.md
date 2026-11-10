@@ -62,13 +62,17 @@ Pi 5's cameras need Raspberry Pi OS's own libcamera:
 5. **Centres:** every joint at 0 is the leg laid out flat: coxa straight out,
    femur level, and the tibia in line with the femur. The tibia is curved, so
    line up the foot ball's centre with the femur, not the tibia's body.
-   `test_servos centre <id>` turns torque off; put the joint in that pose and
-   press Enter, and the servo stores it as its centre. The `offset` in
-   `hexapod.ros2_control.xacro` can then stay 0. `test_servos offset <id> <steps>`
-   fine-tunes a centre afterwards.
-6. **Limits (optional):** after centring, `test_servos limits <id> min` and
-   `limits <id> max` record each end by hand (or give degrees), so the servo
-   itself refuses to drive the joint into the body or its stops.
+   `test_servos calibrate <id>` does the centre and the limits in one go: with
+   torque off, move the joint through its full travel and press Enter, then
+   put it in that pose and press Enter. After you confirm, the servo stores
+   the pose as its centre and sets its limits 20 steps (`calibrate <id>
+   <margin>` to change) inside the ends you reached, so it refuses to drive the
+   joint into the body or its stops. The `offset` in
+   `hexapod.ros2_control.xacro` can then stay 0.
+6. **Fine-tuning (optional):** `test_servos centre <id>` re-centres without
+   touching the limits (they move with it, so redo them), `offset <id> <steps>`
+   nudges a centre, and `limits <id> min` / `limits <id> max` reset one end by
+   hand (or give degrees).
 7. **Each leg:** `test_leg limp <leg>` then `test_leg monitor <leg>`, and move
    the foot by hand to check each joint's direction. Then, with the robot lifted
    so its legs hang free, `test_leg test <leg>` moves the foot through stand,
@@ -100,12 +104,13 @@ test_servos set-baud <id> <rate> --yes    change a servo's baud rate
 test_servos mode <id> <0-3>               position (0, what the robot needs), wheel, PWM, step (1-3 need --yes)
 test_servos reset <id> --yes              factory reset (ID 1, no offset or limits)
 
+test_servos calibrate <id> [margin]       by hand: full travel, Enter, centre pose, Enter, then writes both
 test_servos centre <id>                   by hand: the pose it's in when you press Enter reads 0
 test_servos offset <id> [steps]           show or set the stored position offset
 test_servos limits <id>                   show the angle limits
 test_servos limits <id> min|max [degrees] set one limit, typed or by hand
 test_servos limits <id> <min> <max>       set both limits
-test_servos limits <id> clear             remove the limits
+test_servos limits <id> clear             remove the limits (or unlimit <id>)
 
 test_servos torque <id> on|off            hold where it is, or go limp
 test_servos limp [id ...]                 torque off (default: every servo). The legs will drop!
@@ -118,12 +123,29 @@ test_servos monitor [id ...]              live position, load, current, voltage,
 test_servos selftest <id>                 replies, 50 reads, voltage, temperature, errors, ±10° move
 ```
 
+Run `test_servos` with no command for an interactive shell that keeps the bus
+open between commands:
+
+```
+$ ros2 run hexapod_hardware_interface test_servos
+st3215[/dev/ttyAMA0@1000000 id=1]> scan          # selects the first servo it finds
+st3215[/dev/ttyAMA0@1000000 id=11]> calibrate     # the selected servo
+st3215[/dev/ttyAMA0@1000000 id=11]> wiggle 12     # a number first is still the ID
+st3215[/dev/ttyAMA0@1000000 id=11]> move 20       # the selected servo to 20°
+st3215[/dev/ttyAMA0@1000000 id=11]> select 23
+```
+
+It takes the same commands, with the ID optional (left out, the selected one is
+used), plus `select <id>`, `baud <rate>` (this end's rate), `debug [on|off]`,
+`echo [on|off]`, `help [command]` and `quit` (or Ctrl+D). Ctrl+C stops a running
+test without leaving, and commands that need `--yes` ask instead.
+
 Options: `--port /dev/ttyAMA0`, `--baud 1000000`, `--echo` (if the bus adapter
 loops TX back to RX), `--speed <°/s>` for `move`, `wiggle`, `sweep` and
 `selftest` (default 30), `--debug` to print every packet sent and byte received.
 Angles are degrees from the servo's centre (2048 steps).
 
-`centre`, `offset`, `limits`, `set-id`, `set-baud`, `mode` and `reset` write the
+`calibrate`, `centre`, `offset`, `limits`, `set-id`, `set-baud`, `mode` and `reset` write the
 servo's EEPROM, so they're kept through a power cycle. Centre a servo before
 setting its limits: the limits count from the centre, so centring moves them.
 
@@ -154,11 +176,26 @@ test_leg speed <leg> [x|y|z]         the axis move at each of --speeds, with the
 test_leg test <leg>                  stand, out/in, each side, up/down and a swing, checked
 ```
 
+Run `test_leg` with no command for a shell like `test_servos`'s:
+
+```
+$ ros2 run hexapod_hardware_interface test_leg --foot-speed 50
+test_leg[/dev/ttyAMA0@1000000 leg=1]> select 2
+test_leg[/dev/ttyAMA0@1000000 leg=2]> stand           # the selected leg
+test_leg[/dev/ttyAMA0@1000000 leg=2]> axis z 20       # up and down 20 mm
+test_leg[/dev/ttyAMA0@1000000 leg=2]> circle 3        # a number 1-6 first is still the leg
+test_leg[/dev/ttyAMA0@1000000 leg=2]> swing --cycles 3
+```
+
+The leg is optional (left out, the selected one is used), options can go on any
+line, and the ones given when it started apply to every line. It also has
+`select <leg>`, `baud`, `debug`, `echo`, `help [command]` and `quit`.
+
 Options: `--foot-speed <mm/s>` (default 30), `--speed <°/s>` for `stand`
 (default 30), `--step <mm>` (default 30), `--lift <mm>` (default 40),
 `--cycles <n>`, `--speeds <mm/s,...>` (default 25,50,100,200), `--pause` (`test`
 waits for Enter at each point, to measure it), `--yes`, and `--port`, `--baud`,
-`--echo` as for `test_servos`. Joint directions and offsets come from
+`--echo` and `--debug` as for `test_servos`. Joint directions and offsets come from
 `hexapod.ros2_control.xacro`, as on the robot, so source the workspace first.
 
 **Lift the robot so the leg hangs free:** at stand the foot is below the body's
