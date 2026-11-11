@@ -979,6 +979,9 @@ this out of the box:
   not the speed). At ±3.4° it barely moves. Neither multi-point feet nor load
   balancing changed it. The sim's legs and contacts are rigid; the real
   robot's rubber tips and sprung tibias should grip better.
-- **Package descriptions/licenses are all `TODO`** in every `package.xml`.
-- All `package.xml` maintainer emails are real personal addresses — worth
-  reviewing before making the repo public.
+- **Package descriptions are `TODO`** in most `package.xml` files.
+
+## License
+
+Licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE)
+for the copyright notice.
