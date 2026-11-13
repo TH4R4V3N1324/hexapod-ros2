@@ -3,6 +3,7 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include <unordered_map>
+#include <functional>
 #include <type_traits>
 #include "gait_core/trajectory_generator.hpp"
 #include "gait_core/kinematic_solver.hpp"
@@ -451,6 +452,10 @@ public:
     void gaitTimerCallback();
     void appendJointCommand(JointState& joint_state_msg, const Vector3d& target, int legNum);
     void sendJointcommands(JointState& msg);
+
+    // Called with every joint command just before it is published. Unset in normal use; the golden
+    // trace test sets it to record the commands without spinning a subscriber.
+    std::function<void(const JointState&)> joint_command_observer;
     void home();
     bool startup(double dt);
     double maxFootSpeed();

@@ -7,20 +7,6 @@
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
 /**
- * @brief Entry point, initialises ROS and spins the node
- * @param[in] argc Number of command line arguments
- * @param[in] argv Command line arguments
- * @return Process exit code
-*/
-int main(int argc, char **argv){    
-    rclcpp::init(argc, argv);    
-    auto node = std::make_shared<GaitController>();    
-    rclcpp::spin(node);    
-    rclcpp::shutdown();    
-    return 0;
-}
-
-/**
  * @brief Store the latest velocity command and apply exponential smoothing
  * @param[in] msg The incoming velocity command
  * @note A zero command bypasses smoothing so the robot stops immediately
@@ -838,6 +824,9 @@ void GaitController::appendJointCommand(JointState& joint_state_msg, const Vecto
 */
 void GaitController::sendJointcommands(JointState& msg) {
     msg.header.stamp = this->now();
+    if (joint_command_observer) {
+        joint_command_observer(msg);
+    }
     joint_cmd_pub->publish(msg);
     msg.name.clear();
     msg.position.clear();

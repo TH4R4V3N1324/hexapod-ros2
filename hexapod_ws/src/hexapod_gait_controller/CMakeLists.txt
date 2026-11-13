@@ -28,9 +28,7 @@ add_library(height_map SHARED
 )
 ament_target_dependencies(height_map Eigen3)
 
-add_executable(gait_controller src/gait_controller.cpp)
-target_link_libraries(gait_controller gait_core::gait_core height_map)
-ament_target_dependencies(gait_controller
+set(GAIT_CONTROLLER_DEPS
   rclcpp
   hexapod_interfaces
   geometry_msgs
@@ -40,6 +38,16 @@ ament_target_dependencies(gait_controller
   std_msgs
   tf2_ros
 )
+
+# The node itself, as a library so the golden trace test can run it without main()
+add_library(gait_controller_node STATIC src/gait_controller.cpp)
+set_target_properties(gait_controller_node PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_link_libraries(gait_controller_node gait_core::gait_core height_map)
+ament_target_dependencies(gait_controller_node ${GAIT_CONTROLLER_DEPS})
+
+add_executable(gait_controller src/main.cpp)
+target_link_libraries(gait_controller gait_controller_node)
+ament_target_dependencies(gait_controller ${GAIT_CONTROLLER_DEPS})
 
 install(TARGETS
   height_map
@@ -56,6 +64,16 @@ if(BUILD_TESTING)
   ament_add_gtest(test_height_map test/test_height_map.cpp)
   target_link_libraries(test_height_map height_map)
   ament_target_dependencies(test_height_map Eigen3)
+
+  # Runs the whole node through a scripted drive and compares every joint command with a recording.
+  # Isolated, so no other ROS process on the machine can send it /clock or anything else.
+  # Set GAIT_GOLDEN_RECORD=1 to re-record test/golden/gait_trace.csv after an intended change.
+  find_package(ament_cmake_ros REQUIRED)
+  ament_add_ros_isolated_gtest(test_golden_trace test/test_golden_trace.cpp TIMEOUT 300)
+  target_link_libraries(test_golden_trace gait_controller_node)
+  ament_target_dependencies(test_golden_trace ${GAIT_CONTROLLER_DEPS})
+  target_compile_definitions(test_golden_trace PRIVATE
+    GOLDEN_TRACE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/test/golden/gait_trace.csv")
 endif()
 install(DIRECTORY include/ DESTINATION include)
 
