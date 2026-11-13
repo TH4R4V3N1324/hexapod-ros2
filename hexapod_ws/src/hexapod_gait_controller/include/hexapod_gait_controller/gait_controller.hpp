@@ -22,6 +22,7 @@
 #include "sensor_msgs/msg/joint_state.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "std_srvs/srv/set_bool.hpp"
+#include "std_srvs/srv/trigger.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
@@ -69,6 +70,8 @@ public:
     void setHeightCallback(const std::shared_ptr<SetHeight::Request> request, std::shared_ptr<SetHeight::Response> response);
     void sitCallback(const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                      std::shared_ptr<std_srvs::srv::SetBool::Response> response);
+    void powerDownCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                           std::shared_ptr<std_srvs::srv::Trigger::Response> response);
     void toggleCallback(const std::string& feature, const std::shared_ptr<std_srvs::srv::SetBool::Request> request,
                         std::shared_ptr<std_srvs::srv::SetBool::Response> response);
     void getCapabilitiesCallback(const std::shared_ptr<GetCapabilities::Request> request,
@@ -91,6 +94,9 @@ private:
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     rclcpp::Publisher<Odometry>::SharedPtr odom_pub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr seated_pub;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr servo_power_pub;
+    bool servo_power_published = false;
+    bool last_servo_power = false;
     std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, NUM_LEGS> foot_force_pubs;
     std::shared_ptr<tf2_ros::TransformBroadcaster> footprint_broadcaster;
     rclcpp::TimerBase::SharedPtr gait_timer;
@@ -99,6 +105,7 @@ private:
     rclcpp::Service<SetHeight>::SharedPtr set_height_service;
     rclcpp::Service<GetCapabilities>::SharedPtr get_capabilities_service;
     rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr sit_service;
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr power_down_service;
     std::vector<rclcpp::Service<std_srvs::srv::SetBool>::SharedPtr> toggle_services;
     rclcpp::node_interfaces::OnSetParametersCallbackHandle::SharedPtr param_callback;
 
@@ -143,6 +150,7 @@ private:
     Eigen::Isometry2d foothold_body_to_map;  // set by ready() for plan()
 
     void publishSeated(bool seated);
+    void publishServoPower(bool powered);
     void publishJointCommands(const GaitOutput& output);
     void publishOdometry(const rclcpp::Time& stamp);
     void publishFootprint();

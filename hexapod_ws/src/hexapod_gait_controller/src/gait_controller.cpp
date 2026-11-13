@@ -36,6 +36,11 @@ GaitController::GaitController() : Node("gait_controller") {
     // (it starts seated). Latched, so a node that starts later still learns it.
     seated_pub = this->create_publisher<std_msgs::msg::Bool>("seated", rclcpp::QoS(1).transient_local());
     publishSeated(true);
+    // Sit, then turn the servo power off; a stand (sit false) powers them back up
+    power_down_service = this->create_service<std_srvs::srv::Trigger>("power_down",
+        std::bind(&GaitController::powerDownCallback, this, _1, _2));
+    // Whether the servos should be powered, for servo_power_node to drive SERVO_EN. Latched.
+    servo_power_pub = this->create_publisher<std_msgs::msg::Bool>("servo_power", rclcpp::QoS(1).transient_local());
 
     // Every gait setting goes into the engine's parameters; see gait_core::GaitParams for what each does
     GaitParams gp;
@@ -114,6 +119,9 @@ GaitController::GaitController() : Node("gait_controller") {
     gp.sit_height = this->declare_parameter("sit_height", gp.sit_height);
     // Startup puts the robot in the seated pose; this stands it up straight away
     gp.stand_on_startup = this->declare_parameter("stand_on_startup", gp.stand_on_startup);
+    // Servo power: false on a robot with SERVO_EN, so the servos stay off until the first stand
+    gp.power_on_startup = this->declare_parameter("power_on_startup", gp.power_on_startup);
+    gp.servo_loss_timeout = this->declare_parameter("servo_loss_timeout", gp.servo_loss_timeout);
     gp.touchdown_ratio = this->declare_parameter("touchdown_ratio", gp.touchdown_ratio);
     gp.stumble_force = this->declare_parameter("stumble_force", gp.stumble_force);
     gp.stumble_lift = this->declare_parameter("stumble_lift", gp.stumble_lift);
@@ -226,6 +234,11 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
         auto femur = positions.find(prefix + "femur_joint");
         auto tibia = positions.find(prefix + "tibia_joint");
         if (coxa == positions.end() || femur == positions.end() || tibia == positions.end()) {
+            all_found = false;
+            continue;
+        }
+        // The hardware reports NaN for a servo that isn't answering (unpowered, e-stop)
+        if (!std::isfinite(coxa->second) || !std::isfinite(femur->second) || !std::isfinite(tibia->second)) {
             all_found = false;
             continue;
         }
@@ -461,6 +474,19 @@ void GaitController::sitCallback(
 }
 
 /**
+ * @brief Service callback to sit down and then turn the servo power off
+ * @note Returns straight away; servo_power goes false once the robot is seated
+*/
+void GaitController::powerDownCallback(
+    const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+    std::shared_ptr<std_srvs::srv::Trigger::Response> response
+) {
+    const CommandResult result = engine->powerDown();
+    response->success = result.success;
+    response->message = result.message;
+}
+
+/**
  * @brief Publish whether the robot is seated, or sitting down or standing up: anything but ready to walk
 */
 void GaitController::publishSeated(bool seated) {
@@ -538,9 +564,23 @@ void GaitController::gaitTimerCallback() {
     if (!wasInitialized && engine->initialized()) {
         heightMap.clear();  // anything seen before standing was mapped at the wrong height
     }
+    if (!servo_power_published || output.servoPower != last_servo_power) {
+        publishServoPower(output.servoPower);
+    }
     if (output.commanded) {
         publishJointCommands(output);
     }
+}
+
+/**
+ * @brief Publish whether the servos should be powered
+*/
+void GaitController::publishServoPower(bool powered) {
+    std_msgs::msg::Bool msg;
+    msg.data = powered;
+    servo_power_pub->publish(msg);
+    servo_power_published = true;
+    last_servo_power = powered;
 }
 
 /**

@@ -68,8 +68,14 @@ def generate_launch_description():
         name='hexapod_gait_controller',
         output='screen',
         # Strafe mode when Nav2 runs, so it can move sideways (standard holonomic /cmd_vel)
-        parameters=[{'initial_mode': ParameterValue(
-            PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int)}]
+        parameters=[{
+            'initial_mode': ParameterValue(
+                PythonExpression(["1 if '", LaunchConfiguration('nav'), "' == 'true' else 0"]), value_type=int),
+            # The real servos stay unpowered (SERVO_EN low) until the first stand command; mock
+            # hardware has no power switch
+            'power_on_startup': ParameterValue(
+                PythonExpression(["'", hardware, "' != 'st3215'"]), value_type=bool),
+        }]
     )
 
     controller_teleop = Node(
@@ -79,7 +85,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    # Watches the battery: warns when it's low and sits the robot down when it's critical
+    # Watches the battery: warns when it's low, and when it's critical sits the robot down and turns the servos off
     behaviour_manager = Node(
         package='hexapod_control',
         executable='behaviour_manager',
@@ -151,6 +157,14 @@ def generate_launch_description():
                 package='hexapod_hardware_interface',
                 executable='ina226_node',
                 name='ina226',
+                output='screen',
+                parameters=[sensors_file]
+            ),
+            # The leg hubs' SERVO_EN, from the gait controller's /servo_power
+            Node(
+                package='hexapod_hardware_interface',
+                executable='servo_power_node',
+                name='servo_power',
                 output='screen',
                 parameters=[sensors_file]
             ),

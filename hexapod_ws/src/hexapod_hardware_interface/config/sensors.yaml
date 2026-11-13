@@ -23,6 +23,12 @@ ina226:
     battery_empty_voltage: 9.0    # 3.0 V/cell
     rate: 10.0
 
+# Leg hubs' SERVO_EN (J7 pin 4), switched as one
+servo_power:
+  ros__parameters:
+    gpio_chip: /dev/gpiochip0   # Pi 5, kernel 6.6.45 or newer (gpiochip4 on older kernels)
+    gpio_lines: [17]            # BCM GPIO numbers: one shared line, or one per leg hub. Use GPIO9-27 (pulled down at boot)
+
 # RPLIDAR A2M12 (Slamtec rplidar_ros driver)
 rplidar:
   ros__parameters:

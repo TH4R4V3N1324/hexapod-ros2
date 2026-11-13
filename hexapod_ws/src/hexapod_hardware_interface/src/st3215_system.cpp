@@ -106,7 +106,8 @@ CallbackReturn ST3215System::on_configure(const rclcpp_lifecycle::State& /*previ
             RCLCPP_WARN(get_logger(), "Servo %d (%s) did not respond", joint.id, joint.name.c_str());
         }
     }
-    RCLCPP_INFO(get_logger(), "Opened %s, %d/%zu servos responding", serial_port.c_str(), found, joints.size());
+    RCLCPP_INFO(get_logger(), "Opened %s, %d/%zu servos responding%s", serial_port.c_str(), found, joints.size(),
+        found == 0 ? " (servo power is off until the first stand command)" : "");
     return CallbackReturn::SUCCESS;
 }
 
@@ -123,10 +124,14 @@ CallbackReturn ST3215System::on_activate(const rclcpp_lifecycle::State& /*previo
     std::vector<uint8_t> hold_ids;
     std::vector<int> hold_positions;
     for (size_t i = 0; i < joints.size(); ++i) {
-        const auto& joint = joints[i];
+        auto& joint = joints[i];
+        joint.holding = false;
+        joint.missed = 0;
+        joint.answering = states[i].has_value();
         if (!states[i]) {
-            RCLCPP_WARN(get_logger(), "No state from servo %d (%s), leaving torque off", joint.id, joint.name.c_str());
+            // Torque goes on when it starts answering (read())
             set_command(joint.name + "/" + HW_IF_POSITION, std::numeric_limits<double>::quiet_NaN());
+            setStateUnknown(joint);
             continue;
         }
         double position = stepsToRadians(joint, states[i]->position);
@@ -134,6 +139,10 @@ CallbackReturn ST3215System::on_activate(const rclcpp_lifecycle::State& /*previo
         set_command(joint.name + "/" + HW_IF_POSITION, position);
         hold_ids.push_back(joint.id);
         hold_positions.push_back(states[i]->position);
+    }
+    if (hold_ids.size() < joints.size()) {
+        RCLCPP_WARN(get_logger(), "%zu/%zu servos not answering: they'll be held in place with torque on "
+            "when they do (servo power may be off)", joints.size() - hold_ids.size(), joints.size());
     }
 
     if (!hold_ids.empty()) {
@@ -170,29 +179,94 @@ CallbackReturn ST3215System::on_cleanup(const rclcpp_lifecycle::State& /*previou
 }
 
 /**
- * @brief Read position, velocity and load from every servo
+ * @brief Read position, velocity and load from every answering servo, and try one silent one
  * @param[in] time The current time
  * @param[in] period The time since the last read
- * @return OK, missing replies keep the joint's previous state
+ * @return OK
+ * @note A missed reply keeps the joint's previous state; MISSED_REPLIES in a row and it counts as
+ *       not answering, and its state reads NaN. Only one silent servo is tried each cycle, since
+ *       each costs a reply timeout. One that answers again is held where it is with torque on.
 */
 return_type ST3215System::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
-    std::vector<std::optional<ST3215State>> states;
-    bus.readStates(ids, states);
+    constexpr int MISSED_REPLIES = 3;
 
+    // The answering servos, plus the next silent one
+    std::vector<size_t> polled;
     for (size_t i = 0; i < joints.size(); ++i) {
-        const auto& joint = joints[i];
-        if (!states[i]) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "No reply from servo %d (%s)", joint.id, joint.name.c_str());
+        if (joints[i].answering) {
+            polled.push_back(i);
+        }
+    }
+    for (size_t n = 0; n < joints.size(); ++n) {
+        const size_t i = (next_probe + n) % joints.size();
+        if (!joints[i].answering) {
+            polled.push_back(i);
+            next_probe = i + 1;
+            break;
+        }
+    }
+    if (polled.empty()) {
+        return return_type::OK;
+    }
+    std::vector<uint8_t> poll_ids;
+    for (size_t i : polled) {
+        poll_ids.push_back(joints[i].id);
+    }
+    std::vector<std::optional<ST3215State>> states;
+    bus.readStates(poll_ids, states);
+
+    std::vector<uint8_t> revived_ids;
+    std::vector<int> revived_positions;
+    for (size_t k = 0; k < polled.size(); ++k) {
+        auto& joint = joints[polled[k]];
+        const auto& state = states[k];
+        if (!state) {
+            if (joint.answering && ++joint.missed >= MISSED_REPLIES) {
+                joint.answering = false;
+                joint.holding = false;
+                setStateUnknown(joint);
+                RCLCPP_WARN(get_logger(), "Servo %d (%s) stopped answering (servo power off?)", joint.id, joint.name.c_str());
+            } else if (joint.answering) {
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "No reply from servo %d (%s)", joint.id, joint.name.c_str());
+            }
             continue;
         }
-        if (states[i]->error != 0) {
-            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Servo %d (%s) reports error 0x%02X", joint.id, joint.name.c_str(), states[i]->error);
+        joint.missed = 0;
+        if (!joint.answering) {
+            // Powered up: hold it where it is, and ignore the command it had until a new one arrives
+            joint.answering = true;
+            joint.holding = true;
+            joint.held_command = get_command<double>(joint.name + "/" + HW_IF_POSITION);
+            revived_ids.push_back(joint.id);
+            revived_positions.push_back(state->position);
         }
-        set_state(joint.name + "/" + HW_IF_POSITION, stepsToRadians(joint, states[i]->position));
-        set_state(joint.name + "/" + HW_IF_VELOCITY, joint.direction * states[i]->speed * 2.0 * M_PI / ST3215_STEPS_PER_REV);
-        set_state(joint.name + "/" + HW_IF_EFFORT, joint.direction * states[i]->load / 1000.0 * max_torque);
+        if (state->error != 0) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000, "Servo %d (%s) reports error 0x%02X", joint.id, joint.name.c_str(), state->error);
+        }
+        set_state(joint.name + "/" + HW_IF_POSITION, stepsToRadians(joint, state->position));
+        set_state(joint.name + "/" + HW_IF_VELOCITY, joint.direction * state->speed * 2.0 * M_PI / ST3215_STEPS_PER_REV);
+        set_state(joint.name + "/" + HW_IF_EFFORT, joint.direction * state->load / 1000.0 * max_torque);
+    }
+
+    if (!revived_ids.empty()) {
+        if (!bus.writeGoalPositions(revived_ids, revived_positions, acceleration, speed) ||
+            !bus.setTorqueEnabled(revived_ids, true)) {
+            RCLCPP_ERROR(get_logger(), "Failed to hold %zu servo(s) that started answering", revived_ids.size());
+        } else {
+            RCLCPP_INFO(get_logger(), "%zu servo(s) answering again, held in place with torque on", revived_ids.size());
+        }
     }
     return return_type::OK;
+}
+
+/**
+ * @brief Mark a joint's state unknown (NaN), for a servo that isn't answering
+*/
+void ST3215System::setStateUnknown(const ST3215Joint& joint) {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    set_state(joint.name + "/" + HW_IF_POSITION, nan);
+    set_state(joint.name + "/" + HW_IF_VELOCITY, nan);
+    set_state(joint.name + "/" + HW_IF_EFFORT, nan);
 }
 
 /**
@@ -200,14 +274,21 @@ return_type ST3215System::read(const rclcpp::Time& /*time*/, const rclcpp::Durat
  * @param[in] time The current time
  * @param[in] period The time since the last write
  * @return OK if the packet was sent, ERROR otherwise
- * @note Joints with no command yet (NaN) are skipped
+ * @note Joints with no command yet (NaN), not answering, or holding until a new command are skipped
 */
 return_type ST3215System::write(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
     std::vector<uint8_t> write_ids;
     std::vector<int> positions;
-    for (const auto& joint : joints) {
+    for (auto& joint : joints) {
         double command = get_command<double>(joint.name + "/" + HW_IF_POSITION);
-        if (!std::isfinite(command)) {
+        if (joint.holding) {
+            const bool same = command == joint.held_command || (std::isnan(command) && std::isnan(joint.held_command));
+            if (same) {
+                continue;
+            }
+            joint.holding = false;
+        }
+        if (!joint.answering || !std::isfinite(command)) {
             continue;
         }
         write_ids.push_back(joint.id);

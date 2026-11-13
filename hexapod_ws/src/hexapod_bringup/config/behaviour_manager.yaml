@@ -8,6 +8,7 @@ behaviour_manager:
     filter_time: 5.0        # s, so the dips while walking don't trip it
     stale_timeout: 2.0      # s without a reading before a board is ignored
     auto_sit: true
+    power_off: true         # once seated at critical, turn the servo power off (SERVO_EN)
     rumble: true
     rumble_intensity: 1.0   # 0 to 1; the joy node plays each pulse for 1 s
     warning_pulses: 2

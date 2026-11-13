@@ -12,6 +12,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
 find_package(gait_core REQUIRED)  # the IK, for test_leg
 find_package(ament_index_cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -47,6 +48,10 @@ add_executable(ina226_node src/ina226_node.cpp)
 target_link_libraries(ina226_node i2c_sensors)
 ament_target_dependencies(ina226_node rclcpp sensor_msgs)
 
+# Drives the leg hubs' SERVO_EN from /servo_power
+add_executable(servo_power_node src/servo_power_node.cpp)
+ament_target_dependencies(servo_power_node rclcpp std_msgs)
+
 # Hardware test programs, run on the robot without ROS (see hardware_tests/README.md)
 add_executable(test_imu hardware_tests/test_imu.cpp)
 target_link_libraries(test_imu i2c_sensors)
@@ -64,7 +69,7 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS ism330dhcx_node ina226_node test_imu test_power test_servos test_leg DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ism330dhcx_node ina226_node servo_power_node test_imu test_power test_servos test_leg DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS hardware_tests/test_lidar.py DESTINATION lib/${PROJECT_NAME} RENAME test_lidar)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})

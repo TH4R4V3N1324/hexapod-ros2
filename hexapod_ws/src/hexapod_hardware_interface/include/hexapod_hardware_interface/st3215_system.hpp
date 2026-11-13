@@ -23,12 +23,23 @@ struct ST3215Joint {
     uint8_t id;        // servo ID on the bus
     double direction;  // 1 or -1, flips the servo's rotation to match the joint
     double offset;     // joint angle (rad) when the servo is at its centre position
+
+    // Whether it's answering. Unpowered servos (SERVO_EN low, E-stop open) don't; their state reads NaN.
+    bool answering = false;
+    int missed = 0;            // replies missed in a row
+    // A servo that starts answering again holds where it is, ignoring the command it had before,
+    // until a new one arrives (the gait controller sends nothing while the servos are off)
+    bool holding = false;
+    double held_command = 0.0;
 };
 
 /**
  * @brief ros2_control system for the 18 leg joints, driven by Waveshare ST3215 bus servos
  * @note Exposes position commands and position, velocity and effort states.
  *       Effort is the servo's load reading scaled by the max_torque hardware param.
+ *       A servo that stops answering (its power is off: SERVO_EN low or the E-stop open) reads
+ *       NaN, which the gait controller takes as missing. When it answers again it is held where it
+ *       is with torque on until a new command arrives, so it never jumps to a stale command.
 */
 class ST3215System : public hardware_interface::SystemInterface {
 public:
@@ -43,10 +54,12 @@ public:
 private:
     double stepsToRadians(const ST3215Joint& joint, int steps) const;
     int radiansToSteps(const ST3215Joint& joint, double radians) const;
+    void setStateUnknown(const ST3215Joint& joint);
 
     ST3215Bus bus;
     std::vector<ST3215Joint> joints;
     std::vector<uint8_t> ids;
+    size_t next_probe = 0;   // which silent servo to try next: one a cycle, so unpowered servos don't stall the loop
 
     std::string serial_port;
     int baud_rate = 1000000;

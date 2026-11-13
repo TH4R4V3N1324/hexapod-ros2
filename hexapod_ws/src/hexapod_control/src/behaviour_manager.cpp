@@ -12,6 +12,7 @@
 #include <sensor_msgs/msg/battery_state.hpp>
 #include <sensor_msgs/msg/joy_feedback.hpp>
 #include <std_srvs/srv/set_bool.hpp>
+#include <std_srvs/srv/trigger.hpp>
 
 #include "hexapod_behaviour/battery_monitor.hpp"
 
@@ -25,14 +26,16 @@ using hexapod_behaviour::BatteryStatus;
 using sensor_msgs::msg::BatteryState;
 using sensor_msgs::msg::JoyFeedback;
 using std_srvs::srv::SetBool;
+using std_srvs::srv::Trigger;
 
 /**
  * @brief High level manager for the robot's behaviour
  * @note The decisions are gait_core's BatteryMonitor, shared with the ESP32 and Servo2040 firmware.
  *       This node feeds it the daughter boards' power monitors (power/<location>) and carries out
- *       what it decides: a warning buzzes the controller, and critical sits the robot down (the gait
- *       controller's sit service) so the servos stop drawing power. The state is published on
- *       /diagnostics for the panel.
+ *       what it decides: a warning buzzes the controller, and critical sits the robot down and turns
+ *       the servo power off (the gait controller's power_down service; its sit service with
+ *       power_off false) so the servos stop drawing power. The state is published on /diagnostics
+ *       for the panel.
 */
 class BehaviourManager : public rclcpp::Node {
 public:
@@ -48,6 +51,7 @@ public:
         params.filter_time = declare_parameter("filter_time", 5.0);
         params.stale_timeout = declare_parameter("stale_timeout", 2.0);
         params.auto_sit = declare_parameter("auto_sit", true);
+        params.power_off = declare_parameter("power_off", true);
         rumble = declare_parameter("rumble", true);
         rumble_intensity = declare_parameter("rumble_intensity", 1.0);
         warning_pulses = declare_parameter("warning_pulses", 2);
@@ -80,6 +84,7 @@ public:
         diagnostics_pub = create_publisher<DiagnosticArray>("/diagnostics", 10);
         feedback_pub = create_publisher<JoyFeedback>("joy/set_feedback", 10);
         sit_client = create_client<SetBool>("sit");
+        power_down_client = create_client<Trigger>("power_down");
 
         timer = create_timer(std::chrono::duration<double>(1.0 / rate), std::bind(&BehaviourManager::update, this));
         RCLCPP_INFO(get_logger(), "Behaviour manager started: battery warning below %.2f V, critical below %.2f V",
@@ -96,7 +101,11 @@ private:
             buzz(status.level == BatteryLevel::Critical ? critical_pulses : warning_pulses);
         }
         if (status.sit) {
-            requestSit();
+            if (status.powerOff) {
+                requestPowerDown();
+            } else {
+                requestSit();
+            }
         }
         publishDiagnostics(status);
     }
@@ -118,6 +127,24 @@ private:
                 RCLCPP_ERROR(get_logger(), "Gait controller refused to sit: %s", response->message.c_str());
             }
         });
+    }
+
+    /**
+     * @brief Ask the gait controller to sit and turn the servos off, retrying on the next update if it isn't up yet
+    */
+    void requestPowerDown() {
+        if (!power_down_client->service_is_ready()) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000, "Waiting for the power_down service to sit down");
+            return;
+        }
+        battery.sitRequested();
+        power_down_client->async_send_request(std::make_shared<Trigger::Request>(),
+            [this](rclcpp::Client<Trigger>::SharedFuture future) {
+                const auto response = future.get();
+                if (!response->success) {
+                    RCLCPP_ERROR(get_logger(), "Gait controller refused to power down: %s", response->message.c_str());
+                }
+            });
     }
 
     /**
@@ -243,6 +270,7 @@ private:
     rclcpp::Publisher<DiagnosticArray>::SharedPtr diagnostics_pub;
     rclcpp::Publisher<JoyFeedback>::SharedPtr feedback_pub;
     rclcpp::Client<SetBool>::SharedPtr sit_client;
+    rclcpp::Client<Trigger>::SharedPtr power_down_client;
     rclcpp::TimerBase::SharedPtr timer;
     rclcpp::TimerBase::SharedPtr pulse_timer;
     int pulses_left = 0;        // rumble pulses still to play
