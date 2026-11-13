@@ -150,6 +150,7 @@ GaitController::GaitController() : Node("gait_controller") {
             case LogLevel::Debug: RCLCPP_DEBUG(this->get_logger(), "%s", message); break;
             case LogLevel::Info: RCLCPP_INFO(this->get_logger(), "%s", message); break;
             case LogLevel::Warn: RCLCPP_WARN(this->get_logger(), "%s", message); break;
+            case LogLevel::Error: RCLCPP_ERROR(this->get_logger(), "%s", message); break;
         }
     };
     engine->seatedChanged = [this](bool seated) { publishSeated(seated); };

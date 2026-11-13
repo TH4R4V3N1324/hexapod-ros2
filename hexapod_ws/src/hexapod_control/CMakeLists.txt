@@ -12,9 +12,12 @@ find_package(diagnostic_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+# The battery behaviour's decisions live in gait_core::behaviour, shared with the MCU firmware
+find_package(gait_core REQUIRED)
 
 add_executable(behaviour_manager src/behaviour_manager.cpp)
 ament_target_dependencies(behaviour_manager rclcpp diagnostic_msgs sensor_msgs std_srvs)
+target_link_libraries(behaviour_manager gait_core::behaviour)
 
 add_executable(sim_power_monitor src/sim_power_monitor.cpp)
 ament_target_dependencies(sim_power_monitor rclcpp geometry_msgs sensor_msgs)
