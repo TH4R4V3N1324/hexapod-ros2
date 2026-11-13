@@ -91,7 +91,7 @@ private:
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     rclcpp::Publisher<Odometry>::SharedPtr odom_pub;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr seated_pub;
-    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, MAX_LEGS + 1> foot_force_pubs;
+    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, NUM_LEGS> foot_force_pubs;
     std::shared_ptr<tf2_ros::TransformBroadcaster> footprint_broadcaster;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
