@@ -1,0 +1,3 @@
+[submodule "hexapod_ws/src/hexapod-gait-core"]
+	path = hexapod_ws/src/hexapod-gait-core
+	url = https://github.com/TH4R4V3N1324/hexapod-gait-core.git

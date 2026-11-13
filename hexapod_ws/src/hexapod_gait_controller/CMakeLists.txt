@@ -17,34 +17,11 @@ find_package(sensor_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
 
+# The gait maths (IK/FK, frames, trajectories, leg odometry) lives in gait_core, the
+# hexapod-gait-core submodule next to this package
+find_package(gait_core REQUIRED)
+
 include_directories(include ${EIGEN3_INCLUDE_DIR})
-
-add_library(kinematic_solver SHARED
-    src/kinematic_solver.cpp
-)
-
-ament_target_dependencies(kinematic_solver
-  rclcpp
-  hexapod_interfaces
-  Eigen3
-)
-
-add_library(trajectory_generator SHARED
-    src/trajectory_generator.cpp
-    src/gait_config.cpp
-)
-
-ament_target_dependencies(trajectory_generator
-  rclcpp
-  hexapod_interfaces
-  Eigen3
-  geometry_msgs
-)
-
-add_library(leg_odometry SHARED
-    src/leg_odometry.cpp
-)
-ament_target_dependencies(leg_odometry Eigen3)
 
 add_library(height_map SHARED
     src/height_map.cpp
@@ -52,7 +29,7 @@ add_library(height_map SHARED
 ament_target_dependencies(height_map Eigen3)
 
 add_executable(gait_controller src/gait_controller.cpp)
-target_link_libraries(gait_controller kinematic_solver trajectory_generator leg_odometry height_map)
+target_link_libraries(gait_controller gait_core::gait_core height_map)
 ament_target_dependencies(gait_controller
   rclcpp
   hexapod_interfaces
@@ -65,9 +42,6 @@ ament_target_dependencies(gait_controller
 )
 
 install(TARGETS
-  kinematic_solver
-  trajectory_generator
-  leg_odometry
   height_map
   ARCHIVE DESTINATION lib
   LIBRARY DESTINATION lib
@@ -76,41 +50,13 @@ install(TARGETS
 
 install(TARGETS gait_controller DESTINATION lib/${PROJECT_NAME}/)
 
+# The gait maths is tested in hexapod-gait-core; only the ROS-side code is tested here
 if(BUILD_TESTING)
   find_package(ament_cmake_gtest REQUIRED)
-  ament_add_gtest(test_foot_directions test/test_foot_directions.cpp)
-  target_link_libraries(test_foot_directions trajectory_generator)
-  ament_target_dependencies(test_foot_directions rclcpp hexapod_interfaces geometry_msgs Eigen3)
-
-  ament_add_gtest(test_leg_clearance test/test_leg_clearance.cpp)
-  target_link_libraries(test_leg_clearance trajectory_generator kinematic_solver)
-  ament_target_dependencies(test_leg_clearance rclcpp hexapod_interfaces geometry_msgs Eigen3)
-
   ament_add_gtest(test_height_map test/test_height_map.cpp)
   target_link_libraries(test_height_map height_map)
   ament_target_dependencies(test_height_map Eigen3)
-
-  ament_add_gtest(test_kinematics test/test_kinematics.cpp)
-  target_link_libraries(test_kinematics kinematic_solver)
-  ament_target_dependencies(test_kinematics rclcpp hexapod_interfaces Eigen3)
-
-  ament_add_gtest(test_foot_force test/test_foot_force.cpp)
-  target_link_libraries(test_foot_force kinematic_solver)
-  ament_target_dependencies(test_foot_force rclcpp hexapod_interfaces Eigen3)
-
-  ament_add_gtest(test_body_pose test/test_body_pose.cpp)
-  target_link_libraries(test_body_pose trajectory_generator)
-  ament_target_dependencies(test_body_pose rclcpp hexapod_interfaces geometry_msgs Eigen3)
-
-  ament_add_gtest(test_leg_odometry test/test_leg_odometry.cpp)
-  target_link_libraries(test_leg_odometry leg_odometry)
-  ament_target_dependencies(test_leg_odometry Eigen3)
 endif()
 install(DIRECTORY include/ DESTINATION include)
-
-# The IK, for hexapod_hardware_interface's test_leg
-ament_export_include_directories(include)
-ament_export_libraries(kinematic_solver)
-ament_export_dependencies(rclcpp hexapod_interfaces Eigen3)
 
 ament_package()

@@ -34,11 +34,13 @@ hexapod-ros2/
 │   ├── Dockerfile           # jazzy-ros-base (+ optional dev/sim tools)
 │   ├── docker-compose.yml       # production container (robot)
 │   ├── docker-compose.dev.yml   # dev container: X11, joystick, sim tools
+│   ├── colcon.meta          # builds gait_core with double Scalars
 │   └── src/
 │       ├── hexapod_interfaces/        # custom msgs/srvs
 │       ├── hexapod_description/       # URDF/xacro, meshes, worlds, RViz, Gazebo bridge
 │       ├── hexapod_hardware_interface/ # ST3215 ros2_control plugin, ISM330DHCX + INA226 drivers
-│       ├── hexapod_gait_controller/   # kinematics, trajectories, gait state machine
+│       ├── hexapod-gait-core/         # submodule: ROS-free gait maths (kinematics, trajectories, odometry)
+│       ├── hexapod_gait_controller/   # gait state machine node, built on gait_core
 │       ├── hexapod_teleop/            # keyboard + gamepad teleop
 │       ├── hexapod_bringup/           # top-level launch files
 │       └── hexapod_control/           # placeholder package (currently stubs, see below)
@@ -292,8 +294,6 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/set_height` | `hexapod_interfaces/SetHeight` | `gait_controller` | — |
 | `/get_capabilities` | `hexapod_interfaces/GetCapabilities` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/set_terrain_adaptation`, `/set_terrain_map`, `/set_walk_leveling`, `/set_tilt_leveling`, `/set_tilt_lock_yaw`, `/set_load_balancing` | `std_srvs/SetBool` | `gait_controller` | — |
-| `/ik_solver` | `hexapod_interfaces/IKSolver` | `kinematic_solver` (standalone service, not wired into `gait_controller`'s own launch) | — |
-| `/fk_solver` | `hexapod_interfaces/FKSolver` | `kinematic_solver` | — |
 
 ## Custom interfaces
 
@@ -317,8 +317,6 @@ types; these cover only what has no standard equivalent.
   while standing still only half the feet followed: the others waited, then
   jumped to the new height in the first step of walking.
 - `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait)`.
-- `IKSolver(uint8 leg_index, geometry_msgs/Point target) → sensor_msgs/JointState`.
-- `FKSolver(sensor_msgs/JointState) → geometry_msgs/Point foot_position`.
 
 ## Gait controller internals
 
@@ -363,8 +361,9 @@ middle, front).
 To check directions:
 
 ```bash
-# Unit tests of the foot motion maths (no simulation needed)
-colcon test --packages-select hexapod_gait_controller && colcon test-result --verbose
+# Unit tests of the foot motion maths (no simulation needed), in the gait core with double Scalars
+cmake -S src/hexapod-gait-core -B /tmp/gait_core -DGAIT_CORE_USE_DOUBLE=ON
+cmake --build /tmp/gait_core && ctest --test-dir /tmp/gait_core --output-on-failure
 
 # End-to-end in Gazebo: drives each direction and checks how the robot moved
 ros2 launch hexapod_bringup hexapod_simulation.launch.py world:=empty_world
@@ -588,8 +587,18 @@ The helper classes:
   splines (`LineSpline`). A `FrameConverter` helper handles the per-leg
   rotation into each leg's local frame.
 - **`KinematicSolver`** — inverse kinematics used to convert Cartesian foot
-  targets into joint angles for the gait loop, and also exposed directly as
-  the standalone `ik_solver`/`fk_solver` services.
+  targets into joint angles for the gait loop, and forward kinematics to turn
+  measured joint angles back into foot positions.
+
+`TrajectoryGenerator`, `GaitConfig`, `FrameConverter`, `KinematicSolver` and
+`LegOdometry` come from [hexapod-gait-core](https://github.com/TH4R4V3N1324/hexapod-gait-core)
+(namespace `gait_core`), a plain C++17 library shared with the microcontroller
+firmware and checked out as a submodule at `hexapod_ws/src/hexapod-gait-core`.
+colcon builds it as the `gait_core` package. The core defaults to `float`;
+`hexapod_ws/colcon.meta` turns on `GAIT_CORE_USE_DOUBLE` so the ROS packages get
+`double`, and `gait_controller` fails to compile if that is missing. Run
+`colcon build` from `hexapod_ws` so colcon finds `colcon.meta`. The gait maths
+tests live in the core repository.
 
 State machine, roughly:
 
@@ -886,6 +895,7 @@ joystick automatically.
 **On the robot / a sim-capable dev machine (`hexapod_ws`):**
 
 ```bash
+git submodule update --init --recursive   # once, for hexapod-gait-core
 cd hexapod_ws
 docker compose -f docker-compose.dev.yml up --build   # dev image w/ Gazebo, joy, terminator
 # inside the container:

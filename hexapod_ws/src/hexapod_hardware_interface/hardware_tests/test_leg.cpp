@@ -14,14 +14,14 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
-#include "hexapod_gait_controller/kinematic_solver.hpp"
+#include "gait_core/kinematic_solver.hpp"
 #include "hexapod_hardware_interface/st3215_bus.hpp"
 #include "test_common.hpp"
 
 using namespace hardware_tests;
 using namespace hexapod_hardware_interface;
-using hexapod_gait_controller::JointAngles;
-using hexapod_gait_controller::KinematicSolver;
+using gait_core::JointAngles;
+using gait_core::KinematicSolver;
 using Eigen::Vector3d;
 
 static const char* USAGE = R"(Drive one leg's foot with the gait controller's IK, and check it gets there.

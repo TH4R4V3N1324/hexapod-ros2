@@ -13,6 +13,7 @@ services:
     tty: true
     volumes:
       - ./src:/hexapod_ws/src
+      - ./colcon.meta:/hexapod_ws/colcon.meta
       # Bind-mounted (not a device mapping) so controllers attached after start still appear
       - /dev/input:/dev/input
       # WSL sets X11_SOCKET_DIR=/mnt/wslg/.X11-unix in .env

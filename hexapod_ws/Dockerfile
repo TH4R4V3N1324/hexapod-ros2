@@ -43,8 +43,11 @@ fi
 # Initialize rosdep and update
 RUN rosdep init || true && rosdep update
 
-# Create workspace and copy source code
+# Create workspace and copy source code. src/hexapod-gait-core is a git submodule, so check it
+# out (git submodule update --init --recursive) before building the image. colcon.meta builds it
+# with double Scalars, which the ROS packages need.
 WORKDIR /hexapod_ws
+COPY colcon.meta ./
 COPY src ./src
 
 # Install dependencies.

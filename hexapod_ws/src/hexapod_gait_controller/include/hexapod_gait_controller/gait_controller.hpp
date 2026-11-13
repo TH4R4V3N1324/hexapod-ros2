@@ -3,10 +3,11 @@
 
 #include "rclcpp/rclcpp.hpp"
 #include <unordered_map>
-#include "hexapod_gait_controller/trajectory_generator.hpp"
-#include "hexapod_gait_controller/kinematic_solver.hpp"
-#include "hexapod_gait_controller/gait_config.hpp"
-#include "hexapod_gait_controller/leg_odometry.hpp"
+#include <type_traits>
+#include "gait_core/trajectory_generator.hpp"
+#include "gait_core/kinematic_solver.hpp"
+#include "gait_core/gait_config.hpp"
+#include "gait_core/leg_odometry.hpp"
 #include "hexapod_gait_controller/height_map.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "tf2_ros/buffer.h"
@@ -26,7 +27,13 @@
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
 #include "hexapod_interfaces/msg/locomotion_option.hpp"
 
+using namespace gait_core;
 using namespace hexapod_gait_controller;
+
+// The node passes Eigen doubles straight into gait_core, so it must be built with double Scalars.
+// colcon.meta in the workspace root sets this.
+static_assert(std::is_same_v<gait_core::Scalar, double>,
+              "gait_core must be built with -DGAIT_CORE_USE_DOUBLE=ON (see hexapod_ws/colcon.meta)");
 
 using geometry_msgs::msg::Twist;
 using sensor_msgs::msg::JointState;

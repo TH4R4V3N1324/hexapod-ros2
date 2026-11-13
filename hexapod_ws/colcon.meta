@@ -1,0 +1,7 @@
+{
+    "names": {
+        "gait_core": {
+            "cmake-args": ["-DGAIT_CORE_USE_DOUBLE=ON", "-DGAIT_CORE_BUILD_TESTS=OFF"]
+        }
+    }
+}

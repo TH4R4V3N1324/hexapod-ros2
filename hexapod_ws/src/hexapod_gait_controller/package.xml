@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>hexapod_interfaces</depend>
+  <depend>gait_core</depend>
   <depend>eigen</depend>
   <depend>geometry_msgs</depend>
   <depend>nav_msgs</depend>

@@ -10,19 +10,15 @@ find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
 #interfaces go here "msg/messageType.msg"
   "msg/LocomotionOption.msg"
-  "srv/FKSolver.srv"
-  "srv/IKSolver.srv"
   "srv/SetGait.srv"
   "srv/SetMode.srv"
   "srv/SetHeight.srv"
   "srv/GetCapabilities.srv"
-  DEPENDENCIES std_msgs builtin_interfaces geometry_msgs sensor_msgs
+  DEPENDENCIES std_msgs builtin_interfaces
 )
 ament_export_dependencies(rosidl_default_runtime)
 

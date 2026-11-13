@@ -1,5 +1,0 @@
-# Request
-sensor_msgs/JointState joint_state
----
-# Response
-geometry_msgs/Point foot_position

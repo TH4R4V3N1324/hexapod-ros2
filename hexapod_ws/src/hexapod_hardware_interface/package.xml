@@ -14,7 +14,7 @@
   <depend>hardware_interface</depend>
   <depend>pluginlib</depend>
   <depend>sensor_msgs</depend>
-  <depend>hexapod_gait_controller</depend>  <!-- the IK, for hardware_tests/test_leg -->
+  <depend>gait_core</depend>  <!-- the IK, for hardware_tests/test_leg -->
   <depend>ament_index_cpp</depend>
   <depend>eigen</depend>
 

@@ -12,7 +12,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(sensor_msgs REQUIRED)
-find_package(hexapod_gait_controller REQUIRED)  # the IK, for test_leg
+find_package(gait_core REQUIRED)  # the IK, for test_leg
 find_package(ament_index_cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
 
@@ -56,8 +56,8 @@ target_link_libraries(test_power i2c_sensors)
 
 add_executable(test_servos hardware_tests/test_servos.cpp src/st3215_bus.cpp)
 add_executable(test_leg hardware_tests/test_leg.cpp src/st3215_bus.cpp)
-ament_target_dependencies(test_leg hexapod_gait_controller ament_index_cpp)
-target_include_directories(test_leg PRIVATE ${EIGEN3_INCLUDE_DIR})
+target_link_libraries(test_leg gait_core::gait_core)
+ament_target_dependencies(test_leg ament_index_cpp)
 
 install(TARGETS ${PROJECT_NAME}
   ARCHIVE DESTINATION lib

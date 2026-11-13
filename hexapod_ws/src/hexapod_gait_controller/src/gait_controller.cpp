@@ -695,7 +695,7 @@ void GaitController::getCapabilitiesCallback(
     const std::shared_ptr<GetCapabilities::Request> request,
     std::shared_ptr<GetCapabilities::Response> response
 ) {
-    auto toMsg = [this](const hexapod_gait_controller::LocomotionOption& option) {
+    auto toMsg = [this](const gait_core::LocomotionOption& option) {
         hexapod_interfaces::msg::LocomotionOption msg;
         msg.name = option.name;
         msg.id = option.id;
