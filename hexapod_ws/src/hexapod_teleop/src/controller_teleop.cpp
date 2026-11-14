@@ -6,9 +6,11 @@
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
+#include "hexapod_teleop/gamepad_teleop.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -27,8 +29,11 @@ using std::placeholders::_1;
 
 /**
  * @brief Gamepad teleop node, converts /joy input into /cmd_vel and /body_pose commands
- * @note Axis and button numbers are parameters, defaulting to the SDL game controller layout
- *       that joy_node reports
+ * @note The layout itself is hexapod_teleop::GamepadTeleop from gait-core, shared with the
+ *       microcontroller stacks' receiver so a gamepad drives every robot the same way. This node
+ *       turns joy messages into its GamepadState, and its output into topics and service calls.
+ *       Axis and button numbers are parameters, defaulting to the SDL game controller layout
+ *       that joy_node reports.
 */
 class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node("controller_teleop") {
   	RCLCPP_INFO(this->get_logger(), "Controller Teleop Node has been started.");
@@ -60,22 +65,28 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     button_mode = this->declare_parameter("button_mode", 6);  // Start
     button_gait = this->declare_parameter("button_gait", 4);  // Back
     button_sit = this->declare_parameter("button_sit", 10);   // RB [R1]: sit / stand, hold to power down
-    power_down_hold = this->declare_parameter("power_down_hold", 2.0);  // s
-    height_step = this->declare_parameter("height_step", 0.01);         // m per d-pad press
-    height_repeat = this->declare_parameter("height_repeat", 0.3);      // s between steps while held
+    height_step = this->declare_parameter("height_step", 0.01);         // m per d-pad step
+    hexapod_teleop::TeleopParams teleop_params;
+    teleop_params.powerDownHold = this->declare_parameter("power_down_hold", teleop_params.powerDownHold);  // s
+    teleop_params.heightRepeat = this->declare_parameter("height_repeat", teleop_params.heightRepeat);      // s between steps while held
+    teleop = hexapod_teleop::GamepadTeleop(teleop_params);
 
-    // Face buttons switch gait controller features on and off
+    // Face buttons switch gait controller features on and off, in GamepadTeleop's order (A, B, X, Y)
     gait_controller_params = std::make_shared<rclcpp::AsyncParametersClient>(this, "hexapod_gait_controller");
-    for (const auto& [feature, button] : std::vector<std::pair<std::string, int>>{
-             {"terrain_adaptation", 0}, {"walk_leveling", 1}, {"load_balancing", 2}, {"tilt_leveling", 3}}) {
-        toggles.push_back({feature, static_cast<int>(this->declare_parameter("button_" + feature, button)),
-                           this->create_client<SetBool>("set_" + feature)});
+    for (int i = 0; i < hexapod_teleop::NUM_FEATURES; ++i) {
+        const std::string feature = hexapod_teleop::featureName(static_cast<hexapod_teleop::Feature>(i));
+        toggles[i] = {feature, static_cast<int>(this->declare_parameter("button_" + feature, i)),
+                      this->create_client<SetBool>("set_" + feature)};
     }
 
     // Keep asking until the gait controller answers, without blocking the executor
     capabilities_timer = this->create_wall_timer(std::chrono::seconds(1), std::bind(&ControllerTeleop::fetchCapabilities, this));
     fetchCapabilities();
+    // Runs the layout between joy messages too, so the power-down hold and the height repeat fire on
+    // time even without joy_node's autorepeat
+    tick_timer = this->create_wall_timer(std::chrono::milliseconds(50), std::bind(&ControllerTeleop::tick, this));
 }
+
 private:
     rclcpp::Publisher<Twist>::SharedPtr cmd_vel_pub;
     rclcpp::Publisher<Pose>::SharedPtr body_pose_pub;
@@ -88,6 +99,8 @@ private:
     rclcpp::Client<Trigger>::SharedPtr power_down_client;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr seated_sub;
     rclcpp::TimerBase::SharedPtr capabilities_timer;
+    rclcpp::TimerBase::SharedPtr tick_timer;
+
     std::vector<hexapod_interfaces::msg::LocomotionOption> available_gaits;
 	std::vector<hexapod_interfaces::msg::LocomotionOption> available_modes;
     size_t current_gait_index = 0;
@@ -103,35 +116,38 @@ private:
     int axis_left_trigger, axis_right_trigger, axis_dpad_y;
     int button_dpad_up, button_dpad_down;
     int button_mode, button_gait, button_sit;
-    double power_down_hold, height_step, height_repeat;
+    double height_step;
+
+    hexapod_teleop::GamepadTeleop teleop;
+    std::optional<hexapod_teleop::GamepadState> last_pad;  // the latest joy message, for tick()
     bool seated = true;  // the robot starts seated; the gait controller's /seated says otherwise
-    rclcpp::TimerBase::SharedPtr power_down_timer;  // runs while the sit button is held
-    bool power_down_sent = false;
-    int height_direction = 0;               // d-pad direction last stepped in, 0 when released
-    rclcpp::Time next_height_step;
     bool height_pending = false;
     std::optional<double> height_target;    // m, the last height this asked for
+
     struct Toggle {
         std::string feature;  // gait controller parameter, also its set_<feature> service
         int button;
         rclcpp::Client<SetBool>::SharedPtr client;
     };
-    std::vector<Toggle> toggles;
+    Toggle toggles[hexapod_teleop::NUM_FEATURES];
     std::shared_ptr<rclcpp::AsyncParametersClient> gait_controller_params;
-    std::vector<int> previous_buttons;
+
     std::optional<double> left_trigger_rest;   // a released trigger's reading, taken from the first message
     std::optional<double> right_trigger_rest;
+
 public:
     void joyCallback(const Joy::SharedPtr msg);
     void seatedCallback(const std_msgs::msg::Bool::SharedPtr msg);
+    void tick();
+    void handleEvents(const hexapod_teleop::TeleopOutput& out);
+    hexapod_teleop::RobotState robotState() const;
     void fetchCapabilities();
     void requestCapabilities(std::function<void(const GetCapabilities::Response&)> then);
     void applyCapabilities(const GetCapabilities::Response& response);
     void cycleMode();
     void cycleGait();
     void toggleFeature(const Toggle& toggle);
-    void sitButton(bool pressed, bool released);
-    void toggleSit();
+    void sit(bool down);
     void powerDown();
     void stepHeight(int direction);
 };
@@ -151,69 +167,24 @@ int main(int argc, char * argv[]) {
 }
 
 /**
- * @brief Convert joystick input into velocity and body pose commands, and handle the buttons
+ * @brief Turn a joy message into GamepadState, run the layout, and publish its commands
  * @param[in] msg The incoming joystick message
- * @note Walking: left stick drives linear X/Y, right stick X drives angular Z.
- *       Tilt mode (the gait controller ignores /cmd_vel there): left stick shifts the body,
- *       right stick rolls and pitches it, the triggers yaw it and the d-pad raises and lowers it.
- *       Both are always published, and the gait controller uses whichever suits its mode.
- *       Start cycles the mode and Back cycles the gait; A, B, X and Y switch terrain adaptation,
- *       walk leveling, load balancing and tilt leveling on and off. RB sits down or stands up, and
- *       held for power_down_hold it powers down. Outside tilt mode the d-pad steps the body height.
- *       Full stick is the gait controller's limit, so nothing is published until its capabilities
- *       have been received.
+ * @note Both /cmd_vel and /body_pose are always published; the gait controller uses whichever
+ *       suits its mode. Full stick is the gait controller's limit, so nothing is published until
+ *       its capabilities have been received.
 */
 void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     if (!capabilities_received) {
         RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 2000, "Waiting for gait controller capabilities, ignoring joystick");
         return;
     }
-
     auto axis = [&msg](int index) {
         if (index < 0 || static_cast<std::size_t>(index) >= msg->axes.size()) return 0.0;
         return std::clamp(static_cast<double>(msg->axes[index]), -1.0, 1.0);
     };
-    auto pressed = [&msg, this](int index) {
-        if (index < 0 || static_cast<std::size_t>(index) >= msg->buttons.size()) return false;
-        bool was = static_cast<std::size_t>(index) < previous_buttons.size() && previous_buttons[index];
-        return msg->buttons[index] && !was;
-    };
     auto button = [&msg](int index) {
         return index >= 0 && static_cast<std::size_t>(index) < msg->buttons.size() && msg->buttons[index];
     };
-    auto released = [&button, this](int index) {
-        return index >= 0 && static_cast<std::size_t>(index) < previous_buttons.size() &&
-               previous_buttons[index] && !button(index);
-    };
-
-    if (pressed(button_mode)) cycleMode();
-    if (pressed(button_gait)) cycleGait();
-    for (const auto& toggle : toggles) {
-        if (pressed(toggle.button)) toggleFeature(toggle);
-    }
-    sitButton(pressed(button_sit), released(button_sit));
-    previous_buttons = msg->buttons;
-
-    const double dpad_y = axis_dpad_y >= 0 ? axis(axis_dpad_y)
-        : (button(button_dpad_up) ? 1.0 : 0.0) - (button(button_dpad_down) ? 1.0 : 0.0);
-    // Height steps on a press, then every height_repeat while held (joy_node repeats the message);
-    // in tilt mode stepHeight leaves the d-pad to body_pose
-    const int direction = dpad_y > 0.5 ? 1 : dpad_y < -0.5 ? -1 : 0;
-    const rclcpp::Time now = this->now();
-    if (direction == 0) {
-        height_direction = 0;
-    } else if (direction != height_direction || now >= next_height_step) {
-        height_direction = direction;
-        next_height_step = now + rclcpp::Duration::from_seconds(height_repeat);
-        stepHeight(direction);
-    }
-
-    Twist cmd_vel_msg;
-    cmd_vel_msg.linear.x = axis(axis_left_y) * max_linear_vel;
-    cmd_vel_msg.linear.y = axis(axis_left_x) * max_linear_vel;
-    cmd_vel_msg.angular.z = axis(axis_right_x) * max_angular_vel;
-    cmd_vel_pub->publish(cmd_vel_msg);
-
     // Drivers disagree on what a released trigger reads (0, 1 or -1), so take the first reading
     // as released and measure presses from there: over a span of 2 from +-1, or 1 from 0
     auto trigger = [&axis](int index, std::optional<double>& rest) {
@@ -222,14 +193,47 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
         const double span = std::abs(*rest) > 0.5 ? 2.0 : 1.0;
         return std::clamp(std::abs(value - *rest) / span, 0.0, 1.0);
     };
-    const double roll = -axis(axis_right_x) * max_tilt_angle;   // stick right lowers the right side
-    const double pitch = axis(axis_right_y) * max_tilt_angle;   // stick forward lowers the nose
-    const double yaw = (trigger(axis_left_trigger, left_trigger_rest) - trigger(axis_right_trigger, right_trigger_rest)) * max_tilt_angle;
 
+    // joy reports X positive to the left; GamepadState has it positive to the right
+    hexapod_teleop::GamepadState pad;
+    pad.leftX = static_cast<float>(-axis(axis_left_x));
+    pad.leftY = static_cast<float>(axis(axis_left_y));
+    pad.rightX = static_cast<float>(-axis(axis_right_x));
+    pad.rightY = static_cast<float>(axis(axis_right_y));
+    pad.leftTrigger = static_cast<float>(trigger(axis_left_trigger, left_trigger_rest));
+    pad.rightTrigger = static_cast<float>(trigger(axis_right_trigger, right_trigger_rest));
+    if (axis_dpad_y >= 0) {
+        pad.dpadUp = axis(axis_dpad_y) > 0.5;
+        pad.dpadDown = axis(axis_dpad_y) < -0.5;
+    } else {
+        pad.dpadUp = button(button_dpad_up);
+        pad.dpadDown = button(button_dpad_down);
+    }
+    pad.a = button(toggles[0].button);
+    pad.b = button(toggles[1].button);
+    pad.x = button(toggles[2].button);
+    pad.y = button(toggles[3].button);
+    pad.rightBumper = button(button_sit);
+    pad.start = button(button_mode);
+    pad.back = button(button_gait);
+    last_pad = pad;
+
+    const hexapod_teleop::TeleopOutput out = teleop.update(pad, robotState(), this->now().seconds());
+    handleEvents(out);
+
+    Twist cmd_vel_msg;
+    cmd_vel_msg.linear.x = out.vx * max_linear_vel;
+    cmd_vel_msg.linear.y = out.vy * max_linear_vel;
+    cmd_vel_msg.angular.z = out.wz * max_angular_vel;
+    cmd_vel_pub->publish(cmd_vel_msg);
+
+    const double roll = out.roll * max_tilt_angle;    // positive lowers the right side
+    const double pitch = out.pitch * max_tilt_angle;  // positive lowers the nose
+    const double yaw = out.yaw * max_tilt_angle;      // positive turns left
     Pose body_pose_msg;
-    body_pose_msg.position.x = axis(axis_left_y) * max_tilt_translation;
-    body_pose_msg.position.y = axis(axis_left_x) * max_tilt_translation;
-    body_pose_msg.position.z = dpad_y * max_tilt_translation;
+    body_pose_msg.position.x = out.shiftX * max_tilt_translation;
+    body_pose_msg.position.y = out.shiftY * max_tilt_translation;
+    body_pose_msg.position.z = out.shiftZ * max_tilt_translation;
     // Roll, pitch, yaw to a quaternion
     const double cr = std::cos(roll / 2.0), sr = std::sin(roll / 2.0);
     const double cp = std::cos(pitch / 2.0), sp = std::sin(pitch / 2.0);
@@ -239,6 +243,38 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     body_pose_msg.orientation.y = cr * sp * cy + sr * cp * sy;
     body_pose_msg.orientation.z = cr * cp * sy - sr * sp * cy;
     body_pose_pub->publish(body_pose_msg);
+}
+
+/**
+ * @brief Run the layout with the last joy message, for events that come from time passing
+*/
+void ControllerTeleop::tick() {
+    if (!capabilities_received || !last_pad) return;
+    handleEvents(teleop.update(*last_pad, robotState(), this->now().seconds()));
+}
+
+/**
+ * @brief What the layout needs to know about the robot
+*/
+hexapod_teleop::RobotState ControllerTeleop::robotState() const {
+    hexapod_teleop::RobotState state;
+    state.seated = seated;
+    state.tiltMode = current_mode_index < available_modes.size() && available_modes[current_mode_index].name == "tilt";
+    return state;
+}
+
+/**
+ * @brief Act on the layout's events: mode, gait, features, sit/stand, power down, height
+*/
+void ControllerTeleop::handleEvents(const hexapod_teleop::TeleopOutput& out) {
+    if (out.nextMode) cycleMode();
+    if (out.nextGait) cycleGait();
+    for (int i = 0; i < hexapod_teleop::NUM_FEATURES; ++i) {
+        if (out.toggleFeature[i]) toggleFeature(toggles[i]);
+    }
+    if (out.sit) sit(*out.sit);
+    if (out.powerDown) powerDown();
+    if (out.heightStep != 0) stepHeight(out.heightStep);
 }
 
 /**
@@ -312,7 +348,6 @@ void ControllerTeleop::fetchCapabilities() {
         RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 5000, "Waiting for the get_capabilities service");
         return;
     }
-
     capabilities_pending = true;
     requestCapabilities([this](const GetCapabilities::Response& response) {
         capabilities_pending = false;
@@ -368,39 +403,19 @@ void ControllerTeleop::seatedCallback(const std_msgs::msg::Bool::SharedPtr msg) 
 }
 
 /**
- * @brief Handle the sit button: a press and release sits down or stands up, holding it powers down
- * @param[in] pressed The button went down in this message
- * @param[in] released The button came up in this message
- * @note The hold is timed by a timer rather than by joy messages, so it works without autorepeat
+ * @brief Sit down, or stand up (which also turns the servos back on)
+ * @param[in] down true to sit down
+ * @note The layout picks which from seated, which is true while a sit or stand is under way, so a
+ *       press then stands up: it reverses a sit
 */
-void ControllerTeleop::sitButton(bool pressed, bool released) {
-    if (pressed) {
-        power_down_sent = false;
-        power_down_timer = this->create_wall_timer(std::chrono::duration<double>(power_down_hold), [this]() {
-            power_down_timer->cancel();
-            power_down_sent = true;
-            powerDown();
-        });
-    }
-    if (released && power_down_timer) {
-        power_down_timer->cancel();
-        power_down_timer.reset();
-        if (!power_down_sent) toggleSit();
-    }
-}
-
-/**
- * @brief Sit down if the robot is standing, otherwise stand up (which also turns the servos back on)
- * @note seated is true while a sit or stand is under way, so a press then stands up: it reverses a sit
-*/
-void ControllerTeleop::toggleSit() {
+void ControllerTeleop::sit(bool down) {
     if (!sit_client->service_is_ready()) {
         RCLCPP_WARN(this->get_logger(), "Can't sit or stand: the gait controller isn't answering");
         return;
     }
     auto request = std::make_shared<SetBool::Request>();
-    request->data = !seated;
-    RCLCPP_INFO(this->get_logger(), "%s", request->data ? "Sitting down" : "Standing up");
+    request->data = down;
+    RCLCPP_INFO(this->get_logger(), "%s", down ? "Sitting down" : "Standing up");
     sit_client->async_send_request(request, [this](rclcpp::Client<SetBool>::SharedFuture future) {
         const auto response = future.get();
         if (!response->success) RCLCPP_WARN(this->get_logger(), "Refused: %s", response->message.c_str());
@@ -425,9 +440,9 @@ void ControllerTeleop::powerDown() {
 /**
  * @brief Raise (1) or lower (-1) the body by height_step, within the gait controller's limits
  * @note Fetches the current mode and height first. In tilt mode the d-pad moves the body through
- *       body_pose instead, so nothing is sent. The step is taken from the height this last asked for
- *       while the body is still on its way there, so quick presses add up; otherwise (the robot sat
- *       and stood, or something else changed the height) from where the body is.
+ *       body_pose instead, so nothing is sent. hexapod_teleop::stepHeight picks the target: from the
+ *       height this last asked for while the body is still on its way there, so quick presses add
+ *       up; otherwise from where the body is.
 */
 void ControllerTeleop::stepHeight(int direction) {
     if (seated || height_pending) return;
@@ -440,10 +455,12 @@ void ControllerTeleop::stepHeight(int direction) {
                 return;
             }
         }
-        const double current = response.current_height;
-        const double from = height_target && std::abs(current - *height_target) < height_step
-            ? *height_target : current;
-        const double target = std::clamp(from + direction * height_step, response.min_height, response.max_height);
+        const std::optional<float> last = height_target ? std::optional<float>(static_cast<float>(*height_target)) : std::nullopt;
+        const double target = hexapod_teleop::stepHeight(static_cast<float>(response.current_height), last, direction,
+                                                         static_cast<float>(height_step), static_cast<float>(response.min_height),
+                                                         static_cast<float>(response.max_height));
+        const double from = height_target && std::abs(response.current_height - *height_target) < height_step
+            ? *height_target : response.current_height;
         if (std::abs(target - from) < 1e-4) {
             RCLCPP_INFO(this->get_logger(), "Body height already at its %s (%.1f cm)",
                         direction > 0 ? "highest" : "lowest", target * 100.0);

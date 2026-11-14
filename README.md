@@ -214,6 +214,12 @@ See [Gait controller internals](#gait-controller-internals) below.
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
   `game_controller_node`, on the operator side or on the robot itself) and publishes both `/cmd_vel`
   and `/body_pose`; the gait controller uses whichever suits its mode. The
+  layout itself is `hexapod_teleop::GamepadTeleop` from gait-core
+  (`hexapod_teleop/gamepad_teleop.hpp`), which hexapod-controller's gamepad
+  receiver uses too, so a gamepad drives every stack the same way; this node
+  turns `/joy` into its input and its output into topics and service calls,
+  and runs it every 50 ms as well so held buttons are timed without joy's
+  autorepeat. Change the layout in gait-core, not here. The
   face buttons read a feature's current state from the gait controller and
   call its `set_<feature>` service with the opposite, so they never undo a
   change made another way. Full

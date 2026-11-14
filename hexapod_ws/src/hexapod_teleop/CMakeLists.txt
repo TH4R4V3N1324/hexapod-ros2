@@ -13,6 +13,8 @@ find_package(sensor_msgs REQUIRED)
 find_package(hexapod_interfaces REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(std_msgs REQUIRED)
+# The shared gamepad layout (hexapod_teleop/gamepad_teleop.hpp), header-only
+find_package(gait_core REQUIRED)
 
 add_executable(keyboard_teleop src/keyboard_teleop.cpp)
 ament_target_dependencies(keyboard_teleop
@@ -30,6 +32,7 @@ ament_target_dependencies(controller_teleop
   std_srvs
   std_msgs
 )
+target_link_libraries(controller_teleop gait_core::teleop)
 
 install(TARGETS
   keyboard_teleop
