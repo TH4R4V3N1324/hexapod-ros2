@@ -85,6 +85,24 @@ def generate_launch_description():
         output='screen'
     )
 
+    # A gamepad plugged into or paired with the Pi (Xbox, PlayStation, Switch Pro, ...), so the robot
+    # can be driven without the Steam Deck. The game controller mapping reports the same layout for
+    # every supported gamepad, which controller_teleop expects. It picks up a controller connected
+    # after start, and publishes nothing while none is connected, so it doesn't interfere with /joy
+    # from the Steam Deck. Don't drive with both at once: their /joy messages would interleave.
+    local_joy = Node(
+        package='joy',
+        executable='game_controller_node',
+        name='joy_node',
+        output='screen',
+        parameters=[{
+            'device_id': 0,
+            'deadzone': 0.05,
+            'autorepeat_rate': 20.0,
+        }],
+        condition=IfCondition(LaunchConfiguration('joy'))
+    )
+
     # Watches the battery: warns when it's low, and when it's critical sits the robot down and turns the servos off
     behaviour_manager = Node(
         package='hexapod_control',
@@ -216,12 +234,18 @@ def generate_launch_description():
             default_value='100',
             description='Controller manager update rate in Hz.'
         ),
+        DeclareLaunchArgument(
+            'joy',
+            default_value='true',
+            description='Read a gamepad plugged into or paired with the Pi (false: only the Steam Deck or operator PC).'
+        ),
         robot_state_publisher,
         controller_manager,
         controller_spawner,
         joint_state_relay,
         gait_controller,
         controller_teleop,
+        local_joy,
         behaviour_manager,
         ekf,
         slam,

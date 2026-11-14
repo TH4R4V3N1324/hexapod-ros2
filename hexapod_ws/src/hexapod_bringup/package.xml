@@ -25,6 +25,7 @@
   <exec_depend>slam_toolbox</exec_depend>
   <exec_depend>nav2_bringup</exec_depend>
   <exec_depend>foxglove_bridge</exec_depend>
+  <exec_depend>joy</exec_depend>
   <exec_depend>rclpy</exec_depend>
   <exec_depend>geometry_msgs</exec_depend>
   <exec_depend>hexapod_interfaces</exec_depend>

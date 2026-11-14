@@ -8,6 +8,7 @@
 #   - turns on I2C at 400 kHz for the IMU and power monitors, and installs i2c-tools and iw
 #   - turns on the servo UART, /dev/ttyAMA0
 #   - installs the udev rule that names the lidar /dev/rplidar
+#   - turns on Bluetooth, for game controllers paired with pi/pair_controller.sh
 #   - keeps system logs across reboots, for diagnosing boot problems
 #   - names the Pi "hexapod", including in cloud-init, which otherwise renames it at boot
 #   - adds a "hexapod" Wi-Fi hotspot (192.168.50.1) on a second interface, uap0, while wlan0
@@ -35,6 +36,11 @@ grep -q '^dtparam=uart0=on' /boot/firmware/config.txt ||
 echo "== Lidar udev rule"
 sudo install -m 644 "$REPO/hexapod_ws/udev/99-rplidar.rules" /etc/udev/rules.d/
 sudo udevadm control --reload-rules
+
+echo "== Bluetooth, for game controllers (pair one with pi/pair_controller.sh)"
+sudo apt-get install -y -qq bluez >/dev/null
+sudo rfkill unblock bluetooth || true
+sudo systemctl enable --now bluetooth
 
 echo "== Logs kept across reboots (Raspberry Pi OS keeps them in memory), capped at 50 MB"
 sudo mkdir -p /etc/systemd/journald.conf.d

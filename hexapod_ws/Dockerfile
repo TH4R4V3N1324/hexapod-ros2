@@ -17,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-position-controllers \
     ros-jazzy-foxglove-bridge \
     ros-jazzy-foxglove-msgs \
+    ros-jazzy-joy \
     ros-jazzy-imu-filter-madgwick \
     ros-jazzy-robot-localization \
     ros-jazzy-rplidar-ros \
@@ -35,7 +36,6 @@ RUN if [ "$INSTALL_DEV_TOOLS" = "true" ]; then \
     ros-jazzy-ros-gz-bridge \
     ros-jazzy-gz-ros2-control \
     ros-jazzy-joint-state-publisher-gui \
-    ros-jazzy-joy \
     terminator \
     && rm -rf /var/lib/apt/lists/*; \
 fi

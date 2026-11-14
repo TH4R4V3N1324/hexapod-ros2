@@ -69,11 +69,15 @@ sharing a workspace or overlay:
   and subscribes to `/joy`, which is published by the operator's `game_controller_node`
   and reaches the robot over shared DDS/ROS domain (or Foxglove, depending
   on network setup).
+- **No Steam Deck?** Plug a gamepad into the Pi or pair one over Bluetooth:
+  the robot runs its own `game_controller_node` too (see
+  [Game controller on the robot](#game-controller-on-the-robot)).
 
 High-level data flow when driving the physical robot:
 
 ```
 [Gamepad] → operator_ws: game_controller_node → /joy
+   (or a gamepad on the Pi → hexapod_ws: game_controller_node → /joy)
                                         │  (DDS, same ROS_DOMAIN_ID)
                                         ▼
 hexapod_ws: controller_teleop → /cmd_vel → gait_controller
@@ -208,7 +212,7 @@ See [Gait controller internals](#gait-controller-internals) below.
   | `c` | Exit |
 
 - **`controller_teleop`** — subscribes to `sensor_msgs/Joy` on `joy` (from
-  `game_controller_node`, published by the operator side) and publishes both `/cmd_vel`
+  `game_controller_node`, on the operator side or on the robot itself) and publishes both `/cmd_vel`
   and `/body_pose`; the gait controller uses whichever suits its mode. The
   face buttons read a feature's current state from the gait controller and
   call its `set_<feature>` service with the opposite, so they never undo a
@@ -218,8 +222,8 @@ See [Gait controller internals](#gait-controller-internals) below.
   input is ignored until then. Axis and button numbers are parameters,
   defaulting to the SDL game controller layout that `joy`'s
   `game_controller_node` reports for any supported gamepad (Xbox names
-  first, PlayStation in brackets). The operator launch and the Steam Deck
-  script run that node: plain `joy_node` reports each controller's raw order,
+  first, PlayStation in brackets). The operator launch, the Steam Deck
+  script and the robot launch run that node: plain `joy_node` reports each controller's raw order,
   which for Xbox-style controls like the Steam Deck's puts the triggers on
   axes 2 and 5 (a DualSense's raw order happens to match):
 
@@ -283,7 +287,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/terrain_map` | `sensor_msgs/PointCloud2` (height map cells, odom frame) | `gait_controller` | — |
 | `/front_depth/points` | `sensor_msgs/PointCloud2` | Gazebo bridge (sim) | `gait_controller`, Nav2 costmaps |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
-| `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side) | `controller_teleop` |
+| `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side, or the robot's own for a gamepad on the Pi) | `controller_teleop` |
 
 **Services**
 
@@ -931,6 +935,7 @@ with the repo cloned to `~/hexapod-ros2` and a GitHub SSH key on the Pi, run
 - turns on I2C at 400 kHz and the servo UART (`/dev/ttyAMA0`), and installs
   `i2c-tools` and `iw`;
 - installs the udev rule that names the lidar `/dev/rplidar`;
+- turns on Bluetooth, for game controllers (see below);
 - names the Pi `hexapod`, in cloud-init's `user-data` too, which otherwise
   renames it at every boot;
 - adds a Wi-Fi hotspot, `hexapod`, at 192.168.50.1 for the Steam Deck, so ROS 2
@@ -950,6 +955,29 @@ with the repo cloned to `~/hexapod-ros2` and a GitHub SSH key on the Pi, run
 The Steam Deck script tries the hotspot address first, then scans the local
 network. Its scan opens and closes a connection on port 8765 at every
 address, which `foxglove_bridge` logs as `handshake failed`; that is harmless.
+
+### Game controller on the robot
+
+You don't need the Steam Deck or an operator PC to drive the robot: the robot
+launch runs `joy`'s `game_controller_node` on the Pi as well, so a gamepad
+connected to the Pi drives it directly. Any controller SDL knows works, with
+the same button layout as on the Steam Deck (see `controller_teleop` above):
+Xbox One/Series, DualShock 4, DualSense, Switch Pro, 8BitDo and most others.
+
+- **USB:** plug it in. It is picked up even if the robot is already running.
+- **Bluetooth:** put the controller in pairing mode and run
+  `pi/pair_controller.sh` on the Pi (it lists how to do that for common
+  controllers). The Pi trusts it, so from then on turning the controller on
+  reconnects it. Pass the controller's address (`pi/pair_controller.sh
+  AA:BB:CC:DD:EE:FF`) if its name isn't recognised.
+
+`ros2 topic echo /joy` shows whether it is being read. The container reads
+controllers through the host's `/dev` and udev database (`/run/udev`), both
+mounted in `docker-compose.yml`. The node publishes nothing while no
+controller is connected, so it doesn't get in the way of the Steam Deck, but
+don't drive with a controller on the Pi and the Steam Deck at the same time:
+both publish `/joy` and the robot would follow whichever spoke last. Launch
+with `joy:=false` to turn the Pi's controller off.
 
 **On the operator machine (`operator_ws`):**
 

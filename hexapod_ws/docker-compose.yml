@@ -11,3 +11,6 @@ services:
     volumes:
       # Host /dev, so udev symlinks (/dev/rplidar) and devices plugged in after start are visible
       - /dev:/dev
+      # The host's udev database, which SDL (game_controller_node) reads to tell which input
+      # devices are gamepads and to notice one being plugged in or paired after start
+      - /run/udev:/run/udev:ro
