@@ -4,10 +4,14 @@
 #include "sensor_msgs/msg/joy.hpp"
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
+#include "hexapod_interfaces/srv/set_height.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
+#include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/set_bool.hpp"
+#include "std_srvs/srv/trigger.hpp"
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
 
 using geometry_msgs::msg::Twist;
@@ -15,8 +19,10 @@ using geometry_msgs::msg::Pose;
 using sensor_msgs::msg::Joy;
 using hexapod_interfaces::srv::GetCapabilities;
 using hexapod_interfaces::srv::SetGait;
+using hexapod_interfaces::srv::SetHeight;
 using hexapod_interfaces::srv::SetMode;
 using std_srvs::srv::SetBool;
+using std_srvs::srv::Trigger;
 using std::placeholders::_1;
 
 /**
@@ -32,6 +38,12 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     get_capabilities_client = this->create_client<GetCapabilities>("get_capabilities");
     set_mode_client = this->create_client<SetMode>("set_mode");
     set_gait_client = this->create_client<SetGait>("set_gait");
+    set_height_client = this->create_client<SetHeight>("set_height");
+    sit_client = this->create_client<SetBool>("sit");
+    power_down_client = this->create_client<Trigger>("power_down");
+    // Latched by the gait controller, so this hears the current state as soon as it connects
+    seated_sub = this->create_subscription<std_msgs::msg::Bool>("seated", rclcpp::QoS(1).transient_local(),
+        std::bind(&ControllerTeleop::seatedCallback, this, _1));
 
     // Defaults follow the SDL game controller layout that ROS 2's joy_node reports for any supported
     // gamepad (Xbox, PlayStation, ...). They used to follow the raw Xbox order, which put pitch on a
@@ -47,6 +59,10 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     button_dpad_down = this->declare_parameter("button_dpad_down", 12);
     button_mode = this->declare_parameter("button_mode", 6);  // Start
     button_gait = this->declare_parameter("button_gait", 4);  // Back
+    button_sit = this->declare_parameter("button_sit", 10);   // RB [R1]: sit / stand, hold to power down
+    power_down_hold = this->declare_parameter("power_down_hold", 2.0);  // s
+    height_step = this->declare_parameter("height_step", 0.01);         // m per d-pad press
+    height_repeat = this->declare_parameter("height_repeat", 0.3);      // s between steps while held
 
     // Face buttons switch gait controller features on and off
     gait_controller_params = std::make_shared<rclcpp::AsyncParametersClient>(this, "hexapod_gait_controller");
@@ -67,6 +83,10 @@ private:
     rclcpp::Client<GetCapabilities>::SharedPtr get_capabilities_client;
     rclcpp::Client<SetMode>::SharedPtr set_mode_client;
     rclcpp::Client<SetGait>::SharedPtr set_gait_client;
+    rclcpp::Client<SetHeight>::SharedPtr set_height_client;
+    rclcpp::Client<SetBool>::SharedPtr sit_client;
+    rclcpp::Client<Trigger>::SharedPtr power_down_client;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr seated_sub;
     rclcpp::TimerBase::SharedPtr capabilities_timer;
     std::vector<hexapod_interfaces::msg::LocomotionOption> available_gaits;
 	std::vector<hexapod_interfaces::msg::LocomotionOption> available_modes;
@@ -82,7 +102,15 @@ private:
     int axis_left_x, axis_left_y, axis_right_x, axis_right_y;
     int axis_left_trigger, axis_right_trigger, axis_dpad_y;
     int button_dpad_up, button_dpad_down;
-    int button_mode, button_gait;
+    int button_mode, button_gait, button_sit;
+    double power_down_hold, height_step, height_repeat;
+    bool seated = true;  // the robot starts seated; the gait controller's /seated says otherwise
+    rclcpp::TimerBase::SharedPtr power_down_timer;  // runs while the sit button is held
+    bool power_down_sent = false;
+    int height_direction = 0;               // d-pad direction last stepped in, 0 when released
+    rclcpp::Time next_height_step;
+    bool height_pending = false;
+    std::optional<double> height_target;    // m, the last height this asked for
     struct Toggle {
         std::string feature;  // gait controller parameter, also its set_<feature> service
         int button;
@@ -95,10 +123,17 @@ private:
     std::optional<double> right_trigger_rest;
 public:
     void joyCallback(const Joy::SharedPtr msg);
+    void seatedCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void fetchCapabilities();
+    void requestCapabilities(std::function<void(const GetCapabilities::Response&)> then);
+    void applyCapabilities(const GetCapabilities::Response& response);
     void cycleMode();
     void cycleGait();
     void toggleFeature(const Toggle& toggle);
+    void sitButton(bool pressed, bool released);
+    void toggleSit();
+    void powerDown();
+    void stepHeight(int direction);
 };
 
 /**
@@ -123,8 +158,10 @@ int main(int argc, char * argv[]) {
  *       right stick rolls and pitches it, the triggers yaw it and the d-pad raises and lowers it.
  *       Both are always published, and the gait controller uses whichever suits its mode.
  *       Start cycles the mode and Back cycles the gait; A, B, X and Y switch terrain adaptation,
- *       walk leveling, load balancing and tilt leveling on and off. Full stick is the gait controller's
- *       limit, so nothing is published until its capabilities have been received.
+ *       walk leveling, load balancing and tilt leveling on and off. RB sits down or stands up, and
+ *       held for power_down_hold it powers down. Outside tilt mode the d-pad steps the body height.
+ *       Full stick is the gait controller's limit, so nothing is published until its capabilities
+ *       have been received.
 */
 void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     if (!capabilities_received) {
@@ -141,13 +178,35 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
         bool was = static_cast<std::size_t>(index) < previous_buttons.size() && previous_buttons[index];
         return msg->buttons[index] && !was;
     };
+    auto button = [&msg](int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < msg->buttons.size() && msg->buttons[index];
+    };
+    auto released = [&button, this](int index) {
+        return index >= 0 && static_cast<std::size_t>(index) < previous_buttons.size() &&
+               previous_buttons[index] && !button(index);
+    };
 
     if (pressed(button_mode)) cycleMode();
     if (pressed(button_gait)) cycleGait();
     for (const auto& toggle : toggles) {
         if (pressed(toggle.button)) toggleFeature(toggle);
     }
+    sitButton(pressed(button_sit), released(button_sit));
     previous_buttons = msg->buttons;
+
+    const double dpad_y = axis_dpad_y >= 0 ? axis(axis_dpad_y)
+        : (button(button_dpad_up) ? 1.0 : 0.0) - (button(button_dpad_down) ? 1.0 : 0.0);
+    // Height steps on a press, then every height_repeat while held (joy_node repeats the message);
+    // in tilt mode stepHeight leaves the d-pad to body_pose
+    const int direction = dpad_y > 0.5 ? 1 : dpad_y < -0.5 ? -1 : 0;
+    const rclcpp::Time now = this->now();
+    if (direction == 0) {
+        height_direction = 0;
+    } else if (direction != height_direction || now >= next_height_step) {
+        height_direction = direction;
+        next_height_step = now + rclcpp::Duration::from_seconds(height_repeat);
+        stepHeight(direction);
+    }
 
     Twist cmd_vel_msg;
     cmd_vel_msg.linear.x = axis(axis_left_y) * max_linear_vel;
@@ -163,11 +222,6 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
         const double span = std::abs(*rest) > 0.5 ? 2.0 : 1.0;
         return std::clamp(std::abs(value - *rest) / span, 0.0, 1.0);
     };
-    auto button = [&msg](int index) {
-        return index >= 0 && static_cast<std::size_t>(index) < msg->buttons.size() && msg->buttons[index];
-    };
-    const double dpad_y = axis_dpad_y >= 0 ? axis(axis_dpad_y)
-        : (button(button_dpad_up) ? 1.0 : 0.0) - (button(button_dpad_down) ? 1.0 : 0.0);
     const double roll = -axis(axis_right_x) * max_tilt_angle;   // stick right lowers the right side
     const double pitch = axis(axis_right_y) * max_tilt_angle;   // stick forward lowers the nose
     const double yaw = (trigger(axis_left_trigger, left_trigger_rest) - trigger(axis_right_trigger, right_trigger_rest)) * max_tilt_angle;
@@ -260,28 +314,153 @@ void ControllerTeleop::fetchCapabilities() {
     }
 
     capabilities_pending = true;
-    auto request = std::make_shared<GetCapabilities::Request>();
-    get_capabilities_client->async_send_request(request,
-        [this](rclcpp::Client<GetCapabilities>::SharedFuture future) {
-            capabilities_pending = false;
-            auto response = future.get();
-            available_gaits = response->gaits;
-            available_modes = response->modes;
-            max_linear_vel = response->max_linear_vel;
-            max_angular_vel = response->max_angular_vel;
-            max_tilt_angle = response->max_tilt_angle;
-            max_tilt_translation = response->max_tilt_translation;
-            for (size_t i = 0; i < available_modes.size(); ++i) {
-                if (available_modes[i].id == response->current_mode) current_mode_index = i;
-            }
-            for (size_t i = 0; i < available_gaits.size(); ++i) {
-                if (available_gaits[i].id == response->current_gait) current_gait_index = i;
-            }
-            capabilities_received = true;
+    requestCapabilities([this](const GetCapabilities::Response& response) {
+        capabilities_pending = false;
+        capabilities_received = true;
+        RCLCPP_INFO(this->get_logger(), "Received capabilities: %zu gaits, %zu modes",
+                    response.gaits.size(), response.modes.size());
+        RCLCPP_INFO(this->get_logger(), "Full stick: linear=%.2f m/s, angular=%.2f rad/s",
+                    max_linear_vel, max_angular_vel);
+    });
+}
 
-            RCLCPP_INFO(this->get_logger(), "Received capabilities: %zu gaits, %zu modes",
-                        response->gaits.size(), response->modes.size());
-            RCLCPP_INFO(this->get_logger(), "Full stick: linear=%.2f m/s, angular=%.2f rad/s",
-                        max_linear_vel, max_angular_vel);
+/**
+ * @brief Ask the gait controller for its capabilities and current state, store them, then call then
+ * @param[in] then Called with the response once it has been stored; may be empty
+*/
+void ControllerTeleop::requestCapabilities(std::function<void(const GetCapabilities::Response&)> then) {
+    get_capabilities_client->async_send_request(std::make_shared<GetCapabilities::Request>(),
+        [this, then](rclcpp::Client<GetCapabilities>::SharedFuture future) {
+            const auto response = future.get();
+            applyCapabilities(*response);
+            if (then) then(*response);
         });
+}
+
+/**
+ * @brief Store the gaits, modes and limits, and which mode and gait the gait controller is in
+ * @note Re-run whenever the mode may have changed behind this node's back (a sit returns to normal)
+*/
+void ControllerTeleop::applyCapabilities(const GetCapabilities::Response& response) {
+    available_gaits = response.gaits;
+    available_modes = response.modes;
+    max_linear_vel = response.max_linear_vel;
+    max_angular_vel = response.max_angular_vel;
+    max_tilt_angle = response.max_tilt_angle;
+    max_tilt_translation = response.max_tilt_translation;
+    for (size_t i = 0; i < available_modes.size(); ++i) {
+        if (available_modes[i].id == response.current_mode) current_mode_index = i;
+    }
+    for (size_t i = 0; i < available_gaits.size(); ++i) {
+        if (available_gaits[i].id == response.current_gait) current_gait_index = i;
+    }
+}
+
+/**
+ * @brief Track whether the robot is seated (or sitting down, or standing up)
+ * @note A sit puts the gait controller back in normal mode, so the mode is fetched again
+*/
+void ControllerTeleop::seatedCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+    if (msg->data == seated) return;
+    seated = msg->data;
+    height_target.reset();
+    if (capabilities_received && get_capabilities_client->service_is_ready()) requestCapabilities({});
+}
+
+/**
+ * @brief Handle the sit button: a press and release sits down or stands up, holding it powers down
+ * @param[in] pressed The button went down in this message
+ * @param[in] released The button came up in this message
+ * @note The hold is timed by a timer rather than by joy messages, so it works without autorepeat
+*/
+void ControllerTeleop::sitButton(bool pressed, bool released) {
+    if (pressed) {
+        power_down_sent = false;
+        power_down_timer = this->create_wall_timer(std::chrono::duration<double>(power_down_hold), [this]() {
+            power_down_timer->cancel();
+            power_down_sent = true;
+            powerDown();
+        });
+    }
+    if (released && power_down_timer) {
+        power_down_timer->cancel();
+        power_down_timer.reset();
+        if (!power_down_sent) toggleSit();
+    }
+}
+
+/**
+ * @brief Sit down if the robot is standing, otherwise stand up (which also turns the servos back on)
+ * @note seated is true while a sit or stand is under way, so a press then stands up: it reverses a sit
+*/
+void ControllerTeleop::toggleSit() {
+    if (!sit_client->service_is_ready()) {
+        RCLCPP_WARN(this->get_logger(), "Can't sit or stand: the gait controller isn't answering");
+        return;
+    }
+    auto request = std::make_shared<SetBool::Request>();
+    request->data = !seated;
+    RCLCPP_INFO(this->get_logger(), "%s", request->data ? "Sitting down" : "Standing up");
+    sit_client->async_send_request(request, [this](rclcpp::Client<SetBool>::SharedFuture future) {
+        const auto response = future.get();
+        if (!response->success) RCLCPP_WARN(this->get_logger(), "Refused: %s", response->message.c_str());
+    });
+}
+
+/**
+ * @brief Sit down and then turn the servo power off; standing up turns it back on
+*/
+void ControllerTeleop::powerDown() {
+    if (!power_down_client->service_is_ready()) {
+        RCLCPP_WARN(this->get_logger(), "Can't power down: the gait controller isn't answering");
+        return;
+    }
+    power_down_client->async_send_request(std::make_shared<Trigger::Request>(),
+        [this](rclcpp::Client<Trigger>::SharedFuture future) {
+            const auto response = future.get();
+            RCLCPP_INFO(this->get_logger(), "Power down: %s", response->message.c_str());
+        });
+}
+
+/**
+ * @brief Raise (1) or lower (-1) the body by height_step, within the gait controller's limits
+ * @note Fetches the current mode and height first. In tilt mode the d-pad moves the body through
+ *       body_pose instead, so nothing is sent. The step is taken from the height this last asked for
+ *       while the body is still on its way there, so quick presses add up; otherwise (the robot sat
+ *       and stood, or something else changed the height) from where the body is.
+*/
+void ControllerTeleop::stepHeight(int direction) {
+    if (seated || height_pending) return;
+    if (!get_capabilities_client->service_is_ready() || !set_height_client->service_is_ready()) return;
+    height_pending = true;
+    requestCapabilities([this, direction](const GetCapabilities::Response& response) {
+        for (const auto& mode : response.modes) {
+            if (mode.id == response.current_mode && mode.name == "tilt") {
+                height_pending = false;
+                return;
+            }
+        }
+        const double current = response.current_height;
+        const double from = height_target && std::abs(current - *height_target) < height_step
+            ? *height_target : current;
+        const double target = std::clamp(from + direction * height_step, response.min_height, response.max_height);
+        if (std::abs(target - from) < 1e-4) {
+            RCLCPP_INFO(this->get_logger(), "Body height already at its %s (%.1f cm)",
+                        direction > 0 ? "highest" : "lowest", target * 100.0);
+            height_pending = false;
+            return;
+        }
+        auto request = std::make_shared<SetHeight::Request>();
+        request->height = -target;
+        set_height_client->async_send_request(request, [this, target](rclcpp::Client<SetHeight>::SharedFuture future) {
+            height_pending = false;
+            const auto result = future.get();
+            if (result->success) {
+                height_target = target;
+                RCLCPP_INFO(this->get_logger(), "Body height %.1f cm", target * 100.0);
+            } else {
+                RCLCPP_WARN(this->get_logger(), "Height refused: %s", result->message.c_str());
+            }
+        });
+    });
 }

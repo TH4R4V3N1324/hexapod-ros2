@@ -233,13 +233,24 @@ See [Gait controller internals](#gait-controller-internals) below.
   | Right stick X (axis 2) | turn | roll |
   | Right stick Y (axis 3) | — | pitch (forward lowers the nose) |
   | Triggers LT/RT [L2/R2] (axes 4, 5) | — | yaw left / right |
-  | D-pad up/down (buttons 11, 12) | — | raise / lower the body |
+  | D-pad up/down (buttons 11, 12) | body height up / down 1 cm (repeats while held) | raise / lower the body |
+  | RB [R1] (button 10) | sit down / stand up; hold 2 s to power down | sit down / stand up; hold 2 s to power down |
   | Start [Options] (button 6) | next mode | next mode |
   | Back [Create] (button 4) | next gait | next gait |
   | A [Cross] (button 0) | terrain adaptation on/off | terrain adaptation on/off |
   | B [Circle] (button 1) | walk leveling on/off | walk leveling on/off |
   | X [Square] (button 2) | load balancing on/off | load balancing on/off |
   | Y [Triangle] (button 3) | tilt leveling on/off | tilt leveling on/off |
+
+  RB calls `sit`: down if the robot is standing, up otherwise, following
+  `/seated` (so a press while it is sitting down stands it back up). This is
+  how the robot stands up after boot when there is no Foxglove panel, since
+  `stand_on_startup` is off on the robot. Held for `power_down_hold` (2 s) it
+  calls `power_down` instead, which sits and then turns the servo power off;
+  the next press stands up and turns it back on. In normal and strafe mode the
+  d-pad sets the body height with `set_height`, `height_step` (1 cm) at a time
+  and every `height_repeat` (0.3 s) while held, within the gait controller's
+  `min_height`..`max_height`; it does nothing while seated.
 
   Drivers disagree on what a released trigger reads (0, 1 or -1), so each
   trigger's first reading is taken as released. To check another
@@ -288,6 +299,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/front_depth/points` | `sensor_msgs/PointCloud2` | Gazebo bridge (sim) | `gait_controller`, Nav2 costmaps |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side, or the robot's own for a gamepad on the Pi) | `controller_teleop` |
+| `/seated` | `std_msgs/Bool` (latched) | `gait_controller` | `controller_teleop`, test scripts |
 
 **Services**
 
@@ -295,7 +307,9 @@ future higher-level behaviour/config logic and currently does nothing.
 |---|---|---|---|
 | `/set_gait` | `hexapod_interfaces/SetGait` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/set_mode` | `hexapod_interfaces/SetMode` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
-| `/set_height` | `hexapod_interfaces/SetHeight` | `gait_controller` | — |
+| `/set_height` | `hexapod_interfaces/SetHeight` | `gait_controller` | `controller_teleop` |
+| `/sit` | `std_srvs/SetBool` | `gait_controller` | `controller_teleop`, `behaviour_manager` |
+| `/power_down` | `std_srvs/Trigger` | `gait_controller` | `controller_teleop`, `behaviour_manager` |
 | `/get_capabilities` | `hexapod_interfaces/GetCapabilities` | `gait_controller` | `keyboard_teleop`, `controller_teleop` |
 | `/set_terrain_adaptation`, `/set_terrain_map`, `/set_walk_leveling`, `/set_tilt_leveling`, `/set_tilt_lock_yaw`, `/set_load_balancing` | `std_srvs/SetBool` | `gait_controller` | — |
 
@@ -320,7 +334,7 @@ types; these cover only what has no standard equivalent.
   (0.06–0.16 m) are refused. It used to move the foot targets at once, and
   while standing still only half the feet followed: the others waited, then
   jumped to the new height in the first step of walking.
-- `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait)`.
+- `GetCapabilities() → (LocomotionOption[] modes, LocomotionOption[] gaits, float64 max_linear_vel, float64 max_angular_vel, float64 max_tilt_angle, float64 max_tilt_translation, uint8 current_mode, uint8 current_gait, float64 current_height, float64 min_height, float64 max_height)`. The heights are positive body heights in m; `current_height` is where the body is now, moving towards a `set_height` target at `height_rate`.
 
 ## Gait controller internals
 
@@ -612,7 +626,7 @@ State machine, roughly:
    The robot is then seated, and `/seated` is true. With `stand_on_startup`
    (on in the simulation launch, off on the robot) it stands up straight
    away; otherwise it waits for a `sit` request of false, such as the
-   Foxglove panel's Stand up button. `/seated` stays true until it's
+   Foxglove panel's Stand up button or RB on the gamepad. `/seated` stays true until it's
    standing, since `/cmd_vel` is ignored until then.
 2. **Walk** — while `/cmd_vel` is non-zero (beyond
    `CMD_VEL_CHANGE_THRESHOLD = 0.05`), continuously regenerates swing/stance

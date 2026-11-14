@@ -540,6 +540,9 @@ void GaitController::getCapabilitiesCallback(
     response->max_tilt_translation = engine->params().tilt_max_translation;
     response->current_mode = gaitConfig.currentMode;
     response->current_gait = gaitConfig.gaitChangeRequested ? gaitConfig.pendingGait : gaitConfig.currentGait;
+    response->current_height = -gaitConfig.currentHeight;
+    response->min_height = engine->params().min_height;
+    response->max_height = engine->params().max_height;
 }
 
 /**

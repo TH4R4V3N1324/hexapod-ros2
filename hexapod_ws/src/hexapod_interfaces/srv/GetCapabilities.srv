@@ -9,3 +9,8 @@ float64 max_tilt_angle        # rad, largest roll, pitch or yaw tilt mode accept
 float64 max_tilt_translation  # m, largest body shift tilt mode accepts on body_pose
 uint8 current_mode
 uint8 current_gait
+# Body heights in m, positive (set_height takes them negated). current_height is where the body is
+# now, which moves towards a new set_height target at height_rate.
+float64 current_height
+float64 min_height
+float64 max_height
