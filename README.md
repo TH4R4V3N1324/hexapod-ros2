@@ -946,11 +946,19 @@ with the repo cloned to `~/hexapod-ros2` and a GitHub SSH key on the Pi, run
   so the home Wi-Fi is kept to 2.4 GHz and a NetworkManager dispatcher script
   moves the hotspot to its channel. The password is generated on first run
   (set `HOTSPOT_PASSWORD=...` to choose or change it);
-- adds `hexapod-start.service`, which at every boot pulls the latest code
-  (fast-forward only), rebuilds the image with `--pull` (a newer ROS base
-  image means a full rebuild, picking up new `foxglove_bridge` and ROS
-  releases), and runs `docker compose up -d`. Offline, it starts the image it
-  already has. `journalctl -u hexapod-start` shows what it did.
+- adds `hexapod-start.service`, which at every boot runs `docker compose up -d`
+  with the code and image already on the Pi. It never pulls code, so the robot
+  boots the same way online or off; it only builds the image if there isn't
+  one yet. `journalctl -u hexapod-start` shows what it did.
+
+**Updating the robot:** run `pi/update.sh` on the Pi. It pulls the latest code
+(fast-forward only, so it stops rather than merge or overwrite changes made
+on the Pi), updates the submodules (`hexapod-gait-core`), rebuilds the image
+with `--pull` (a newer ROS base image means a full rebuild, picking up new
+`foxglove_bridge` and ROS releases) while the robot keeps running, then
+restarts the container on the new image. `pi/update.sh --no-build` updates
+the code only. If an update changes the other scripts in `pi/`, run
+`pi/setup_pi.sh` again to install them.
 
 The Steam Deck script tries the hotspot address first, then scans the local
 network. Its scan opens and closes a connection on port 8765 at every

@@ -15,7 +15,7 @@
 #     stays on the home Wi-Fi for internet. The radio can only use one channel at a time and the
 #     hotspot can't use 5 GHz radar channels, so wlan0 is kept to 2.4 GHz and the hotspot follows
 #     its channel.
-#   - starts the robot at boot: pull the latest code, rebuild if needed, docker compose up
+#   - starts the robot at boot with the code already on the Pi (pi/update.sh updates it)
 set -euo pipefail
 PI_DIR=$(cd "$(dirname "$0")" && pwd)
 REPO=${HEXAPOD_REPO:-$(cd "$PI_DIR/.." && pwd)}

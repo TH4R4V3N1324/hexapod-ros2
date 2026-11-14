@@ -1,7 +1,6 @@
 [Unit]
-Description=Pull the latest hexapod code and start the robot container
-Wants=network-online.target
-After=network-online.target docker.service
+Description=Start the hexapod robot container (pi/update.sh updates the code)
+After=docker.service
 Requires=docker.service
 
 [Service]
@@ -10,7 +9,7 @@ RemainAfterExit=yes
 User=@USER@
 Environment=HEXAPOD_REPO=@REPO@
 ExecStart=/usr/local/bin/hexapod-start.sh
-# A full image rebuild on the Pi can take a while
+# The first start on a freshly set up Pi builds the image, which can take a while
 TimeoutStartSec=1h
 
 [Install]
