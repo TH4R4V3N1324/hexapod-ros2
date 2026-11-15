@@ -96,6 +96,10 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     hexapod_teleop::TeleopParams teleop_params;
     teleop_params.powerDownHold = this->declare_parameter("power_down_hold", teleop_params.powerDownHold);  // s
     teleop_params.heightRepeat = this->declare_parameter("height_repeat", teleop_params.heightRepeat);      // s between steps while held
+    teleop_params.controllerDriveAngle = this->declare_parameter(
+        "controller_drive_angle", teleop_params.controllerDriveAngle);  // rad for full pitch/roll speed
+    teleop_params.controllerDriveYawAngle = this->declare_parameter(
+        "controller_drive_yaw_angle", teleop_params.controllerDriveYawAngle);  // rad for full turn speed
     teleop = hexapod_teleop::GamepadTeleop(teleop_params);
 
     // Face buttons switch gait controller features on and off, in GamepadTeleop's order (A, B, X, Y)

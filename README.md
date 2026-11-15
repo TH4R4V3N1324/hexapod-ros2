@@ -243,7 +243,7 @@ See [Gait controller internals](#gait-controller-internals) below.
   | RB [R1] (button 10) | sit down / stand up; hold 2 s to power down | sit down / stand up; hold 2 s to power down |
   | Start [Options] (button 6) | next mode | next mode |
   | Back [Create] (button 4) | next gait | next gait |
-  | LB [L1] (button 9) | — | follow the controller IMU orientation while held |
+  | LB [L1] (button 9) | controller tilt drives forward/back, strafe and turn | follow the controller IMU orientation while held |
   | A [Cross] (button 0) | terrain adaptation on/off | terrain adaptation on/off |
   | B [Circle] (button 1) | walk leveling on/off | walk leveling on/off |
   | X [Square] (button 2) | load balancing on/off | load balancing on/off |
@@ -253,7 +253,7 @@ See [Gait controller internals](#gait-controller-internals) below.
   fuses them into orientation, and publishes `sensor_msgs/Imu` on `controller/imu`. Run this node
   on the machine physically connected to the controller: the Pi for a local controller, or the
   Steam Deck for a wireless controller. The topic can cross DDS to the robot, where
-  `controller_teleop` uses it for LB tilt-following mode. Controllers without both sensors
+  `controller_teleop` uses it for LB walking drive and tilt-following mode. Controllers without both sensors
   continue to work normally, but cannot provide controller-IMU tilt.
 
   RB calls `sit`: down if the robot is standing, up otherwise, following
