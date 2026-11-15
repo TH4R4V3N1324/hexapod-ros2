@@ -58,6 +58,14 @@ def generate_launch_description():
         output='screen',
     )
 
+    controller_imu_node = Node(
+        package='controller_imu',
+        executable='controller_imu',
+        name='controller_imu',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+    )
+
     # Watches the battery: warns when it's low and sits the robot down when it's critical
     behaviour_manager = Node(
         package='hexapod_control',
@@ -186,6 +194,7 @@ def generate_launch_description():
         gazebo_launch,
         hexapod_gait_controller,
         controller_teleop_node,
+        controller_imu_node,
         behaviour_manager,
         sim_power_monitor,
         ekf_node,

@@ -384,7 +384,9 @@ void GaitController::controllerImuCallback(const sensor_msgs::msg::Imu::SharedPt
     sample.roll = roll;
     sample.pitch = pitch;
     sample.yaw = yaw;
-    sample.stamp = rclcpp::Time(msg->header.stamp, this->get_clock()->get_clock_type()).nanoseconds();
+    // Use receipt time rather than the controller host's timestamp: the controller may be on
+    // another machine or may publish an unset stamp, and only arrival freshness matters here.
+    sample.stamp = this->now().nanoseconds();
     engine->setControllerImu(sample, controller_tilt_active);
 }
 
