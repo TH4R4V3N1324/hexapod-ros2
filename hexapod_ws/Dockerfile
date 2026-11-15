@@ -19,6 +19,7 @@ RUN apt-get update && apt-get install -y \
     ros-jazzy-foxglove-msgs \
     ros-jazzy-joy \
     ros-jazzy-imu-filter-madgwick \
+    libsdl2-dev \
     ros-jazzy-robot-localization \
     ros-jazzy-rplidar-ros \
     ros-jazzy-slam-toolbox \

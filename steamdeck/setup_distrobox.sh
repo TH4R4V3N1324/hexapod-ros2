@@ -38,7 +38,7 @@ fi
 
 sudo -E apt-get update
 # Node.js builds the Hexapod Foxglove panel (install_panel.sh)
-sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy foxglove-studio nodejs npm
+sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy libsdl2-dev foxglove-studio nodejs npm
 sudo -E apt-get upgrade -y
 echo "ROS: $(ls /opt/ros), Foxglove Studio $(dpkg-query -W -f '${Version}' foxglove-studio)"
 EOF

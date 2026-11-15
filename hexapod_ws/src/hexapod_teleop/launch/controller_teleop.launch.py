@@ -19,7 +19,15 @@ def generate_launch_description():
         output='screen',
     )
 
+    controller_imu_node = Node(
+        package='controller_imu',
+        executable='controller_imu',
+        name='controller_imu',
+        output='screen',
+    )
+
     return LaunchDescription([
         controller_teleop_node,
-        ros_joy_node
+        ros_joy_node,
+        controller_imu_node,
     ])

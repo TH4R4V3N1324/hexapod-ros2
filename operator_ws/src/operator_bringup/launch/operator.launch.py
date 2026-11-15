@@ -24,7 +24,15 @@ def generate_launch_description():
         }]
     )
 
+    controller_imu_node = Node(
+        package='controller_imu',
+        executable='controller_imu',
+        name='controller_imu',
+        output='screen',
+    )
+
     return LaunchDescription([
         foxglove_bridge_node,
         joy_node,
+        controller_imu_node,
     ])

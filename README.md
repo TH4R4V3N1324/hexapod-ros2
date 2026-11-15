@@ -243,10 +243,18 @@ See [Gait controller internals](#gait-controller-internals) below.
   | RB [R1] (button 10) | sit down / stand up; hold 2 s to power down | sit down / stand up; hold 2 s to power down |
   | Start [Options] (button 6) | next mode | next mode |
   | Back [Create] (button 4) | next gait | next gait |
+  | LB [L1] (button 9) | — | follow the controller IMU orientation while held |
   | A [Cross] (button 0) | terrain adaptation on/off | terrain adaptation on/off |
   | B [Circle] (button 1) | walk leveling on/off | walk leveling on/off |
   | X [Square] (button 2) | load balancing on/off | load balancing on/off |
   | Y [Triangle] (button 3) | tilt leveling on/off | tilt leveling on/off |
+
+  **`controller_imu`** reads an attached controller's accelerometer and gyro through SDL2,
+  fuses them into orientation, and publishes `sensor_msgs/Imu` on `controller/imu`. Run this node
+  on the machine physically connected to the controller: the Pi for a local controller, or the
+  Steam Deck for a wireless controller. The topic can cross DDS to the robot, where
+  `controller_teleop` uses it for LB tilt-following mode. Controllers without both sensors
+  continue to work normally, but cannot provide controller-IMU tilt.
 
   RB calls `sit`: down if the robot is standing, up otherwise, following
   `/seated` (so a press while it is sitting down stands it back up). This is
@@ -305,6 +313,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/front_depth/points` | `sensor_msgs/PointCloud2` | Gazebo bridge (sim) | `gait_controller`, Nav2 costmaps |
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side, or the robot's own for a gamepad on the Pi) | `controller_teleop` |
+| `/controller/imu` | `sensor_msgs/Imu` | `controller_imu` on the controller host | `controller_teleop` |
 | `/seated` | `std_msgs/Bool` (latched) | `gait_controller` | `controller_teleop`, test scripts |
 
 **Services**

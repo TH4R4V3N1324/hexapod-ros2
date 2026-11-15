@@ -7,9 +7,11 @@ SHELL ["/bin/bash", "-c"]
 RUN apt-get update && apt-get install -y \
     ros-jazzy-joy \
     ros-jazzy-foxglove-bridge \
+    libsdl2-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY . /operator_ws
+COPY hexapod_ws/src/controller_imu /operator_ws/src/controller_imu
 WORKDIR /operator_ws
 RUN . /opt/ros/jazzy/setup.sh && colcon build
 

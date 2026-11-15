@@ -2,6 +2,7 @@
 #include "geometry_msgs/msg/twist.hpp"
 #include "geometry_msgs/msg/pose.hpp"
 #include "sensor_msgs/msg/joy.hpp"
+#include "sensor_msgs/msg/imu.hpp"
 #include "hexapod_interfaces/srv/get_capabilities.hpp"
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
@@ -27,6 +28,27 @@ using std_srvs::srv::SetBool;
 using std_srvs::srv::Trigger;
 using std::placeholders::_1;
 
+namespace {
+struct EulerAngles {
+    double roll;
+    double pitch;
+    double yaw;
+};
+
+EulerAngles quaternionToEuler(const geometry_msgs::msg::Quaternion& quaternion) {
+    return {
+        std::atan2(
+            2.0 * (quaternion.w * quaternion.x + quaternion.y * quaternion.z),
+            1.0 - 2.0 * (quaternion.x * quaternion.x + quaternion.y * quaternion.y)),
+        std::asin(std::clamp(
+            2.0 * (quaternion.w * quaternion.y - quaternion.z * quaternion.x), -1.0, 1.0)),
+        std::atan2(
+            2.0 * (quaternion.w * quaternion.z + quaternion.x * quaternion.y),
+            1.0 - 2.0 * (quaternion.y * quaternion.y + quaternion.z * quaternion.z))
+    };
+}
+}  // namespace
+
 /**
  * @brief Gamepad teleop node, converts /joy input into /cmd_vel and /body_pose commands
  * @note The layout itself is hexapod_teleop::GamepadTeleop from gait-core, shared with the
@@ -49,6 +71,9 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     // Latched by the gait controller, so this hears the current state as soon as it connects
     seated_sub = this->create_subscription<std_msgs::msg::Bool>("seated", rclcpp::QoS(1).transient_local(),
         std::bind(&ControllerTeleop::seatedCallback, this, _1));
+    controller_imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(
+        "controller/imu", rclcpp::SensorDataQoS(),
+        std::bind(&ControllerTeleop::controllerImuCallback, this, _1));
 
     // Defaults follow the SDL game controller layout that ROS 2's joy_node reports for any supported
     // gamepad (Xbox, PlayStation, ...). They used to follow the raw Xbox order, which put pitch on a
@@ -64,6 +89,7 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     button_dpad_down = this->declare_parameter("button_dpad_down", 12);
     button_mode = this->declare_parameter("button_mode", 6);  // Start
     button_gait = this->declare_parameter("button_gait", 4);  // Back
+    button_controller_tilt = this->declare_parameter("button_controller_tilt", 9);  // LB
     button_sit = this->declare_parameter("button_sit", 10);   // RB [R1]: sit / stand, hold to power down
     height_step = this->declare_parameter("height_step", 0.01);         // m per d-pad step
     hexapod_teleop::TeleopParams teleop_params;
@@ -98,6 +124,7 @@ private:
     rclcpp::Client<SetBool>::SharedPtr sit_client;
     rclcpp::Client<Trigger>::SharedPtr power_down_client;
     rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr seated_sub;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr controller_imu_sub;
     rclcpp::TimerBase::SharedPtr capabilities_timer;
     rclcpp::TimerBase::SharedPtr tick_timer;
 
@@ -115,7 +142,7 @@ private:
     int axis_left_x, axis_left_y, axis_right_x, axis_right_y;
     int axis_left_trigger, axis_right_trigger, axis_dpad_y;
     int button_dpad_up, button_dpad_down;
-    int button_mode, button_gait, button_sit;
+    int button_mode, button_gait, button_sit, button_controller_tilt;
     double height_step;
 
     hexapod_teleop::GamepadTeleop teleop;
@@ -134,10 +161,13 @@ private:
 
     std::optional<double> left_trigger_rest;   // a released trigger's reading, taken from the first message
     std::optional<double> right_trigger_rest;
+    std::optional<hexapod_teleop::GamepadState> controller_imu_state;
+    rclcpp::Time controller_imu_received_at{0, 0, RCL_ROS_TIME};
 
 public:
     void joyCallback(const Joy::SharedPtr msg);
     void seatedCallback(const std_msgs::msg::Bool::SharedPtr msg);
+    void controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
     void tick();
     void handleEvents(const hexapod_teleop::TeleopOutput& out);
     hexapod_teleop::RobotState robotState() const;
@@ -214,8 +244,16 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     pad.x = button(toggles[2].button);
     pad.y = button(toggles[3].button);
     pad.rightBumper = button(button_sit);
+    pad.leftBumper = button(button_controller_tilt);
     pad.start = button(button_mode);
     pad.back = button(button_gait);
+    if (controller_imu_state &&
+        (this->now() - controller_imu_received_at).seconds() < 0.2) {
+        pad.controllerImu = true;
+        pad.controllerRoll = controller_imu_state->controllerRoll;
+        pad.controllerPitch = controller_imu_state->controllerPitch;
+        pad.controllerYaw = controller_imu_state->controllerYaw;
+    }
     last_pad = pad;
 
     const hexapod_teleop::TeleopOutput out = teleop.update(pad, robotState(), this->now().seconds());
@@ -243,6 +281,21 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     body_pose_msg.orientation.y = cr * sp * cy + sr * cp * sy;
     body_pose_msg.orientation.z = cr * cp * sy - sr * sp * cy;
     body_pose_pub->publish(body_pose_msg);
+}
+
+/**
+ * @brief Store the latest fused controller orientation received from the input host
+*/
+void ControllerTeleop::controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
+    if (msg->orientation_covariance[0] < 0.0) return;
+    const EulerAngles angles = quaternionToEuler(msg->orientation);
+    hexapod_teleop::GamepadState state;
+    state.controllerImu = true;
+    state.controllerRoll = static_cast<float>(angles.roll);
+    state.controllerPitch = static_cast<float>(angles.pitch);
+    state.controllerYaw = static_cast<float>(angles.yaw);
+    controller_imu_state = state;
+    controller_imu_received_at = this->now();
 }
 
 /**

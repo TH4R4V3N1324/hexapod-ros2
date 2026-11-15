@@ -1,7 +1,9 @@
 services:
   operator:
     container_name: hexapod_operator
-    build: .
+    build:
+      context: ..
+      dockerfile: operator_ws/dockerfile
     privileged: true
     network_mode: host
     ipc: host

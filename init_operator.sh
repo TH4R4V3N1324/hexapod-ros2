@@ -12,6 +12,7 @@
  REQUIRED_PACKAGES=(
  foxglove_bridge
  joy
+ controller_imu
  hexapod_interfaces
  hexapod_description
  )
@@ -92,6 +93,10 @@
  # Standard game controller layout, which controller_teleop expects (joy_node gives the raw order)
  ros2 run joy game_controller_node &
  JOY_PID=$!
+
+ echo "Starting controller IMU node..."
+ ros2 run controller_imu controller_imu &
+ IMU_PID=$!
  
  echo "Starting Foxglove Bridge..."
  ros2 launch foxglove_bridge foxglove_bridge_launch.xml &
@@ -114,6 +119,6 @@
  
  echo "System running. Press Ctrl+C to stop."
  
- trap "echo 'Stopping...'; kill $JOY_PID $BRIDGE_PID $FOX_PID 2>/dev/null || true; exit" SIGINT
+ trap "echo 'Stopping...'; kill $JOY_PID $IMU_PID $BRIDGE_PID $FOX_PID 2>/dev/null || true; exit" SIGINT
  
  wait
