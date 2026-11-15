@@ -314,6 +314,7 @@ future higher-level behaviour/config logic and currently does nothing.
 | `/body_pose` | `geometry_msgs/Pose` (body shift and roll/pitch/yaw, used in tilt mode) | `controller_teleop` | `gait_controller` |
 | `/joy` | `sensor_msgs/Joy` | `game_controller_node` (operator side, or the robot's own for a gamepad on the Pi) | `controller_teleop` |
 | `/controller/imu` | `sensor_msgs/Imu` | `controller_imu` on the controller host | `controller_teleop` |
+| `/controller/tilt_active` | `std_msgs/Bool` | `controller_teleop` | `gait_controller` |
 | `/seated` | `std_msgs/Bool` (latched) | `gait_controller` | `controller_teleop`, test scripts |
 
 **Services**

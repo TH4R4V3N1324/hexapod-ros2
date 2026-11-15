@@ -63,6 +63,8 @@ public:
     void cmdVelCallback(const Twist::SharedPtr msg);
     void jointStateCallback(const JointState::SharedPtr msg);
     void imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
+    void controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
+    void controllerTiltCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void bodyPoseCallback(const geometry_msgs::msg::Pose::SharedPtr msg);
     rcl_interfaces::msg::SetParametersResult parametersCallback(const std::vector<rclcpp::Parameter>& parameters);
     void setGaitCallback(const std::shared_ptr<SetGait::Request> request, std::shared_ptr<SetGait::Response> response);
@@ -90,6 +92,9 @@ private:
     rclcpp::Subscription<Twist>::SharedPtr cmd_vel_sub;
     rclcpp::Subscription<JointState>::SharedPtr joint_state_sub;
     rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr imu_sub;
+    rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr controller_imu_sub;
+    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr controller_tilt_sub;
+    bool controller_tilt_active = false;
     rclcpp::Subscription<geometry_msgs::msg::Pose>::SharedPtr body_pose_sub;
     rclcpp::Publisher<JointState>::SharedPtr joint_cmd_pub;
     rclcpp::Publisher<Odometry>::SharedPtr odom_pub;

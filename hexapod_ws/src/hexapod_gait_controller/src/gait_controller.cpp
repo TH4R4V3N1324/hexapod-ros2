@@ -69,6 +69,12 @@ GaitController::GaitController() : Node("gait_controller") {
     footprint_broadcaster = std::make_shared<tf2_ros::TransformBroadcaster>(this);
     imu_sub = this->create_subscription<sensor_msgs::msg::Imu>("imu/data", rclcpp::SensorDataQoS(),
         std::bind(&GaitController::imuCallback, this, _1));
+    controller_imu_sub = this->create_subscription<sensor_msgs::msg::Imu>(
+        "controller/imu", rclcpp::SensorDataQoS(),
+        std::bind(&GaitController::controllerImuCallback, this, _1));
+    controller_tilt_sub = this->create_subscription<std_msgs::msg::Bool>(
+        "controller/tilt_active", 10,
+        std::bind(&GaitController::controllerTiltCallback, this, _1));
     nominal_dt = 1.0 / loop_rate_hz;
 
     // Tilt mode: the feet stay planted while body_pose moves the body, and the IMU holds it
@@ -365,6 +371,31 @@ void GaitController::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
     sample.yaw = yaw;
     sample.stamp = this->now().nanoseconds();
     engine->setImu(sample);
+}
+
+/**
+ * @brief Pass the controller's orientation to the engine while LB tilt-following is active
+*/
+void GaitController::controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
+    if (msg->orientation_covariance[0] < 0.0) return;
+    double roll, pitch, yaw;
+    toRollPitchYaw(msg->orientation, roll, pitch, yaw);
+    ImuSample sample;
+    sample.roll = roll;
+    sample.pitch = pitch;
+    sample.yaw = yaw;
+    sample.stamp = rclcpp::Time(msg->header.stamp, this->get_clock()->get_clock_type()).nanoseconds();
+    engine->setControllerImu(sample, controller_tilt_active);
+}
+
+/**
+ * @brief Enable or recenter controller-IMU tilt following
+*/
+void GaitController::controllerTiltCallback(const std_msgs::msg::Bool::SharedPtr msg) {
+    controller_tilt_active = msg->data;
+    if (!controller_tilt_active) {
+        engine->setControllerImu(ImuSample{}, false);
+    }
 }
 
 /**

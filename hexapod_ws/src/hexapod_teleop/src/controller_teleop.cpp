@@ -61,6 +61,7 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
   	RCLCPP_INFO(this->get_logger(), "Controller Teleop Node has been started.");
     cmd_vel_pub = this->create_publisher<Twist>("cmd_vel", 10);
     body_pose_pub = this->create_publisher<Pose>("body_pose", 10);
+    controller_tilt_pub = this->create_publisher<std_msgs::msg::Bool>("controller/tilt_active", 10);
     joy_sub = this->create_subscription<Joy>("joy", rclcpp::SensorDataQoS(), std::bind(&ControllerTeleop::joyCallback, this, _1));
     get_capabilities_client = this->create_client<GetCapabilities>("get_capabilities");
     set_mode_client = this->create_client<SetMode>("set_mode");
@@ -116,6 +117,7 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
 private:
     rclcpp::Publisher<Twist>::SharedPtr cmd_vel_pub;
     rclcpp::Publisher<Pose>::SharedPtr body_pose_pub;
+    rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr controller_tilt_pub;
     rclcpp::Subscription<Joy>::SharedPtr joy_sub;
     rclcpp::Client<GetCapabilities>::SharedPtr get_capabilities_client;
     rclcpp::Client<SetMode>::SharedPtr set_mode_client;
@@ -320,6 +322,9 @@ hexapod_teleop::RobotState ControllerTeleop::robotState() const {
  * @brief Act on the layout's events: mode, gait, features, sit/stand, power down, height
 */
 void ControllerTeleop::handleEvents(const hexapod_teleop::TeleopOutput& out) {
+    std_msgs::msg::Bool controller_tilt_msg;
+    controller_tilt_msg.data = out.controllerTilt;
+    controller_tilt_pub->publish(controller_tilt_msg);
     if (out.nextMode) cycleMode();
     if (out.nextGait) cycleGait();
     for (int i = 0; i < hexapod_teleop::NUM_FEATURES; ++i) {
