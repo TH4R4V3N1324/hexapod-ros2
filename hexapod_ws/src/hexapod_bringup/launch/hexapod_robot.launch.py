@@ -103,6 +103,14 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('joy'))
     )
 
+    local_controller_imu = Node(
+        package='controller_imu',
+        executable='controller_imu',
+        name='controller_imu',
+        output='screen',
+        condition=IfCondition(LaunchConfiguration('joy'))
+    )
+
     # Watches the battery: warns when it's low, and when it's critical sits the robot down and turns the servos off
     behaviour_manager = Node(
         package='hexapod_control',
@@ -246,6 +254,7 @@ def generate_launch_description():
         gait_controller,
         controller_teleop,
         local_joy,
+        local_controller_imu,
         behaviour_manager,
         ekf,
         slam,

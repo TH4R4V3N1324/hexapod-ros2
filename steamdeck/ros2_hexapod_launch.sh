@@ -40,6 +40,11 @@ if [ ! -f /opt/ros/jazzy/setup.bash ]; then
     exit 1
 fi
 source /opt/ros/jazzy/setup.bash
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OPERATOR_WS="$SCRIPT_DIR/../operator_ws"
+if [ -f "$OPERATOR_WS/install/setup.bash" ]; then
+    source "$OPERATOR_WS/install/setup.bash"
+fi
 
 if [ -z "$DBUS_SESSION_BUS_ADDRESS" ]; then
     eval $(dbus-launch --sh-syntax --exit-with-session)
@@ -61,11 +66,20 @@ ros2 run joy game_controller_node --ros-args -p coalesce_interval_ms:=20 &
 JOY_PID=$!
 echo "ros2 joy node PID: $JOY_PID"
 
+IMU_PID=""
+if ros2 pkg prefix controller_imu >/dev/null 2>&1; then
+    ros2 run controller_imu controller_imu &
+    IMU_PID=$!
+    echo "controller_imu node PID: $IMU_PID"
+else
+    echo "controller_imu is not built in the operator workspace; controller tilt is unavailable."
+fi
+
 sleep 1
 foxglove-studio --kiosk --url "foxglove://open?ds=foxglove-websocket&ds.url=ws://$HOST:$PORT" &
 FOXGLOVE_PID=$!
 echo "Foxglove Studio PID: $FOXGLOVE_PID"
 
 echo "Press Ctrl+C to stop both."
-trap "kill $JOY_PID $FOXGLOVE_PID 2>/dev/null" EXIT INT TERM
+trap "kill $JOY_PID $IMU_PID $FOXGLOVE_PID 2>/dev/null" EXIT INT TERM
 wait
