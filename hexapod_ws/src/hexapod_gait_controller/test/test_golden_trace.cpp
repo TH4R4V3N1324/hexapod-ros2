@@ -32,6 +32,7 @@
 #include "rclcpp/rclcpp.hpp"
 
 #include "gait_core/kinematic_solver.hpp"
+#include "gait_core_robots/explorer.hpp"
 #include "hexapod_gait_controller/gait_controller.hpp"
 
 namespace {
@@ -157,7 +158,7 @@ private:
     std::map<std::string, double> command;
     bool published = false;
     std::array<double, 3> cmd{0.0, 0.0, 0.0};
-    gait_core::KinematicSolver ik;
+    gait_core::KinematicSolver ik{gait_core::explorer::robot().legs[0]};
 
     static void check(rcl_ret_t ret, const char* what) {
         if (ret != RCL_RET_OK) {

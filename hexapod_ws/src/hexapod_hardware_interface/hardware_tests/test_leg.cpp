@@ -15,6 +15,7 @@
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
 #include "gait_core/kinematic_solver.hpp"
+#include "gait_core_robots/explorer.hpp"
 #include "hexapod_hardware_interface/st3215_bus.hpp"
 #include "test_common.hpp"
 
@@ -858,7 +859,7 @@ struct Session {
     int baud = 1000000;
     bool echo = false;
     bool debug = false;
-    KinematicSolver ik;
+    KinematicSolver ik{gait_core::explorer::robot().legs[0]};
     std::map<int, std::array<JointMapping, 3>> mappings;  // by leg, read from the URDF once
 };
 

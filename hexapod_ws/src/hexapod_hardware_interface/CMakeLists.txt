@@ -61,7 +61,7 @@ target_link_libraries(test_power i2c_sensors)
 
 add_executable(test_servos hardware_tests/test_servos.cpp src/st3215_bus.cpp)
 add_executable(test_leg hardware_tests/test_leg.cpp src/st3215_bus.cpp)
-target_link_libraries(test_leg gait_core::gait_core)
+target_link_libraries(test_leg gait_core::gait_core gait_core::robots)
 ament_target_dependencies(test_leg ament_index_cpp)
 
 install(TARGETS ${PROJECT_NAME}

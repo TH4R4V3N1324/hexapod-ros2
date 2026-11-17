@@ -5,6 +5,7 @@
 #include <cstring>
 #include <unordered_map>
 
+#include "gait_core_robots/explorer.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
 namespace {
@@ -154,7 +155,8 @@ GaitController::GaitController() : Node("gait_controller") {
     gp.walk_level_gain = this->declare_parameter("walk_level_gain", gp.walk_level_gain);
     gp.walk_max_angle = this->declare_parameter("walk_max_angle", gp.walk_max_angle);
 
-    engine = std::make_unique<GaitEngine>(gp);
+    // The robot this node drives (gait_core has none built in)
+    engine = std::make_unique<GaitEngine>(gp, gait_core::explorer::robot());
     // One foot_force/legN topic per leg the robot has, so after the engine knows the leg count
     for (int legNum = 0; legNum < engine->numLegs(); ++legNum) {
         foot_force_pubs[legNum] = this->create_publisher<geometry_msgs::msg::WrenchStamped>(
@@ -801,10 +803,11 @@ void GaitController::plan(int legNum, Vec3& target, const Vec3& swingStart, Scal
     if (auto flat = heightMap.flatFoothold(mapTarget, foothold_search, foothold_edge, foothold_flatness)) {
         const Vector2d moved = bodyToMapTransform.inverse() * *flat;
         Vector3d legMoved = trajectoryGen.bodyToLeg(legNum, Vector3d(moved.x(), moved.y(), bodyTarget.z()));
-        // Stay inside the stride circle
+        // Stay inside the robot's stride circle
+        const double maxStride = engine->gaitConfig().maxStride;
         const Vector2d offset = legMoved.head<2>() - nominal.head<2>();
-        if (offset.norm() > MAX_STRIDE_LENGTH) {
-            legMoved.head<2>() = nominal.head<2>() + offset * (MAX_STRIDE_LENGTH / offset.norm());
+        if (offset.norm() > maxStride) {
+            legMoved.head<2>() = nominal.head<2>() + offset * (maxStride / offset.norm());
         }
         target.head<2>() = legMoved.head<2>();
         mapTarget = bodyToMapTransform * trajectoryGen.legToBody(legNum, target).head<2>();
