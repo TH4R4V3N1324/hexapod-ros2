@@ -249,7 +249,7 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
             continue;
         }
         feedback.present[legNum] = true;
-        feedback.angles[legNum] = {coxa->second, femur->second, tibia->second};
+        feedback.angles[legNum] = Vector3d(coxa->second, femur->second, tibia->second);
         if (has_effort) {
             feedback.effort[legNum] = Vector3d(efforts[prefix + "coxa_joint"], efforts[prefix + "femur_joint"],
                                                efforts[prefix + "tibia_joint"]);
@@ -629,11 +629,11 @@ void GaitController::publishJointCommands(const GaitOutput& output) {
     for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
         const std::string prefix = "leg" + std::to_string(legNum + 1) + "_";
         msg.name.push_back(prefix + "coxa_joint");
-        msg.position.push_back(output.joints[legNum].coxa);
+        msg.position.push_back(output.joints[legNum](0));
         msg.name.push_back(prefix + "femur_joint");
-        msg.position.push_back(output.joints[legNum].femur);
+        msg.position.push_back(output.joints[legNum](1));
         msg.name.push_back(prefix + "tibia_joint");
-        msg.position.push_back(output.joints[legNum].tibia);
+        msg.position.push_back(output.joints[legNum](2));
     }
     msg.header.stamp = this->now();
     if (joint_command_observer) {
