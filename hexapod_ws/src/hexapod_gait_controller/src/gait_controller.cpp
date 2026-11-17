@@ -104,6 +104,11 @@ GaitController::GaitController() : Node("gait_controller") {
     // whether gaits that can't keep it there may run at all (startup only)
     gp.min_stability_margin = this->declare_parameter("min_stability_margin", gp.min_stability_margin);
     gp.allow_unstable_gaits = this->declare_parameter("allow_unstable_gaits", gp.allow_unstable_gaits);
+    // Body sway, for gaits that need it to stay stable (explorer's never do): on or off at startup,
+    // then how fast and how far inside the feet (live)
+    gp.body_sway = this->declare_parameter("body_sway", gp.body_sway);
+    gp.sway_speed = this->declare_parameter("sway_speed", gp.sway_speed);
+    gp.sway_margin = this->declare_parameter("sway_margin", gp.sway_margin);
     // foot_force/legN are for display only (the controller uses every update itself). At the joint
     // state rate they were 600 messages a second, enough to make Foxglove on the Deck lag.
     foot_force_period = 1.0 / this->declare_parameter("foot_force_rate", 20.0);
@@ -451,6 +456,8 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "load_balance_gain") gp.load_balance_gain = parameter.as_double();
         else if (name == "load_balance_max") gp.load_balance_max = parameter.as_double();
         else if (name == "min_stability_margin") gp.min_stability_margin = parameter.as_double();
+        else if (name == "sway_speed") gp.sway_speed = parameter.as_double();
+        else if (name == "sway_margin") gp.sway_margin = parameter.as_double();
         else if (name == "walk_level_gain") gp.walk_level_gain = parameter.as_double();
         else if (name == "walk_max_angle") gp.walk_max_angle = parameter.as_double();
     }
