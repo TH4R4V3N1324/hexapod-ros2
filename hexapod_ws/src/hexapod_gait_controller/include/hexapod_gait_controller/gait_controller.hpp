@@ -102,7 +102,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr servo_power_pub;
     bool servo_power_published = false;
     bool last_servo_power = false;
-    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, NUM_LEGS> foot_force_pubs;
+    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, gait_core::kMaxLegs> foot_force_pubs;  // engine->numLegs() used
     std::shared_ptr<tf2_ros::TransformBroadcaster> footprint_broadcaster;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;
