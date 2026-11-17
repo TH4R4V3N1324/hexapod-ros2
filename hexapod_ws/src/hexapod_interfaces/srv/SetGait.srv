@@ -1,5 +1,5 @@
 # Request
-uint8 gait  # 0=tripod, 1=ripple, 2=wave
+uint8 gait  # index into the robot's gaits, as listed by get_config (explorer: 0=tripod, 1=ripple, 2=wave); others are refused
 ---
 # Response
 bool success
