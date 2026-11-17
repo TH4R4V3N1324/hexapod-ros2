@@ -5,7 +5,7 @@
 #include <cstring>
 #include <unordered_map>
 
-#include "gait_core_robots/explorer.hpp"
+#include "gait_core/robots/explorer.hpp"
 #include "sensor_msgs/point_cloud2_iterator.hpp"
 
 namespace {

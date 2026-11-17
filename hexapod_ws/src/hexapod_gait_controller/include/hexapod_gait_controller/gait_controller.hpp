@@ -8,7 +8,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include "gait_core/gait_engine.hpp"
+#include "gait_core/locomotion/gait_engine.hpp"
 #include "hexapod_gait_controller/height_map.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "tf2_ros/buffer.h"

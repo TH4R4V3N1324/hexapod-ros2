@@ -14,15 +14,15 @@
 #include <std_srvs/srv/set_bool.hpp>
 #include <std_srvs/srv/trigger.hpp>
 
-#include "hexapod_behaviour/battery_monitor.hpp"
+#include "gait_core/behaviour/battery_monitor.hpp"
 
 using diagnostic_msgs::msg::DiagnosticArray;
 using diagnostic_msgs::msg::DiagnosticStatus;
 using gait_core::LogLevel;
-using hexapod_behaviour::BatteryLevel;
-using hexapod_behaviour::BatteryMonitor;
-using hexapod_behaviour::BatteryParams;
-using hexapod_behaviour::BatteryStatus;
+using gait_core::behaviour::BatteryLevel;
+using gait_core::behaviour::BatteryMonitor;
+using gait_core::behaviour::BatteryParams;
+using gait_core::behaviour::BatteryStatus;
 using sensor_msgs::msg::BatteryState;
 using sensor_msgs::msg::JoyFeedback;
 using std_srvs::srv::SetBool;
