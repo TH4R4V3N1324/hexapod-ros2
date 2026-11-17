@@ -31,7 +31,8 @@
 #include "rcl/time.h"
 #include "rclcpp/rclcpp.hpp"
 
-#include "gait_core/kinematic_solver.hpp"
+#include "gait_core/kinematics/yaw_pitch_pitch_leg.hpp"
+#include "gait_core/robots/explorer.hpp"
 #include "hexapod_gait_controller/gait_controller.hpp"
 
 namespace {
@@ -157,7 +158,8 @@ private:
     std::map<std::string, double> command;
     bool published = false;
     std::array<double, 3> cmd{0.0, 0.0, 0.0};
-    gait_core::KinematicSolver ik;
+    // Every explorer leg has the same links, so one solver serves all six
+    gait_core::YawPitchPitchLeg ik{gait_core::explorer::robot().legs[0]};
 
     static void check(rcl_ret_t ret, const char* what) {
         if (ret != RCL_RET_OK) {
@@ -226,13 +228,13 @@ private:
         }
 
         if (forces) {
-            std::array<gait_core::JointAngles, 7> angles;
+            std::array<gait_core::JointVec, 7> angles;
             std::array<double, 7> footZ{};
             double lowest = 1e9;
             for (int leg = 1; leg <= 6; ++leg) {
                 const size_t i = (leg - 1) * 3;
-                angles[leg] = {msg->position[i], msg->position[i + 1], msg->position[i + 2]};
-                footZ[leg] = ik.solveFK(angles[leg]).z();
+                angles[leg] = Eigen::Vector3d(msg->position[i], msg->position[i + 1], msg->position[i + 2]);
+                footZ[leg] = ik.fk(angles[leg]).z();
                 lowest = std::min(lowest, footZ[leg]);
             }
             int loaded = 0;

@@ -7,7 +7,7 @@
 #include "hexapod_interfaces/srv/set_gait.hpp"
 #include "hexapod_interfaces/srv/set_height.hpp"
 #include "hexapod_interfaces/srv/set_mode.hpp"
-#include "hexapod_teleop/gamepad_teleop.hpp"
+#include "gait_core/teleop/gamepad_teleop.hpp"
 #include "std_msgs/msg/bool.hpp"
 #include "std_srvs/srv/set_bool.hpp"
 #include "std_srvs/srv/trigger.hpp"
@@ -51,7 +51,7 @@ EulerAngles quaternionToEuler(const geometry_msgs::msg::Quaternion& quaternion) 
 
 /**
  * @brief Gamepad teleop node, converts /joy input into /cmd_vel and /body_pose commands
- * @note The layout itself is hexapod_teleop::GamepadTeleop from gait-core, shared with the
+ * @note The layout itself is gait_core::teleop::GamepadTeleop from gait-core, shared with the
  *       microcontroller stacks' receiver so a gamepad drives every robot the same way. This node
  *       turns joy messages into its GamepadState, and its output into topics and service calls.
  *       Axis and button numbers are parameters, defaulting to the SDL game controller layout
@@ -93,19 +93,19 @@ class ControllerTeleop : public rclcpp::Node {public: ControllerTeleop() : Node(
     button_controller_tilt = this->declare_parameter("button_controller_tilt", 9);  // LB
     button_sit = this->declare_parameter("button_sit", 10);   // RB [R1]: sit / stand, hold to power down
     height_step = this->declare_parameter("height_step", 0.01);         // m per d-pad step
-    hexapod_teleop::TeleopParams teleop_params;
+    gait_core::teleop::TeleopParams teleop_params;
     teleop_params.powerDownHold = this->declare_parameter("power_down_hold", teleop_params.powerDownHold);  // s
     teleop_params.heightRepeat = this->declare_parameter("height_repeat", teleop_params.heightRepeat);      // s between steps while held
     teleop_params.controllerDriveAngle = this->declare_parameter(
         "controller_drive_angle", teleop_params.controllerDriveAngle);  // rad for full pitch/roll speed
     teleop_params.controllerDriveYawAngle = this->declare_parameter(
         "controller_drive_yaw_angle", teleop_params.controllerDriveYawAngle);  // rad for full turn speed
-    teleop = hexapod_teleop::GamepadTeleop(teleop_params);
+    teleop = gait_core::teleop::GamepadTeleop(teleop_params);
 
     // Face buttons switch gait controller features on and off, in GamepadTeleop's order (A, B, X, Y)
     gait_controller_params = std::make_shared<rclcpp::AsyncParametersClient>(this, "hexapod_gait_controller");
-    for (int i = 0; i < hexapod_teleop::NUM_FEATURES; ++i) {
-        const std::string feature = hexapod_teleop::featureName(static_cast<hexapod_teleop::Feature>(i));
+    for (int i = 0; i < gait_core::teleop::NUM_FEATURES; ++i) {
+        const std::string feature = gait_core::teleop::featureName(static_cast<gait_core::teleop::Feature>(i));
         toggles[i] = {feature, static_cast<int>(this->declare_parameter("button_" + feature, i)),
                       this->create_client<SetBool>("set_" + feature)};
     }
@@ -151,8 +151,8 @@ private:
     int button_mode, button_gait, button_sit, button_controller_tilt;
     double height_step;
 
-    hexapod_teleop::GamepadTeleop teleop;
-    std::optional<hexapod_teleop::GamepadState> last_pad;  // the latest joy message, for tick()
+    gait_core::teleop::GamepadTeleop teleop;
+    std::optional<gait_core::teleop::GamepadState> last_pad;  // the latest joy message, for tick()
     bool seated = true;  // the robot starts seated; the gait controller's /seated says otherwise
     bool height_pending = false;
     std::optional<double> height_target;    // m, the last height this asked for
@@ -162,12 +162,12 @@ private:
         int button;
         rclcpp::Client<SetBool>::SharedPtr client;
     };
-    Toggle toggles[hexapod_teleop::NUM_FEATURES];
+    Toggle toggles[gait_core::teleop::NUM_FEATURES];
     std::shared_ptr<rclcpp::AsyncParametersClient> gait_controller_params;
 
     std::optional<double> left_trigger_rest;   // a released trigger's reading, taken from the first message
     std::optional<double> right_trigger_rest;
-    std::optional<hexapod_teleop::GamepadState> controller_imu_state;
+    std::optional<gait_core::teleop::GamepadState> controller_imu_state;
     rclcpp::Time controller_imu_received_at{0, 0, RCL_ROS_TIME};
 
 public:
@@ -175,8 +175,8 @@ public:
     void seatedCallback(const std_msgs::msg::Bool::SharedPtr msg);
     void controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg);
     void tick();
-    void handleEvents(const hexapod_teleop::TeleopOutput& out);
-    hexapod_teleop::RobotState robotState() const;
+    void handleEvents(const gait_core::teleop::TeleopOutput& out);
+    gait_core::teleop::RobotState robotState() const;
     void fetchCapabilities();
     void requestCapabilities(std::function<void(const GetCapabilities::Response&)> then);
     void applyCapabilities(const GetCapabilities::Response& response);
@@ -231,7 +231,7 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     };
 
     // joy reports X positive to the left; GamepadState has it positive to the right
-    hexapod_teleop::GamepadState pad;
+    gait_core::teleop::GamepadState pad;
     pad.leftX = static_cast<float>(-axis(axis_left_x));
     pad.leftY = static_cast<float>(axis(axis_left_y));
     pad.rightX = static_cast<float>(-axis(axis_right_x));
@@ -262,7 +262,7 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
     }
     last_pad = pad;
 
-    const hexapod_teleop::TeleopOutput out = teleop.update(pad, robotState(), this->now().seconds());
+    const gait_core::teleop::TeleopOutput out = teleop.update(pad, robotState(), this->now().seconds());
     handleEvents(out);
 
     Twist cmd_vel_msg;
@@ -295,7 +295,7 @@ void ControllerTeleop::joyCallback(const Joy::SharedPtr msg) {
 void ControllerTeleop::controllerImuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
     if (msg->orientation_covariance[0] < 0.0) return;
     const EulerAngles angles = quaternionToEuler(msg->orientation);
-    hexapod_teleop::GamepadState state;
+    gait_core::teleop::GamepadState state;
     state.controllerImu = true;
     state.controllerRoll = static_cast<float>(angles.roll);
     state.controllerPitch = static_cast<float>(angles.pitch);
@@ -315,8 +315,8 @@ void ControllerTeleop::tick() {
 /**
  * @brief What the layout needs to know about the robot
 */
-hexapod_teleop::RobotState ControllerTeleop::robotState() const {
-    hexapod_teleop::RobotState state;
+gait_core::teleop::RobotState ControllerTeleop::robotState() const {
+    gait_core::teleop::RobotState state;
     state.seated = seated;
     state.tiltMode = current_mode_index < available_modes.size() && available_modes[current_mode_index].name == "tilt";
     return state;
@@ -325,13 +325,13 @@ hexapod_teleop::RobotState ControllerTeleop::robotState() const {
 /**
  * @brief Act on the layout's events: mode, gait, features, sit/stand, power down, height
 */
-void ControllerTeleop::handleEvents(const hexapod_teleop::TeleopOutput& out) {
+void ControllerTeleop::handleEvents(const gait_core::teleop::TeleopOutput& out) {
     std_msgs::msg::Bool controller_tilt_msg;
     controller_tilt_msg.data = out.controllerTilt;
     controller_tilt_pub->publish(controller_tilt_msg);
     if (out.nextMode) cycleMode();
     if (out.nextGait) cycleGait();
-    for (int i = 0; i < hexapod_teleop::NUM_FEATURES; ++i) {
+    for (int i = 0; i < gait_core::teleop::NUM_FEATURES; ++i) {
         if (out.toggleFeature[i]) toggleFeature(toggles[i]);
     }
     if (out.sit) sit(*out.sit);
@@ -502,7 +502,7 @@ void ControllerTeleop::powerDown() {
 /**
  * @brief Raise (1) or lower (-1) the body by height_step, within the gait controller's limits
  * @note Fetches the current mode and height first. In tilt mode the d-pad moves the body through
- *       body_pose instead, so nothing is sent. hexapod_teleop::stepHeight picks the target: from the
+ *       body_pose instead, so nothing is sent. gait_core::teleop::stepHeight picks the target: from the
  *       height this last asked for while the body is still on its way there, so quick presses add
  *       up; otherwise from where the body is.
 */
@@ -518,7 +518,7 @@ void ControllerTeleop::stepHeight(int direction) {
             }
         }
         const std::optional<float> last = height_target ? std::optional<float>(static_cast<float>(*height_target)) : std::nullopt;
-        const double target = hexapod_teleop::stepHeight(static_cast<float>(response.current_height), last, direction,
+        const double target = gait_core::teleop::stepHeight(static_cast<float>(response.current_height), last, direction,
                                                          static_cast<float>(height_step), static_cast<float>(response.min_height),
                                                          static_cast<float>(response.max_height));
         const double from = height_target && std::abs(response.current_height - *height_target) < height_step

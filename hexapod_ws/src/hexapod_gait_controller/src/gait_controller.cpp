@@ -1,4 +1,5 @@
 #include "hexapod_gait_controller/gait_controller.hpp"
+#include "gait_core/robots/explorer.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -102,7 +103,7 @@ GaitController::GaitController() : Node("gait_controller") {
     // foot_force/legN are for display only (the controller uses every update itself). At the joint
     // state rate they were 600 messages a second, enough to make Foxglove on the Deck lag.
     foot_force_period = 1.0 / this->declare_parameter("foot_force_rate", 20.0);
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < explorer::NUM_LEGS; ++legNum) {
         foot_force_pubs[legNum] = this->create_publisher<geometry_msgs::msg::WrenchStamped>(
             "foot_force/leg" + std::to_string(legNum + 1), 10);
     }
@@ -158,7 +159,7 @@ GaitController::GaitController() : Node("gait_controller") {
     gp.walk_level_gain = this->declare_parameter("walk_level_gain", gp.walk_level_gain);
     gp.walk_max_angle = this->declare_parameter("walk_max_angle", gp.walk_max_angle);
 
-    engine = std::make_unique<GaitEngine>(gp);
+    engine = std::make_unique<GaitEngine>(gp, explorer::robot());
     engine->log = [this](LogLevel level, const char* message) {
         switch (level) {
             case LogLevel::Debug: RCLCPP_DEBUG(this->get_logger(), "%s", message); break;
@@ -234,7 +235,7 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
     feedback.stamp = stamp.nanoseconds();
     feedback.hasEffort = has_effort;
     bool all_found = true;
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < engine->numLegs(); ++legNum) {
         const std::string prefix = "leg" + std::to_string(legNum + 1) + "_";
         auto coxa = positions.find(prefix + "coxa_joint");
         auto femur = positions.find(prefix + "femur_joint");
@@ -249,7 +250,7 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
             continue;
         }
         feedback.present[legNum] = true;
-        feedback.angles[legNum] = {coxa->second, femur->second, tibia->second};
+        feedback.angles[legNum] = Vector3d(coxa->second, femur->second, tibia->second);
         if (has_effort) {
             feedback.effort[legNum] = Vector3d(efforts[prefix + "coxa_joint"], efforts[prefix + "femur_joint"],
                                                efforts[prefix + "tibia_joint"]);
@@ -264,7 +265,7 @@ void GaitController::jointStateCallback(const JointState::SharedPtr msg) {
             (stamp - last_foot_force_publish).seconds() >= foot_force_period;
         if (publishForces) {
             last_foot_force_publish = stamp;
-            for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+            for (int legNum = 0; legNum < engine->numLegs(); ++legNum) {
                 if (!engine->footForceUpdated(legNum)) continue;
                 const Vector3d& force = engine->footForce(legNum);
                 geometry_msgs::msg::WrenchStamped wrench;
@@ -626,14 +627,14 @@ void GaitController::publishJointCommands(const GaitOutput& output) {
     JointState msg;
     msg.name.reserve(18);
     msg.position.reserve(18);
-    for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+    for (int legNum = 0; legNum < engine->numLegs(); ++legNum) {
         const std::string prefix = "leg" + std::to_string(legNum + 1) + "_";
         msg.name.push_back(prefix + "coxa_joint");
-        msg.position.push_back(output.joints[legNum].coxa);
+        msg.position.push_back(output.joints[legNum][0]);
         msg.name.push_back(prefix + "femur_joint");
-        msg.position.push_back(output.joints[legNum].femur);
+        msg.position.push_back(output.joints[legNum][1]);
         msg.name.push_back(prefix + "tibia_joint");
-        msg.position.push_back(output.joints[legNum].tibia);
+        msg.position.push_back(output.joints[legNum][2]);
     }
     msg.header.stamp = this->now();
     if (joint_command_observer) {
@@ -676,7 +677,7 @@ void GaitController::depthCallback(const sensor_msgs::msg::PointCloud2::SharedPt
     Eigen::Isometry2d bodyToMapNow;
     std::vector<Vector2d> feetInMap;
     if (bodyToMap(bodyToMapNow)) {
-        for (int legNum = 0; legNum < NUM_LEGS; ++legNum) {
+        for (int legNum = 0; legNum < engine->numLegs(); ++legNum) {
             feetInMap.push_back(bodyToMapNow * engine->trajectory().legToBody(legNum, engine->measuredFoot(legNum)).head<2>());
         }
     }
@@ -802,8 +803,9 @@ void GaitController::plan(int legNum, Vec3& target, const Vec3& swingStart, Scal
         Vector3d legMoved = trajectoryGen.bodyToLeg(legNum, Vector3d(moved.x(), moved.y(), bodyTarget.z()));
         // Stay inside the stride circle
         const Vector2d offset = legMoved.head<2>() - nominal.head<2>();
-        if (offset.norm() > MAX_STRIDE_LENGTH) {
-            legMoved.head<2>() = nominal.head<2>() + offset * (MAX_STRIDE_LENGTH / offset.norm());
+        const double maxStride = engine->gaitConfig().maxStride;
+        if (offset.norm() > maxStride) {
+            legMoved.head<2>() = nominal.head<2>() + offset * (maxStride / offset.norm());
         }
         target.head<2>() = legMoved.head<2>();
         mapTarget = bodyToMapTransform * trajectoryGen.legToBody(legNum, target).head<2>();

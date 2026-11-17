@@ -8,7 +8,7 @@
 #include <string>
 #include <type_traits>
 #include <vector>
-#include "gait_core/gait_engine.hpp"
+#include "gait_core/locomotion/gait_engine.hpp"
 #include "hexapod_gait_controller/height_map.hpp"
 #include "sensor_msgs/msg/point_cloud2.hpp"
 #include "tf2_ros/buffer.h"
@@ -102,7 +102,7 @@ private:
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr servo_power_pub;
     bool servo_power_published = false;
     bool last_servo_power = false;
-    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, NUM_LEGS> foot_force_pubs;
+    std::array<rclcpp::Publisher<geometry_msgs::msg::WrenchStamped>::SharedPtr, kMaxLegs> foot_force_pubs;
     std::shared_ptr<tf2_ros::TransformBroadcaster> footprint_broadcaster;
     rclcpp::TimerBase::SharedPtr gait_timer;
     rclcpp::Service<SetGait>::SharedPtr set_gait_service;

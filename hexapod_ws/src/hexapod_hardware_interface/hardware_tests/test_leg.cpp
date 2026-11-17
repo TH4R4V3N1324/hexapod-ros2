@@ -14,15 +14,49 @@
 
 #include <ament_index_cpp/get_package_share_directory.hpp>
 
-#include "gait_core/kinematic_solver.hpp"
+#include "gait_core/kinematics/yaw_pitch_pitch_leg.hpp"
+#include "gait_core/robots/explorer.hpp"
 #include "hexapod_hardware_interface/st3215_bus.hpp"
 #include "test_common.hpp"
 
 using namespace hardware_tests;
 using namespace hexapod_hardware_interface;
-using gait_core::JointAngles;
-using gait_core::KinematicSolver;
 using Eigen::Vector3d;
+
+/**
+ * @brief One leg's coxa, femur and tibia angles (rad)
+*/
+struct JointAngles {
+    double coxa;
+    double femur;
+    double tibia;
+};
+
+/**
+ * @brief The gait controller's leg IK and FK (gait_core::YawPitchPitchLeg), on named angles
+ * @note Every explorer leg has the same links, so leg 0's definition serves all six.
+*/
+class KinematicSolver {
+public:
+    KinematicSolver() : leg_(gait_core::explorer::robot().legs[0]) {}
+
+    /**
+     * @brief Angles that put the foot at target, or the nearest the leg can get if it can't reach
+     * @note Callers check reach by running the result back through solveFK.
+    */
+    JointAngles solveIK(const Vector3d& target) const {
+        gait_core::JointVec q;
+        leg_.ik(target, gait_core::JointVec::Zero(3), q);
+        return {q(0), q(1), q(2)};
+    }
+
+    Vector3d solveFK(const JointAngles& a) const {
+        return leg_.fk(Vector3d(a.coxa, a.femur, a.tibia));
+    }
+
+private:
+    gait_core::YawPitchPitchLeg leg_;
+};
 
 static const char* USAGE = R"(Drive one leg's foot with the gait controller's IK, and check it gets there.
 

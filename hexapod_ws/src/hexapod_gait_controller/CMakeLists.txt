@@ -42,7 +42,7 @@ set(GAIT_CONTROLLER_DEPS
 # The node itself, as a library so the golden trace test can run it without main()
 add_library(gait_controller_node STATIC src/gait_controller.cpp)
 set_target_properties(gait_controller_node PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_link_libraries(gait_controller_node gait_core::gait_core height_map)
+target_link_libraries(gait_controller_node gait_core::gait_core gait_core::robots height_map)
 ament_target_dependencies(gait_controller_node ${GAIT_CONTROLLER_DEPS})
 
 add_executable(gait_controller src/main.cpp)
