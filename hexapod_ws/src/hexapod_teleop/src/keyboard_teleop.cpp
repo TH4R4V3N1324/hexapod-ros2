@@ -103,7 +103,13 @@ void KeyboardTeleop::userInputLoop() {
 	while (rclcpp::ok()) {
 		int key = readKeyWithTimeout(50);
 		if (key < 0) {
-		continue;
+			// Resend the current velocity every 50 ms: gait_controller stops if /cmd_vel goes quiet
+			Twist repeat_msg;
+			repeat_msg.linear.x = linearX;
+			repeat_msg.linear.y = linearY;
+			repeat_msg.angular.z = angularZ;
+			cmd_vel_pub->publish(repeat_msg);
+			continue;
 		}
 
     Twist cmd_vel_msg;

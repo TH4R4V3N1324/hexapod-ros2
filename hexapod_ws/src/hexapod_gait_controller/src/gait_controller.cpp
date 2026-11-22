@@ -77,6 +77,9 @@ GaitController::GaitController() : Node("gait_controller") {
         "controller/tilt_active", 10,
         std::bind(&GaitController::controllerTiltCallback, this, _1));
     nominal_dt = 1.0 / loop_rate_hz;
+    // Every /cmd_vel source repeats its command (teleop at 20 Hz, Nav2 at 10 Hz), so a working
+    // link never goes this long without one
+    cmd_vel_timeout = this->declare_parameter("cmd_vel_timeout", 0.5);
 
     // Tilt mode: the feet stay planted while body_pose moves the body, and the IMU holds it
     // level (or at the commanded angle) when whatever it stands on tilts
@@ -201,6 +204,9 @@ GaitController::GaitController() : Node("gait_controller") {
  * @note A zero command bypasses smoothing so the robot stops immediately
 */
 void GaitController::cmdVelCallback(const Twist::SharedPtr msg) {
+    last_cmd_vel_time = this->now();
+    has_cmd_vel = true;
+
     const bool stop_command =
         msg->linear.x == 0.0 && msg->linear.y == 0.0 && msg->linear.z == 0.0 &&
         msg->angular.x == 0.0 && msg->angular.y == 0.0 && msg->angular.z == 0.0;
@@ -602,6 +608,12 @@ void GaitController::gaitTimerCallback() {
     has_last_tick = true;
 
     publishFootprint();
+
+    if (has_cmd_vel && cmd_vel_timeout > 0.0 && (now - last_cmd_vel_time).seconds() > cmd_vel_timeout) {
+        RCLCPP_WARN(this->get_logger(), "No /cmd_vel for %.1f s, stopping", cmd_vel_timeout);
+        filtered_cmd_vel = Twist();
+        has_cmd_vel = false;
+    }
 
     engine->setVelocity({filtered_cmd_vel.linear.x, filtered_cmd_vel.linear.y, filtered_cmd_vel.angular.z});
     const bool wasInitialized = engine->initialized();

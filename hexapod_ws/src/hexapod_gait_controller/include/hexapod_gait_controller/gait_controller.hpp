@@ -121,6 +121,11 @@ private:
 
     // cmd_vel, smoothed
     Twist filtered_cmd_vel;
+    // With no /cmd_vel for cmd_vel_timeout seconds the velocity drops to zero, so the robot
+    // stops if its operator's link drops instead of walking on with the last command
+    double cmd_vel_timeout;  // s, 0 disables
+    rclcpp::Time last_cmd_vel_time;
+    bool has_cmd_vel = false;
 
     // foot_force/legN are for display only, so they're published at foot_force_rate
     double foot_force_period;  // s

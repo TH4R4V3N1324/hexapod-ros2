@@ -371,6 +371,7 @@ it is in the Gazebo launch. Parameters:
 | `max_foot_speed` | 1.5 m/s | Cap on how fast a foot target can move |
 | `max_joint_speed` | 4.0 rad/s | The gait slows down so no joint exceeds this; keep it below the servos' top speed |
 | `idle_return_delay` | 2.0 s | Idle time before the legs return to their start positions |
+| `cmd_vel_timeout` | 0.5 s | With no `/cmd_vel` for this long the robot stops (a dropped operator link); 0 disables |
 | `startup_duration` | 1.0 s | Time for the startup move into the seated pose (longer if `max_joint_speed` requires it) |
 | `stand_on_startup` | false | Stand up as soon as startup has seated the robot, rather than waiting for a `sit` request of false (the simulation launch sets it) |
 
@@ -907,7 +908,8 @@ Foxglove viewing/joystick client:
 
 - **`setup_distrobox.sh`** — run once on the Deck (in Konsole) to create the
   `jazzy` distrobox: Ubuntu 24.04 with ROS 2 Jazzy, matching the robot, plus
-  `joy`, Foxglove Studio and the Hexapod panel. Running it again updates them.
+  `joy`, Foxglove Studio and the Hexapod panel, and builds `controller_imu` in
+  `operator_ws` (controller tilt). Running it again updates them.
 - **`install_panel.sh`** — builds `foxglove_panel/` and installs it into
   Foxglove Studio (called by `setup_distrobox.sh`).
 - **`hexapod_launch.sh`** — the Steam-launchable entry point. Sets up the
@@ -915,8 +917,9 @@ Foxglove viewing/joystick client:
   inside the `jazzy` distrobox.
 - **`ros2_hexapod_launch.sh`** — finds the robot's `foxglove_bridge` (port
   `8765`): the hotspot address 192.168.50.1 first, otherwise a scan of the
-  local `/24` subnet the Deck is on. It then starts `game_controller_node` and
-  opens `foxglove-studio` in kiosk mode pointed at the bridge over a
+  local `/24` subnet the Deck is on. It then stops any `game_controller_node` or
+  `controller_imu` left over from an earlier launch (Steam doesn't stop them),
+  starts both, and opens `foxglove-studio` in kiosk mode pointed at the bridge over a
   `foxglove://` deep link.
 - `images/` — icon/header art used for the Steam Deck game-mode shortcut.
 
