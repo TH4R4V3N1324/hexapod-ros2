@@ -12,11 +12,15 @@ A Foxglove panel for the hexapod, through `foxglove_bridge`:
   critical (the robot sits down) or a board stops reporting, a banner at the top of
   the panel says so.
 - **Mode and gait**: from `get_capabilities`, changed with `set_mode` and `set_gait`.
-  Height is sent with `set_height` when the slider is let go (8–15 cm). **Sit down** /
-  **Stand up** calls `sit`, and follows `/seated` when behaviour_manager sits the
-  robot down on a flat battery.
+  `get_capabilities` is read again every 2 s and whenever `/seated` changes, so changes
+  made from the gamepad (Start, Back, the d-pad) or by sitting show up. The height slider
+  shows the body's current height over gait_controller's `min_height`–`max_height`, and
+  sends `set_height` when let go. **Sit down** / **Stand up** calls `sit`, and follows
+  `/seated` when behaviour_manager sits the robot down on a flat battery.
 - **Features**: gait_controller's switchable features. Each shows the node's
-  parameter and changes it with its `set_<feature>` service.
+  parameter and changes it with its `set_<feature>` service. The terrain map is
+  greyed out while nothing publishes gait_controller's `depth_topic`
+  (`front_depth/points`): only the simulation has a depth camera so far.
 
 ## Build and install
 

@@ -5,7 +5,7 @@ import {
   ParameterValue,
   RenderState,
 } from "@foxglove/extension";
-import { ReactElement, useCallback, useEffect, useLayoutEffect, useState } from "react";
+import { ReactElement, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 // Everything here talks to gait_controller (hexapod_gait_controller) through foxglove_bridge
@@ -32,10 +32,11 @@ const LEG_LAYOUT: { leg: number; x: number; y: number }[] = [
   { leg: 3, x: 2, y: 2 },
 ];
 
-// Body height (m) the slider allows; set_height has no limits of its own
-const HEIGHT_MIN = 0.08;
-const HEIGHT_MAX = 0.15;
-const HEIGHT_DEFAULT = 0.12;
+// How often mode, gait and height are re-read from get_capabilities (ms). The gamepad (Start, Back,
+// d-pad) and sitting change them without the panel knowing.
+const CAPABILITIES_POLL_MS = 2000;
+// gait_controller's default depth_topic; the terrain map needs points on it
+const DEFAULT_DEPTH_TOPIC = "front_depth/points";
 
 const IMU_TOPIC = "/imu/data";
 const POWER_TOPICS = { left: "/power/left", right: "/power/right" };
@@ -53,6 +54,10 @@ type Capabilities = {
   gaits: Option[];
   current_mode: number;
   current_gait: number;
+  // m, positive: where the body is now, and the range set_height accepts
+  current_height: number;
+  min_height: number;
+  max_height: number;
 };
 type Battery = { voltage: number; current: number; percentage: number };
 type DiagnosticStatus = {
@@ -134,7 +139,10 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   >();
   const [dark, setDark] = useState(true);
   const [capabilities, setCapabilities] = useState<Capabilities | undefined>();
-  const [height, setHeight] = useState(HEIGHT_DEFAULT);
+  // Body height (m) shown on the slider; follows current_height except while it's being dragged
+  const [height, setHeight] = useState<number | undefined>();
+  const dragging = useRef(false);
+  const [topics, setTopics] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<{ text: string; error: boolean } | undefined>();
   // Seated, or asked to sit. seated only changes once a sit finishes or a stand starts, so the
   // button follows the last request until then.
@@ -145,6 +153,9 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
       setRenderDone(() => done);
       setParameters(renderState.parameters);
       setDark(renderState.colorScheme !== "light");
+      if (renderState.topics) {
+        setTopics(new Set(renderState.topics.map((t) => t.name)));
+      }
       const frame = renderState.currentFrame;
       if (!frame || frame.length === 0) {
         return;
@@ -186,6 +197,7 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
     context.watch("currentFrame");
     context.watch("parameters");
     context.watch("colorScheme");
+    context.watch("topics");
     context.subscribe([
       { topic: IMU_TOPIC },
       ...LEG_LAYOUT.map(({ leg }) => ({ topic: footTopic(leg) })),
@@ -225,20 +237,51 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
     [context],
   );
 
-  const refreshCapabilities = useCallback(async () => {
-    if (!context.callService) {
-      return;
-    }
-    try {
-      setCapabilities((await context.callService("/get_capabilities", {})) as Capabilities);
-    } catch (error) {
-      setStatus({ text: `Couldn't reach gait_controller: ${String(error)}`, error: true });
-    }
-  }, [context]);
+  // quiet: a background poll, which doesn't report failures (the Retry button does)
+  const refreshCapabilities = useCallback(
+    async (quiet = false) => {
+      if (!context.callService) {
+        return;
+      }
+      try {
+        const caps = (await context.callService("/get_capabilities", {})) as Capabilities;
+        setCapabilities(caps);
+        if (!dragging.current) {
+          setHeight(caps.current_height);
+        }
+      } catch (error) {
+        if (!quiet) {
+          setStatus({ text: `Couldn't reach gait_controller: ${String(error)}`, error: true });
+        }
+      }
+    },
+    [context],
+  );
 
   useEffect(() => {
     void refreshCapabilities();
+    const timer = setInterval(() => void refreshCapabilities(true), CAPABILITIES_POLL_MS);
+    return () => {
+      clearInterval(timer);
+    };
   }, [refreshCapabilities]);
+
+  // Sitting resets the mode to normal, so re-read as soon as /seated changes
+  useEffect(() => {
+    void refreshCapabilities(true);
+  }, [sitting, refreshCapabilities]);
+
+  const sendHeight = () => {
+    dragging.current = false;
+    if (height == undefined) {
+      return;
+    }
+    // Sent once the slider is let go, as the feet's height below the hips (negative)
+    void call("/set_height", { height: -height }, `Height set to ${(height * 100).toFixed(1)} cm`);
+  };
+
+  const depthTopic = String(gaitParameter(parameters, "depth_topic") ?? DEFAULT_DEPTH_TOPIC);
+  const hasDepth = topics.has(depthTopic.startsWith("/") ? depthTopic : `/${depthTopic}`);
 
   const contactThreshold = Number(gaitParameter(parameters, "contact_force_on") ?? 2.0);
   const muted = dark ? "#9aa0a6" : "#5f6368";
@@ -349,7 +392,7 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
               onChange={(event) => {
                 const mode = Number(event.target.value);
                 const name = capabilities.modes.find((m) => m.id === mode)?.name ?? mode;
-                void call("/set_mode", { mode }, `Mode set to ${name}`).then(refreshCapabilities);
+                void call("/set_mode", { mode }, `Mode set to ${name}`).then(() => refreshCapabilities());
               }}
             >
               {capabilities.modes.map((mode) => (
@@ -365,7 +408,7 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
               onChange={(event) => {
                 const gait = Number(event.target.value);
                 const name = capabilities.gaits.find((g) => g.id === gait)?.name ?? gait;
-                void call("/set_gait", { gait }, `Gait set to ${name}`).then(refreshCapabilities);
+                void call("/set_gait", { gait }, `Gait set to ${name}`).then(() => refreshCapabilities());
               }}
             >
               {capabilities.gaits.map((gait) => (
@@ -379,18 +422,28 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
               <input
                 id="hexapod-height"
                 type="range"
-                min={HEIGHT_MIN}
-                max={HEIGHT_MAX}
+                min={capabilities.min_height}
+                max={capabilities.max_height}
                 step={0.005}
-                value={height}
+                value={height ?? capabilities.current_height}
+                onPointerDown={() => {
+                  dragging.current = true;
+                }}
+                onKeyDown={() => {
+                  dragging.current = true;
+                }}
                 onChange={(event) => {
                   setHeight(Number(event.target.value));
                 }}
-                // Sent once the slider is let go, as the feet's height below the hips (negative)
-                onPointerUp={() => void call("/set_height", { height: -height }, `Height set to ${(height * 100).toFixed(1)} cm`)}
-                onKeyUp={() => void call("/set_height", { height: -height }, `Height set to ${(height * 100).toFixed(1)} cm`)}
+                onPointerUp={sendHeight}
+                onKeyUp={sendHeight}
+                onPointerCancel={() => {
+                  dragging.current = false;
+                }}
               />
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{(height * 100).toFixed(1)} cm</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>
+                {((height ?? capabilities.current_height) * 100).toFixed(1)} cm
+              </span>
             </div>
             <span>Posture</span>
             <div>
@@ -420,17 +473,22 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
         {FEATURES.map(({ name, label }) => {
           const value = gaitParameter(parameters, name);
           const known = typeof value === "boolean";
+          // The terrain map only does anything with a depth camera publishing points
+          const noInput = name === "terrain_map" && !hasDepth;
           return (
             <label key={name} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <input
                 type="checkbox"
                 checked={value === true}
-                disabled={!known}
+                disabled={!known || noInput}
                 onChange={(event) => {
                   void call(`/set_${name}`, { data: event.target.checked }, label);
                 }}
               />
-              <span style={{ color: known ? undefined : muted }}>{label}</span>
+              <span style={{ color: known && !noInput ? undefined : muted }}>
+                {label}
+                {noInput && ` (nothing on ${depthTopic})`}
+              </span>
             </label>
           );
         })}
