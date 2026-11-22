@@ -159,7 +159,10 @@ GaitController::GaitController() : Node("gait_controller") {
     gp.walk_level_gain = this->declare_parameter("walk_level_gain", gp.walk_level_gain);
     gp.walk_max_angle = this->declare_parameter("walk_max_angle", gp.walk_max_angle);
 
-    engine = std::make_unique<GaitEngine>(gp, explorer::robot());
+    // Furthest a foot moves from its neutral position (m); with min_phase_duration it sets the top speed
+    RobotDefinition robot = explorer::robot();
+    robot.maxStride = this->declare_parameter("max_stride", static_cast<double>(robot.maxStride));
+    engine = std::make_unique<GaitEngine>(gp, robot);
     engine->log = [this](LogLevel level, const char* message) {
         switch (level) {
             case LogLevel::Debug: RCLCPP_DEBUG(this->get_logger(), "%s", message); break;
@@ -446,6 +449,11 @@ rcl_interfaces::msg::SetParametersResult GaitController::parametersCallback(cons
         else if (name == "load_balance_max") gp.load_balance_max = parameter.as_double();
         else if (name == "walk_level_gain") gp.walk_level_gain = parameter.as_double();
         else if (name == "walk_max_angle") gp.walk_max_angle = parameter.as_double();
+        else if (name == "phase_duration") gp.phase_duration = parameter.as_double();
+        else if (name == "min_phase_duration") gp.min_phase_duration = parameter.as_double();
+        else if (name == "max_foot_speed") gp.max_foot_speed = parameter.as_double();
+        else if (name == "max_joint_speed") gp.max_joint_speed = parameter.as_double();
+        else if (name == "max_target_speed") gp.max_target_speed = parameter.as_double();
     }
     rcl_interfaces::msg::SetParametersResult result;
     result.successful = true;
