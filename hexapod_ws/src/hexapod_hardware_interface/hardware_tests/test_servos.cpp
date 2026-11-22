@@ -22,7 +22,6 @@ using namespace hexapod_hardware_interface;
 
 static constexpr uint8_t ACCELERATION = 20;  // 8.7 °/s² per unit
 static constexpr int ARRIVED_TOLERANCE = 10;  // steps, about 0.9°
-static constexpr double CURRENT_MA_PER_UNIT = 6.5;
 static constexpr int MAX_WHEEL_SPEED = 3400;  // steps/s
 static constexpr int CALIBRATE_MARGIN = 20;   // steps kept inside each end of the range calibrate records
 static constexpr int CALIBRATE_MIN_TRAVEL = 50;  // steps
@@ -223,17 +222,7 @@ std::string jointName(int id) {
  * @return The names of the set bits, or "ok"
 */
 std::string errorText(uint8_t error) {
-    if (error == 0) {
-        return "ok";
-    }
-    static const char* names[] = {"voltage", "sensor", "overheat", "overcurrent", "angle", "overload", "bit6", "bit7"};
-    std::string text;
-    for (int bit = 0; bit < 8; ++bit) {
-        if (error & (1 << bit)) {
-            text += (text.empty() ? "" : ",") + std::string(names[bit]);
-        }
-    }
-    return "ERROR " + text;
+    return error == 0 ? "ok" : "ERROR " + st3215ErrorText(error);
 }
 
 double stepsToDegrees(int steps) {
@@ -283,7 +272,7 @@ std::optional<ServoStatus> readStatus(ST3215Bus& bus, uint8_t id) {
         ST3215Bus::decodeSigned(word(4), 10),
         data[6] * 0.1,
         data[7],
-        ST3215Bus::decodeSigned(word(13), 15) * CURRENT_MA_PER_UNIT,
+        ST3215Bus::decodeSigned(word(13), 15) * ST3215_CURRENT_MA_PER_UNIT,
         data[10] != 0,
         error
     };
@@ -375,7 +364,7 @@ std::string describeValue(const Register& reg, int value) {
         return format("(%+.1f°)", value * 360.0 / ST3215_STEPS_PER_REV);
     }
     if (name == "present_current") {
-        return format("(%.0f mA)", value * CURRENT_MA_PER_UNIT);
+        return format("(%.0f mA)", value * ST3215_CURRENT_MA_PER_UNIT);
     }
     return "";
 }

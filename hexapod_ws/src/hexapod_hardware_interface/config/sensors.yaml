@@ -29,6 +29,17 @@ servo_power:
     gpio_chip: /dev/gpiochip0   # Pi 5, kernel 6.6.45 or newer (gpiochip4 on older kernels)
     gpio_lines: [17]            # BCM GPIO numbers: one shared line, or one per leg hub. Use GPIO9-27 (pulled down at boot)
 
+# Servo health from ST3215System's temperature/voltage/current/servo_error state interfaces
+servo_monitor:
+  ros__parameters:
+    temperature_warn: 55.0          # °C
+    temperature_error: 65.0         # °C; the servos turn themselves off at 70 °C (max_temperature)
+    voltage_drop_warn: 1.0          # V below the best-supplied servo: a bad connection
+    stale_timeout: 2.0              # s without /dynamic_joint_states before it's reported stale
+    diagnostics_rate: 1.0           # Hz
+    joint_states_rate: 10.0         # Hz, joint_states/throttled (effort to plot)
+    dynamic_joint_states_rate: 2.0  # Hz, dynamic_joint_states/throttled (temperature etc. to plot)
+
 # RPLIDAR A2M12 (Slamtec rplidar_ros driver)
 rplidar:
   ros__parameters:

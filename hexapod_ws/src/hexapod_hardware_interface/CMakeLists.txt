@@ -13,6 +13,8 @@ find_package(hardware_interface REQUIRED)
 find_package(pluginlib REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(control_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(gait_core REQUIRED)  # the IK, for test_leg
 find_package(ament_index_cpp REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -52,6 +54,10 @@ ament_target_dependencies(ina226_node rclcpp sensor_msgs)
 add_executable(servo_power_node src/servo_power_node.cpp)
 ament_target_dependencies(servo_power_node rclcpp std_msgs)
 
+# Servo health on /diagnostics and throttled joint states, from ST3215System's state interfaces
+add_executable(servo_monitor src/servo_monitor.cpp)
+ament_target_dependencies(servo_monitor rclcpp std_msgs sensor_msgs control_msgs diagnostic_msgs hardware_interface)
+
 # Hardware test programs, run on the robot without ROS (see hardware_tests/README.md)
 add_executable(test_imu hardware_tests/test_imu.cpp)
 target_link_libraries(test_imu i2c_sensors)
@@ -69,7 +75,7 @@ install(TARGETS ${PROJECT_NAME}
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-install(TARGETS ism330dhcx_node ina226_node servo_power_node test_imu test_power test_servos test_leg DESTINATION lib/${PROJECT_NAME})
+install(TARGETS ism330dhcx_node ina226_node servo_power_node servo_monitor test_imu test_power test_servos test_leg DESTINATION lib/${PROJECT_NAME})
 install(PROGRAMS hardware_tests/test_lidar.py DESTINATION lib/${PROJECT_NAME} RENAME test_lidar)
 install(DIRECTORY include/ DESTINATION include)
 install(DIRECTORY config DESTINATION share/${PROJECT_NAME})

@@ -43,6 +43,12 @@ const POWER_TOPICS = { left: "/power/left", right: "/power/right" };
 // behaviour_manager's battery state, one entry in the DiagnosticArrays on /diagnostics
 const DIAGNOSTICS_TOPIC = "/diagnostics";
 const BATTERY_DIAGNOSTIC = "behaviour_manager: battery";
+// servo_monitor's statuses: a summary, and one per servo named after its joint
+const SERVO_PREFIX = "servo_monitor: ";
+const SERVO_SUMMARY = "servo_monitor: servos";
+// servo_monitor publishes once a second; older than this and it has probably stopped
+const SERVO_STALE_MS = 5000;
+const JOINTS = ["coxa", "femur", "tibia"] as const;
 // gait_controller's sit service (std_srvs/SetBool) and whether it's seated (std_msgs/Bool, latched)
 const SEATED_TOPIC = "/seated";
 const footTopic = (leg: number) => `/foot_force/leg${leg}`;
@@ -68,9 +74,18 @@ type DiagnosticStatus = {
 };
 // diagnostic_msgs/DiagnosticStatus levels
 const DIAG_OK = 0;
+const DIAG_WARN = 1;
 const DIAG_ERROR = 2;
 const DIAG_STALE = 3;
 type BatteryStatus = { level: number; message: string; voltage?: string };
+type ServoStatus = { level: number; message: string; values: Record<string, string> };
+type ServoHealth = { summary: ServoStatus; joints: Record<string, ServoStatus>; receivedAt: number };
+
+const toServoStatus = (s: DiagnosticStatus): ServoStatus => ({
+  level: s.level,
+  message: s.message,
+  values: Object.fromEntries(s.values.map((v) => [v.key, v.value])),
+});
 
 function rollPitch(q: Quaternion): { roll: number; pitch: number } {
   const roll = Math.atan2(2 * (q.w * q.x + q.y * q.z), 1 - 2 * (q.x * q.x + q.y * q.y));
@@ -134,6 +149,9 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   const [footForces, setFootForces] = useState<Record<number, number>>({});
   const [power, setPower] = useState<Record<string, Battery>>({});
   const [batteryStatus, setBatteryStatus] = useState<BatteryStatus | undefined>();
+  const [servoHealth, setServoHealth] = useState<ServoHealth | undefined>();
+  // Ticks once a second so servo health can go stale if servo_monitor stops
+  const [clock, setClock] = useState(() => Date.now());
   const [parameters, setParameters] = useState<
     Immutable<Map<string, ParameterValue>> | undefined
   >();
@@ -177,6 +195,16 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
           setSitting((event.message as { data: boolean }).data);
         } else if (event.topic === DIAGNOSTICS_TOPIC) {
           const msg = event.message as { status: DiagnosticStatus[] };
+          const summary = msg.status.find((s) => s.name === SERVO_SUMMARY);
+          if (summary) {
+            const joints: Record<string, ServoStatus> = {};
+            for (const s of msg.status) {
+              if (s.name.startsWith(SERVO_PREFIX) && s.name !== SERVO_SUMMARY) {
+                joints[s.name.slice(SERVO_PREFIX.length)] = toServoStatus(s);
+              }
+            }
+            setServoHealth({ summary: toServoStatus(summary), joints, receivedAt: Date.now() });
+          }
           const battery = msg.status.find((s) => s.name === BATTERY_DIAGNOSTIC);
           if (battery) {
             setBatteryStatus({
@@ -211,6 +239,15 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
   useEffect(() => {
     renderDone?.();
   }, [renderDone]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setClock(Date.now());
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+    };
+  }, []);
 
   const call = useCallback(
     async (service: string, request: unknown, description: string): Promise<unknown> => {
@@ -304,8 +341,37 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
     return `Battery ${state === "OK" ? "OK" : state.toLowerCase()}${volts}${advice}${missing}`;
   };
 
+  const servosStale = servoHealth == undefined || clock - servoHealth.receivedAt > SERVO_STALE_MS;
+  const servoSummary = servoHealth && !servosStale ? servoHealth.summary : undefined;
+  const servoTitle = (joint: string, servo: ServoStatus | undefined) => {
+    if (!servo) {
+      return `${joint}: no data`;
+    }
+    const v = servo.values;
+    return [
+      `${joint}: ${servo.message}`,
+      `${v.temperature ?? "n/a"} °C, ${v.voltage ?? "n/a"} V, ${v.current ?? "n/a"} A`,
+      `load ${v.load ?? "n/a"} N·m, errors ${v.errors ?? "n/a"}`,
+    ].join("\n");
+  };
+
   return (
     <div style={{ padding: 12, fontFamily: "sans-serif", fontSize: 13, overflowY: "auto", height: "100%" }}>
+      {servoSummary && servoSummary.level === DIAG_ERROR && (
+        <div
+          role="alert"
+          style={{
+            marginBottom: 12,
+            padding: "8px 10px",
+            borderRadius: 4,
+            border: `2px solid ${errorColor}`,
+            color: errorColor,
+            fontWeight: "bold",
+          }}
+        >
+          Servos: {servoSummary.message}
+        </div>
+      )}
       {batteryStatus && batteryStatus.level !== DIAG_OK && (
         <div
           role="alert"
@@ -380,6 +446,55 @@ function HexapodPanel({ context }: { context: PanelExtensionContext }): ReactEle
             </div>
           );
         })}
+      </Section>
+
+      <Section title="Servos">
+        {servoSummary ? (
+          <>
+            <div style={{ marginBottom: 6, color: batteryColor(servoSummary.level === DIAG_STALE ? DIAG_WARN : servoSummary.level) }}>
+              {servoSummary.message}
+              {servoSummary.values.max_current && servoSummary.values.max_current !== "n/a" && (
+                <span style={{ color: muted }}>
+                  {" "}
+                  · peak {servoSummary.values.max_current} A · min {servoSummary.values.min_voltage} V
+                </span>
+              )}
+            </div>
+            {/* Each leg's coxa, femur and tibia temperature, coloured by the servo's level; hover for details */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 24px 1fr", rowGap: 4, maxWidth: 280 }}>
+              {LEG_LAYOUT.map(({ leg, x, y }) => (
+                <div
+                  key={leg}
+                  style={{ gridColumn: x + 1, gridRow: y + 1, display: "flex", gap: 6, fontVariantNumeric: "tabular-nums" }}
+                >
+                  <span style={{ color: muted }}>L{leg}</span>
+                  {JOINTS.map((part) => {
+                    const joint = `leg${leg}_${part}_joint`;
+                    const servo = servoHealth?.joints[joint];
+                    const temperature = servo?.values.temperature;
+                    const answering = temperature != undefined && temperature !== "n/a";
+                    const color =
+                      !servo || !answering ? muted : servo.level === DIAG_STALE ? warnColor : batteryColor(servo.level);
+                    return (
+                      <span
+                        key={part}
+                        title={servoTitle(joint, servo)}
+                        style={{ color, fontWeight: servo && servo.level !== DIAG_OK ? "bold" : undefined, minWidth: 26 }}
+                      >
+                        {answering ? `${temperature}°` : servo?.message === "Servo power off" ? "off" : "–"}
+                      </span>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+            <div style={{ color: muted, fontSize: 11, marginTop: 4 }}>°C for coxa, femur, tibia; hover for details</div>
+          </>
+        ) : (
+          <div style={{ color: muted }}>
+            {servoHealth ? "servo_monitor stopped reporting" : "No servo health from servo_monitor"}
+          </div>
+        )}
       </Section>
 
       <Section title="Mode and gait">

@@ -24,6 +24,13 @@
       <state_interface name="position"/>
       <state_interface name="velocity"/>
       <state_interface name="effort"/>
+      <!-- Servo health, published on /dynamic_joint_states and watched by servo_monitor -->
+      <xacro:if value="${hardware == 'st3215'}">
+        <state_interface name="temperature"/>  <!-- °C -->
+        <state_interface name="voltage"/>      <!-- V -->
+        <state_interface name="current"/>      <!-- A, refreshed one servo a cycle in turn -->
+        <state_interface name="servo_error"/>  <!-- status packet error bits -->
+      </xacro:if>
     </joint>
   </xacro:macro>
 

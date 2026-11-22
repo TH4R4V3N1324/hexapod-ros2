@@ -65,6 +65,17 @@ CallbackReturn ST3215System::on_init(const hardware_interface::HardwareComponent
                     return CallbackReturn::ERROR;
                 }
             }
+            // The health interfaces are optional, but all or none
+            int health = 0;
+            for (const char* name : {HW_IF_TEMPERATURE, HW_IF_VOLTAGE, HW_IF_CURRENT, HW_IF_SERVO_ERROR}) {
+                health += std::any_of(joint.state_interfaces.begin(), joint.state_interfaces.end(),
+                    [name](const auto& interface) { return interface.name == name; }) ? 1 : 0;
+            }
+            if (health != 0 && health != 4) {
+                RCLCPP_ERROR(get_logger(), "Joint '%s' needs all of the %s, %s, %s and %s state interfaces, or none",
+                    joint.name.c_str(), HW_IF_TEMPERATURE, HW_IF_VOLTAGE, HW_IF_CURRENT, HW_IF_SERVO_ERROR);
+                return CallbackReturn::ERROR;
+            }
             if (joint.parameters.find("servo_id") == joint.parameters.end()) {
                 RCLCPP_ERROR(get_logger(), "Joint '%s' is missing the servo_id param", joint.name.c_str());
                 return CallbackReturn::ERROR;
@@ -75,6 +86,7 @@ CallbackReturn ST3215System::on_init(const hardware_interface::HardwareComponent
             servo.id = static_cast<uint8_t>(std::stoi(joint.parameters.at("servo_id")));
             servo.direction = std::stod(param(joint.parameters, "direction", "1")) < 0 ? -1.0 : 1.0;
             servo.offset = std::stod(param(joint.parameters, "offset", "0"));
+            servo.telemetry = health == 4;
             joints.push_back(servo);
             ids.push_back(servo.id);
         }
@@ -179,13 +191,16 @@ CallbackReturn ST3215System::on_cleanup(const rclcpp_lifecycle::State& /*previou
 }
 
 /**
- * @brief Read position, velocity and load from every answering servo, and try one silent one
+ * @brief Read position, velocity, load, voltage and temperature from every answering servo, the
+ *        current of one of them, and try one silent one
  * @param[in] time The current time
  * @param[in] period The time since the last read
  * @return OK
  * @note A missed reply keeps the joint's previous state; MISSED_REPLIES in a row and it counts as
  *       not answering, and its state reads NaN. Only one silent servo is tried each cycle, since
  *       each costs a reply timeout. One that answers again is held where it is with torque on.
+ *       Current takes a read of its own, so each cycle reads it from the next answering servo in
+ *       turn: every servo's is refreshed every 18 cycles (0.18 s at 100 Hz).
 */
 return_type ST3215System::read(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {
     constexpr int MISSED_REPLIES = 3;
@@ -246,6 +261,25 @@ return_type ST3215System::read(const rclcpp::Time& /*time*/, const rclcpp::Durat
         set_state(joint.name + "/" + HW_IF_POSITION, stepsToRadians(joint, state->position));
         set_state(joint.name + "/" + HW_IF_VELOCITY, joint.direction * state->speed * 2.0 * M_PI / ST3215_STEPS_PER_REV);
         set_state(joint.name + "/" + HW_IF_EFFORT, joint.direction * state->load / 1000.0 * max_torque);
+        if (joint.telemetry) {
+            set_state(joint.name + "/" + HW_IF_TEMPERATURE, static_cast<double>(state->temperature));
+            set_state(joint.name + "/" + HW_IF_VOLTAGE, state->voltage);
+            set_state(joint.name + "/" + HW_IF_SERVO_ERROR, static_cast<double>(state->error));
+        }
+    }
+
+    // One answering servo's current. A missed reply just keeps the last reading.
+    for (size_t n = 0; n < joints.size(); ++n) {
+        const size_t i = (next_current + n) % joints.size();
+        auto& joint = joints[i];
+        if (!joint.answering || !joint.telemetry) {
+            continue;
+        }
+        next_current = i + 1;
+        if (const auto current = bus.readCurrent(joint.id)) {
+            set_state(joint.name + "/" + HW_IF_CURRENT, *current / 1000.0);
+        }
+        break;
     }
 
     if (!revived_ids.empty()) {
@@ -267,6 +301,11 @@ void ST3215System::setStateUnknown(const ST3215Joint& joint) {
     set_state(joint.name + "/" + HW_IF_POSITION, nan);
     set_state(joint.name + "/" + HW_IF_VELOCITY, nan);
     set_state(joint.name + "/" + HW_IF_EFFORT, nan);
+    if (joint.telemetry) {
+        for (const char* name : {HW_IF_TEMPERATURE, HW_IF_VOLTAGE, HW_IF_CURRENT, HW_IF_SERVO_ERROR}) {
+            set_state(joint.name + "/" + name, nan);
+        }
+    }
 }
 
 /**

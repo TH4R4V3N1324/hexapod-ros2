@@ -31,6 +31,33 @@ static constexpr uint8_t ST3215_REG_PRESENT_POSITION = 56;
 static constexpr uint8_t ST3215_REG_PRESENT_VOLTAGE = 62;      // 0.1 V
 static constexpr uint8_t ST3215_REG_PRESENT_TEMPERATURE = 63;  // °C
 static constexpr uint8_t ST3215_REG_MOVING = 66;
+static constexpr uint8_t ST3215_REG_PRESENT_CURRENT = 69;      // 2 bytes, sign bit 15, ST3215_CURRENT_MA_PER_UNIT
+static constexpr double ST3215_CURRENT_MA_PER_UNIT = 6.5;
+
+// Status packet error bits
+static constexpr uint8_t ST3215_ERROR_VOLTAGE = 1 << 0;
+static constexpr uint8_t ST3215_ERROR_SENSOR = 1 << 1;
+static constexpr uint8_t ST3215_ERROR_OVERHEAT = 1 << 2;
+static constexpr uint8_t ST3215_ERROR_OVERCURRENT = 1 << 3;
+static constexpr uint8_t ST3215_ERROR_ANGLE = 1 << 4;
+static constexpr uint8_t ST3215_ERROR_OVERLOAD = 1 << 5;
+
+/**
+ * @brief Name the error bits set in a status packet, e.g. "overheat,overload", or "ok" for none
+*/
+inline std::string st3215ErrorText(uint8_t error) {
+    if (error == 0) {
+        return "ok";
+    }
+    static const char* names[] = {"voltage", "sensor", "overheat", "overcurrent", "angle", "overload", "bit6", "bit7"};
+    std::string text;
+    for (int bit = 0; bit < 8; ++bit) {
+        if (error & (1 << bit)) {
+            text += (text.empty() ? "" : ",") + std::string(names[bit]);
+        }
+    }
+    return text;
+}
 
 static constexpr int ST3215_STEPS_PER_REV = 4096;
 static constexpr int ST3215_CENTER_POSITION = 2048;
@@ -39,10 +66,12 @@ static constexpr int ST3215_CENTER_POSITION = 2048;
  * @brief Raw feedback read from one servo
 */
 struct ST3215State {
-    int position;   // steps, 0-4095
-    int speed;      // steps/s, signed
-    int load;       // 0.1% of max torque, signed
-    uint8_t error;  // status packet error bits (0 = no error)
+    int position;     // steps, 0-4095
+    int speed;        // steps/s, signed
+    int load;         // 0.1% of max torque, signed
+    double voltage;   // V
+    int temperature;  // °C
+    uint8_t error;    // status packet error bits (0 = no error)
 };
 
 /**
@@ -68,6 +97,7 @@ public:
         uint16_t speed
     );
     void readStates(const std::vector<uint8_t>& ids, std::vector<std::optional<ST3215State>>& states);
+    std::optional<double> readCurrent(uint8_t id);
     bool readRegisters(uint8_t id, uint8_t address, uint8_t length, std::vector<uint8_t>& data, uint8_t& error);
     bool writeRegisters(uint8_t id, uint8_t address, const std::vector<uint8_t>& data);
 

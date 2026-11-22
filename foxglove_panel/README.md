@@ -11,6 +11,11 @@ A Foxglove panel for the hexapod, through `foxglove_bridge`:
   behaviour_manager's battery status from `/diagnostics`. When the battery is low,
   critical (the robot sits down) or a board stops reporting, a banner at the top of
   the panel says so.
+- **Servos**: servo_monitor's health from `/diagnostics`: its summary (problems, or the
+  hottest servo), peak current and lowest supply voltage, then each leg's coxa, femur and
+  tibia temperature, coloured by that servo's warning or error level. Hover over a
+  temperature for its voltage, current, load and error bits. A servo error also puts a
+  banner at the top of the panel; "off" means servo power is off.
 - **Mode and gait**: from `get_capabilities`, changed with `set_mode` and `set_gait`.
   `get_capabilities` is read again every 2 s and whenever `/seated` changes, so changes
   made from the gamepad (Start, Back, the d-pad) or by sitting show up. The height slider

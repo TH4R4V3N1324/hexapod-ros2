@@ -159,11 +159,17 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
 - **`ST3215System`** — a `ros2_control` `SystemInterface` plugin
   (`hexapod_hardware_interface/ST3215System`) for the 18 servos.
   - Each cycle, `write()` sends every goal position in one sync-write packet,
-    and `read()` gets position, speed and load back with one sync read.
+    and `read()` gets position, speed, load, voltage and temperature back with
+    one sync read (registers 56-63), then reads the current of one servo, the
+    next in turn each cycle (every servo's every 0.18 s at 100 Hz).
   - Exposes a position command and position, velocity and effort states per
     joint. Effort is the servo's load reading scaled by the `max_torque`
     param (2.94 N·m, the ST3215's 12 V stall torque). It's an estimate, but
     useful for detecting leg contact.
+  - With the st3215 hardware each joint also has `temperature` (°C), `voltage`
+    (V), `current` (A) and `servo_error` (the servo's status error bits) state
+    interfaces, which `joint_state_broadcaster` publishes on
+    `/dynamic_joint_states`.
   - On activation it sets each goal to the servo's current position before
     enabling torque, so the legs don't jump. Deactivating disables torque.
   - Servos that don't reply are logged and skipped rather than stopping the
@@ -177,8 +183,18 @@ hexapod_ws: controller_teleop → /cmd_vel → gait_controller
 - **`ina226_node`** — reads both INA226s and publishes `sensor_msgs/BatteryState`
   on `power/left` and `power/right`. Current is negative while drawing power,
   as `BatteryState` specifies. Percentage is a rough estimate from voltage.
+- **`servo_monitor`** — servo health on `/diagnostics` once a second, from
+  `/dynamic_joint_states`: a status per servo (`servo_monitor: <joint>`) and a
+  summary (`servo_monitor: servos`, with the hottest servo). 55 °C is a warning
+  and 65 °C an error (the servos shut themselves off at 70 °C); so is a servo
+  more than 1 V below the best-supplied one (a bad connection) and any error bit
+  the servo reports. A servo that doesn't answer is stale, unless `/servo_power`
+  is off. It also republishes `/joint_states` at 10 Hz on
+  `/joint_states/throttled` and `/dynamic_joint_states` at 2 Hz on
+  `/dynamic_joint_states/throttled`: plot those in Foxglove, as the 100 Hz
+  originals lag over Wi-Fi.
 - `config/sensors.yaml` — I2C bus, addresses, ranges, shunt resistances and
-  battery voltage limits for the sensor nodes.
+  battery voltage limits for the sensor nodes, and `servo_monitor`'s thresholds.
 
 Both sensor nodes keep retrying if their device is missing, so a loose
 connection recovers without a restart.
@@ -287,11 +303,30 @@ See [Gait controller internals](#gait-controller-internals) below.
   `front_depth_width/height/rate` as launch arguments to control whether
   the (bandwidth-heavy) camera/depth topics are bridged out of Gazebo.
 
-### `hexapod_control` (stub)
+### `hexapod_control`
 
-`behaviour_manager.cpp` and `config_manager.cpp` exist as empty files with
-no build target in `CMakeLists.txt`. This package is a placeholder for
-future higher-level behaviour/config logic and currently does nothing.
+- **`behaviour_manager`** — watches the battery through `/power/left` and
+  `/power/right`: a low battery buzzes the controller, and a critical one
+  sits the robot down and turns the servo power off. Its state is on
+  `/diagnostics` for the panel.
+- **`sim_power_monitor`** (simulation) — stands in for the INA226 power
+  monitors. Set the battery voltage while running with
+  `ros2 param set /sim_power_monitor voltage 9.8`.
+- **`sim_servo_health`** (simulation) — models what Gazebo doesn't have: each
+  servo's current (from its effort), temperature (heated by that current,
+  with a 5 minute time constant) and supply voltage (the sim battery less the
+  wiring drop). It publishes them as `sim/dynamic_joint_states`, with the same
+  interfaces as the real servos, and the simulation launch points
+  `servo_monitor` at it, so servo health on `/diagnostics` and in the panel
+  works in the sim. To try the warnings and errors while it runs:
+  - `ros2 param set /sim_servo_health time_scale 30.0` heats 30× faster
+  - `ros2 param set /sim_servo_health hot_joints "['leg2_femur_joint']"`
+    adds `hot_offset` (20 °C) to that servo
+  - `ros2 param set /sim_servo_health silent_joints "['leg4_coxa_joint']"`
+    makes it stop answering
+  - set either list back to `"['']"` to clear it
+
+`config_manager.cpp` is an empty placeholder with no build target.
 
 ## ROS graph reference
 
@@ -301,6 +336,10 @@ future higher-level behaviour/config logic and currently does nothing.
 |---|---|---|---|
 | `/cmd_vel` | `geometry_msgs/Twist` | `keyboard_teleop`, `controller_teleop` | `gait_controller` |
 | `/joint_states` | `sensor_msgs/JointState` (position, velocity, effort) | `joint_state_broadcaster` | `gait_controller`, `robot_state_publisher` |
+| `/dynamic_joint_states` | `control_msgs/DynamicJointState` (every state interface, including servo temperature, voltage, current and servo_error on the robot) | `joint_state_broadcaster` | `servo_monitor` |
+| `/sim/dynamic_joint_states` | `control_msgs/DynamicJointState` (modelled servo health, simulation only) | `sim_servo_health` | `servo_monitor` (remapped) |
+| `/joint_states/throttled`, `/dynamic_joint_states/throttled` | as above, at 10 Hz and 2 Hz for plotting | `servo_monitor` | — |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | `behaviour_manager` (battery), `servo_monitor` (servos) | Foxglove panel |
 | `/joint_commands` | `sensor_msgs/JointState` | `gait_controller` | `joint_state_relay` |
 | `/hexapod_joint_controller/commands` | `std_msgs/Float64MultiArray` | `joint_state_relay` | `hexapod_joint_controller` (ros2_control) |
 | `/imu/data_raw` | `sensor_msgs/Imu` (no orientation) | `ism330dhcx_node` | `imu_filter_madgwick` |
@@ -898,6 +937,7 @@ Two ways to run it:
 
 `foxglove_panel/` is a Foxglove extension adding a **Hexapod** panel: body
 roll and pitch, which feet are on the ground and how hard, power for each side,
+servo temperatures and health,
 mode, gait and body height, and switches for gait_controller's features (each
 showing the node's current parameter). See its README to build and install it.
 

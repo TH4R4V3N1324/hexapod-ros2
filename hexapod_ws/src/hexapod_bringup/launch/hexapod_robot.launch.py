@@ -194,6 +194,15 @@ def generate_launch_description():
                 output='screen',
                 parameters=[sensors_file]
             ),
+            # Servo temperature, voltage, current and error bits on /diagnostics, and throttled
+            # /joint_states and /dynamic_joint_states for plotting over Wi-Fi
+            Node(
+                package='hexapod_hardware_interface',
+                executable='servo_monitor',
+                name='servo_monitor',
+                output='screen',
+                parameters=[sensors_file]
+            ),
             # RPLIDAR A2M12, published on /lidar/scan like the simulated lidar
             Node(
                 package='rplidar_ros',

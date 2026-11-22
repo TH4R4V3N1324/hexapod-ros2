@@ -85,6 +85,26 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}]
     )
 
+    # Models the servos' temperature, voltage and current, which Gazebo doesn't have, for servo_monitor.
+    # Inject faults while running: ros2 param set /sim_servo_health hot_joints "['leg2_femur_joint']"
+    sim_servo_health = Node(
+        package='hexapod_control',
+        executable='sim_servo_health',
+        name='sim_servo_health',
+        output='screen',
+        parameters=[{'use_sim_time': True}]
+    )
+
+    # Servo health on /diagnostics, as on the robot, but from sim_servo_health's readings
+    servo_monitor = Node(
+        package='hexapod_hardware_interface',
+        executable='servo_monitor',
+        name='servo_monitor',
+        output='screen',
+        parameters=[{'use_sim_time': True}],
+        remappings=[('dynamic_joint_states', 'sim/dynamic_joint_states')]
+    )
+
     # Fuses leg odometry and the simulated IMU gyro, publishes odom -> base_link
     ekf_node = Node(
         package='robot_localization',
@@ -197,6 +217,8 @@ def generate_launch_description():
         controller_imu_node,
         behaviour_manager,
         sim_power_monitor,
+        sim_servo_health,
+        servo_monitor,
         ekf_node,
         lidar_filter,
         slam,

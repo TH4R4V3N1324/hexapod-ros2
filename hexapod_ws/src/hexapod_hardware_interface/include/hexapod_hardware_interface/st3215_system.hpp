@@ -12,6 +12,13 @@
 
 namespace hexapod_hardware_interface {
 
+// Optional per-joint state interfaces for servo health. joint_state_broadcaster publishes them on
+// /dynamic_joint_states; NaN while the servo isn't answering (or, for current, not read yet).
+static constexpr char HW_IF_TEMPERATURE[] = "temperature";  // °C
+static constexpr char HW_IF_VOLTAGE[] = "voltage";          // V
+static constexpr char HW_IF_CURRENT[] = "current";          // A, one servo a cycle in turn
+static constexpr char HW_IF_SERVO_ERROR[] = "servo_error";  // status packet error bits (ST3215_ERROR_*)
+
 using hardware_interface::CallbackReturn;
 using hardware_interface::return_type;
 
@@ -23,6 +30,7 @@ struct ST3215Joint {
     uint8_t id;        // servo ID on the bus
     double direction;  // 1 or -1, flips the servo's rotation to match the joint
     double offset;     // joint angle (rad) when the servo is at its centre position
+    bool telemetry = false;  // has the temperature, voltage, current and servo_error state interfaces
 
     // Whether it's answering. Unpowered servos (SERVO_EN low, E-stop open) don't; their state reads NaN.
     bool answering = false;
@@ -35,7 +43,8 @@ struct ST3215Joint {
 
 /**
  * @brief ros2_control system for the 18 leg joints, driven by Waveshare ST3215 bus servos
- * @note Exposes position commands and position, velocity and effort states.
+ * @note Exposes position commands and position, velocity and effort states, plus optional
+ *       temperature, voltage, current and servo_error states for servo health.
  *       Effort is the servo's load reading scaled by the max_torque hardware param.
  *       A servo that stops answering (its power is off: SERVO_EN low or the E-stop open) reads
  *       NaN, which the gait controller takes as missing. When it answers again it is held where it
@@ -60,6 +69,7 @@ private:
     std::vector<ST3215Joint> joints;
     std::vector<uint8_t> ids;
     size_t next_probe = 0;   // which silent servo to try next: one a cycle, so unpowered servos don't stall the loop
+    size_t next_current = 0; // which servo's current to read next: one a cycle, as it's a separate read
 
     std::string serial_port;
     int baud_rate = 1000000;

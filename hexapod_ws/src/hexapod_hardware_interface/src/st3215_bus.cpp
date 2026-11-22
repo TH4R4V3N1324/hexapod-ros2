@@ -13,7 +13,9 @@ namespace hexapod_hardware_interface {
 namespace {
 
 constexpr int STATUS_TIMEOUT_MS = 5;
-constexpr uint8_t STATE_LENGTH = 6;  // position, speed, load (2 bytes each)
+// Position, speed and load (2 bytes each), then voltage and temperature (1 byte each): registers
+// 56-63 in one block, so the sync read gets the telemetry for 2 more bytes a servo
+constexpr uint8_t STATE_LENGTH = 8;
 
 /**
  * @brief Convert a baud rate to its termios speed constant
@@ -159,7 +161,7 @@ bool ST3215Bus::writeGoalPositions(
 }
 
 /**
- * @brief Read position, speed and load from a set of servos with one sync read
+ * @brief Read position, speed, load, voltage and temperature from a set of servos with one sync read
  * @param[in] ids The servo IDs
  * @param[out] states The state of each servo, or nullopt if it did not reply
 */
@@ -183,9 +185,26 @@ void ST3215Bus::readStates(const std::vector<uint8_t>& ids, std::vector<std::opt
             decodeSigned(static_cast<uint16_t>(data[0] | (data[1] << 8)), 15),
             decodeSigned(static_cast<uint16_t>(data[2] | (data[3] << 8)), 15),
             decodeSigned(static_cast<uint16_t>(data[4] | (data[5] << 8)), 10),
+            data[6] * 0.1,
+            data[7],
             error
         };
     }
+}
+
+/**
+ * @brief Read the current one servo draws
+ * @param[in] id The servo ID
+ * @return The current in mA (signed), or nullopt if the servo did not reply
+ * @note Current isn't next to the registers readStates reads, so it's a separate read
+*/
+std::optional<double> ST3215Bus::readCurrent(uint8_t id) {
+    std::vector<uint8_t> data;
+    uint8_t error = 0;
+    if (!readRegisters(id, ST3215_REG_PRESENT_CURRENT, 2, data, error)) {
+        return std::nullopt;
+    }
+    return decodeSigned(static_cast<uint16_t>(data[0] | (data[1] << 8)), 15) * ST3215_CURRENT_MA_PER_UNIT;
 }
 
 /**

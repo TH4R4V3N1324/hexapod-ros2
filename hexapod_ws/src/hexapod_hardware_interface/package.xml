@@ -15,6 +15,8 @@
   <depend>pluginlib</depend>
   <depend>sensor_msgs</depend>
   <depend>std_msgs</depend>
+  <depend>control_msgs</depend>  <!-- servo_monitor: /dynamic_joint_states -->
+  <depend>diagnostic_msgs</depend>
   <depend>gait_core</depend>  <!-- the IK, for hardware_tests/test_leg -->
   <depend>ament_index_cpp</depend>
   <depend>eigen</depend>
