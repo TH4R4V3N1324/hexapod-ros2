@@ -59,9 +59,11 @@ export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$(id -u)}
 # The Deck's sticks jitter just off centre, and by default every change is published (up to
 # 1 kHz): ~400 messages a second queued up over Wi-Fi and made the robot lag by about a second.
 # Coalescing to 20 ms caps /joy at 50 Hz.
-# A joy node from an earlier launch can still be running: Steam stops this script but not what it
-# started inside the distrobox. Several publishers on /joy fight each other and add lag.
+# Nodes from an earlier launch can still be running: Steam stops this script but not what it
+# started inside the distrobox. Several publishers on /joy fight each other and add lag, and two
+# controller_imu nodes each track their own yaw on /controller/imu, so tilt jitters.
 pkill -f "lib/joy/game_controller_node" 2>/dev/null || true
+pkill -f "lib/controller_imu/controller_imu" 2>/dev/null || true
 ros2 run joy game_controller_node --ros-args -p coalesce_interval_ms:=20 &
 JOY_PID=$!
 echo "ros2 joy node PID: $JOY_PID"
@@ -72,7 +74,8 @@ if ros2 pkg prefix controller_imu >/dev/null 2>&1; then
     IMU_PID=$!
     echo "controller_imu node PID: $IMU_PID"
 else
-    echo "controller_imu is not built in the operator workspace; controller tilt is unavailable."
+    echo "WARNING: controller_imu is not built in the operator workspace, so controller tilt won't work."
+    echo "         Run steamdeck/setup_distrobox.sh on the Deck to build it."
 fi
 
 sleep 1

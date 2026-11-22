@@ -1,6 +1,7 @@
 #!/bin/bash
 # Create the Steam Deck's "jazzy" distrobox: Ubuntu 24.04 with ROS 2 Jazzy, matching the robot,
-# plus the joy package (game_controller_node), Foxglove Studio and the Hexapod panel. Run it on
+# plus the joy package (game_controller_node), controller_imu (built from operator_ws), Foxglove
+# Studio and the Hexapod panel. Run it on
 # the Deck itself (SteamOS, Konsole), not inside a box. Safe to run again; it also updates what's
 # installed, including the panel from foxglove_panel/.
 #
@@ -37,10 +38,20 @@ if ! dpkg -s foxglove-studio >/dev/null 2>&1; then
 fi
 
 sudo -E apt-get update
-# Node.js builds the Hexapod Foxglove panel (install_panel.sh)
-sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy libsdl2-dev foxglove-studio nodejs npm
+# Node.js builds the Hexapod Foxglove panel (install_panel.sh); colcon, a compiler and SDL2 build
+# controller_imu in operator_ws (controller tilt)
+sudo -E apt-get install -y ros-jazzy-ros-core ros-jazzy-joy libsdl2-dev foxglove-studio nodejs npm \
+    ros-dev-tools build-essential cmake pkg-config
 sudo -E apt-get upgrade -y
 echo "ROS: $(ls /opt/ros), Foxglove Studio $(dpkg-query -W -f '${Version}' foxglove-studio)"
 EOF
+
+# controller_imu reads the Deck's gyro for controller tilt; ros2_hexapod_launch.sh runs it from
+# operator_ws/install. Only it is built: operator_bringup is for the operator PC's container.
+OPERATOR_WS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../operator_ws" && pwd)"
+distrobox enter "$BOX" --no-tty -- bash -c "set -eo pipefail
+    source /opt/ros/jazzy/setup.bash
+    cd '$OPERATOR_WS'
+    colcon build --packages-select controller_imu"
 
 distrobox enter "$BOX" --no-tty -- "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/install_panel.sh"
